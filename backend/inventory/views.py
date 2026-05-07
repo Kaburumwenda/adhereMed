@@ -11,10 +11,18 @@ from datetime import timedelta
 import csv
 import io
 
-from .models import Category, Unit, MedicationStock, StockBatch, StockAdjustment
+from .models import (
+    Category, Unit, MedicationStock, StockBatch, StockAdjustment,
+    InventoryCount, InventoryCountLine,
+    StockTransfer, StockTransferLine,
+    ControlledSubstanceLog,
+)
 from .serializers import (
     CategorySerializer, UnitSerializer,
     MedicationStockSerializer, StockBatchSerializer, StockAdjustmentSerializer,
+    InventoryCountSerializer, InventoryCountLineSerializer,
+    StockTransferSerializer,
+    ControlledSubstanceLogSerializer,
 )
 
 
@@ -39,7 +47,7 @@ class MedicationStockViewSet(viewsets.ModelViewSet):
     serializer_class = MedicationStockSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['is_active', 'category', 'unit']
-    search_fields = ['medication_name', 'barcode']
+    search_fields = ['medication_name', 'abbreviation', 'barcode']
     ordering_fields = ['medication_name', 'selling_price', 'created_at']
 
     @action(detail=False, methods=['get'])
@@ -48,6 +56,125 @@ class MedicationStockViewSet(viewsets.ModelViewSet):
         low = [s for s in stocks if s.is_low_stock]
         serializer = self.get_serializer(low, many=True)
         return Response(serializer.data)
+
+    # ── Bulk operations ───────────────────────────────────────────────────
+    _BULK_EDITABLE_FIELDS = {
+        'medication_name', 'category', 'unit',
+        'selling_price', 'cost_price', 'discount_percent',
+        'reorder_level', 'reorder_quantity',
+        'location_in_store', 'barcode',
+        'prescription_required', 'is_active',
+    }
+
+    @action(detail=False, methods=['post'], url_path='bulk-update')
+    def bulk_update(self, request):
+        """Update many stock items at once.
+
+        Payload: { "items": [{"id": 1, "selling_price": 12.5, ...}, ...] }
+        Only fields in _BULK_EDITABLE_FIELDS are accepted; unknown fields ignored.
+        """
+        items = request.data.get('items') or []
+        if not isinstance(items, list) or not items:
+            return Response({'detail': 'items must be a non-empty list.'}, status=400)
+
+        ids = [i.get('id') for i in items if i.get('id')]
+        qs = MedicationStock.objects.filter(id__in=ids)
+        by_id = {s.id: s for s in qs}
+
+        updated = []
+        errors = []
+        for payload in items:
+            sid = payload.get('id')
+            obj = by_id.get(sid)
+            if not obj:
+                errors.append({'id': sid, 'error': 'not found'})
+                continue
+            cleaned = {k: v for k, v in payload.items() if k in self._BULK_EDITABLE_FIELDS}
+
+            # Optional inline quantity edit (creates a count-correction adjustment).
+            qty_error = None
+            if 'set_quantity' in payload and payload['set_quantity'] is not None:
+                try:
+                    new_qty = int(payload['set_quantity'])
+                    if new_qty < 0:
+                        raise ValueError('quantity must be ≥ 0')
+                    self._apply_quantity_set(obj, new_qty, request.user)
+                except (TypeError, ValueError) as exc:
+                    qty_error = str(exc) or 'invalid quantity'
+
+            if qty_error:
+                errors.append({'id': sid, 'error': {'set_quantity': [qty_error]}})
+
+            if cleaned:
+                serializer = self.get_serializer(obj, data=cleaned, partial=True)
+                if serializer.is_valid():
+                    serializer.save()
+                    updated.append(serializer.data)
+                else:
+                    errors.append({'id': sid, 'error': serializer.errors})
+            elif 'set_quantity' in payload and not qty_error:
+                updated.append(self.get_serializer(obj).data)
+
+        return Response({'updated': len(updated), 'items': updated, 'errors': errors})
+
+    def _apply_quantity_set(self, stock, new_qty, user):
+        """Reconcile total quantity to ``new_qty`` via a StockAdjustment.
+
+        For increases without any existing batch, a synthetic batch is created
+        (1-year expiry). For decreases, batches are drained FEFO.
+        """
+        from datetime import date, timedelta as _td
+        current = stock.total_quantity
+        delta = new_qty - current
+        if delta == 0:
+            return
+        if delta > 0:
+            batch = stock.batches.filter(quantity_remaining__gt=0).order_by('-expiry_date').first()
+            if batch is None:
+                batch = stock.batches.order_by('-expiry_date').first()
+            if batch is None:
+                batch = StockBatch.objects.create(
+                    stock=stock,
+                    batch_number=f'ADJ-{stock.pk}-{date.today():%Y%m%d}',
+                    quantity_received=delta,
+                    quantity_remaining=0,
+                    cost_price_per_unit=stock.cost_price or 0,
+                    expiry_date=date.today() + _td(days=365),
+                )
+            StockAdjustment.objects.create(
+                stock=stock, batch=batch, quantity_change=delta,
+                reason=StockAdjustment.Reason.COUNT_CORRECTION,
+                notes='Bulk edit count correction',
+                adjusted_by=user if user.is_authenticated else None,
+            )
+            batch.quantity_remaining = batch.quantity_remaining + delta
+            batch.save(update_fields=['quantity_remaining'])
+        else:
+            remaining = -delta
+            for batch in stock.batches.filter(quantity_remaining__gt=0).order_by('expiry_date'):
+                if remaining <= 0:
+                    break
+                take = min(batch.quantity_remaining, remaining)
+                StockAdjustment.objects.create(
+                    stock=stock, batch=batch, quantity_change=-take,
+                    reason=StockAdjustment.Reason.COUNT_CORRECTION,
+                    notes='Bulk edit count correction',
+                    adjusted_by=user if user.is_authenticated else None,
+                )
+                batch.quantity_remaining -= take
+                batch.save(update_fields=['quantity_remaining'])
+                remaining -= take
+
+    @action(detail=False, methods=['post'], url_path='bulk-delete')
+    def bulk_delete(self, request):
+        """Delete many stock items at once. Payload: { \"ids\": [1,2,3] }"""
+        ids = request.data.get('ids') or []
+        if not isinstance(ids, list) or not ids:
+            return Response({'detail': 'ids must be a non-empty list.'}, status=400)
+        qs = MedicationStock.objects.filter(id__in=ids)
+        count = qs.count()
+        qs.delete()
+        return Response({'deleted': count, 'ids': ids})
 
     @action(detail=False, methods=['get'])
     def expiring_soon(self, request):
@@ -379,3 +506,267 @@ class InventoryAnalyticsView(APIView):
             'expiring_90_days': expiring_90,
             'expired_batches': expired,
         })
+
+
+# ─────────────────────────────────────────────────────────────────────────
+#  Stock Take
+# ─────────────────────────────────────────────────────────────────────────
+class InventoryCountViewSet(viewsets.ModelViewSet):
+    queryset = InventoryCount.objects.select_related('branch', 'category', 'created_by', 'completed_by').prefetch_related('lines__stock__unit').all()
+    serializer_class = InventoryCountSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status', 'branch', 'category']
+    search_fields = ['reference', 'name', 'notes']
+    ordering_fields = ['created_at', 'completed_at']
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user if self.request.user.is_authenticated else None)
+
+    @action(detail=True, methods=['post'], url_path='generate-sheet')
+    def generate_sheet(self, request, pk=None):
+        """Populate count lines with current expected qty from active stocks."""
+        count = self.get_object()
+        if count.status not in (InventoryCount.Status.DRAFT, InventoryCount.Status.IN_PROGRESS):
+            return Response({'detail': 'Sheet can only be generated while draft / in progress.'}, status=400)
+
+        qs = MedicationStock.objects.filter(is_active=True).prefetch_related('batches')
+        if count.category_id:
+            qs = qs.filter(category_id=count.category_id)
+
+        # Wipe old lines and rebuild
+        count.lines.all().delete()
+        lines = []
+        for s in qs:
+            lines.append(InventoryCountLine(
+                count=count, stock=s,
+                expected_quantity=s.total_quantity,
+            ))
+        InventoryCountLine.objects.bulk_create(lines)
+        count.status = InventoryCount.Status.IN_PROGRESS
+        count.save(update_fields=['status'])
+        return Response(self.get_serializer(count).data)
+
+    @action(detail=True, methods=['post'], url_path='save-counts')
+    def save_counts(self, request, pk=None):
+        """Bulk-update counted quantities. Payload: {lines: [{id, counted_quantity, notes}]}"""
+        count = self.get_object()
+        if count.status == InventoryCount.Status.COMPLETED:
+            return Response({'detail': 'Count is completed and cannot be edited.'}, status=400)
+        lines = request.data.get('lines') or []
+        by_id = {l.id: l for l in count.lines.all()}
+        for payload in lines:
+            line = by_id.get(payload.get('id'))
+            if not line:
+                continue
+            cq = payload.get('counted_quantity')
+            line.counted_quantity = int(cq) if cq is not None and cq != '' else None
+            line.notes = payload.get('notes', line.notes) or ''
+            line.save(update_fields=['counted_quantity', 'notes'])
+        return Response(self.get_serializer(count).data)
+
+    @action(detail=True, methods=['post'])
+    def complete(self, request, pk=None):
+        """Finalise the count: create StockAdjustments for any variance."""
+        count = self.get_object()
+        if count.status == InventoryCount.Status.COMPLETED:
+            return Response({'detail': 'Already completed.'}, status=400)
+
+        adjustments_created = 0
+        for line in count.lines.exclude(counted_quantity__isnull=True):
+            variance = line.variance
+            if variance == 0:
+                continue
+            stock = line.stock
+            if variance > 0:
+                # Add to most recent batch (or create a synthetic one)
+                batch = stock.batches.order_by('-expiry_date').first()
+                if batch is None:
+                    from datetime import date as _d, timedelta as _td
+                    batch = StockBatch.objects.create(
+                        stock=stock,
+                        batch_number=f'CNT-{count.pk}-{stock.pk}',
+                        quantity_received=variance,
+                        quantity_remaining=0,
+                        cost_price_per_unit=stock.cost_price or 0,
+                        expiry_date=_d.today() + _td(days=365),
+                    )
+                StockAdjustment.objects.create(
+                    stock=stock, batch=batch, quantity_change=variance,
+                    reason=StockAdjustment.Reason.COUNT_CORRECTION,
+                    notes=f'Stock take {count.reference}',
+                    adjusted_by=request.user if request.user.is_authenticated else None,
+                )
+                batch.quantity_remaining += variance
+                batch.save(update_fields=['quantity_remaining'])
+                adjustments_created += 1
+            else:
+                remaining = -variance
+                for batch in stock.batches.filter(quantity_remaining__gt=0).order_by('expiry_date'):
+                    if remaining <= 0:
+                        break
+                    take = min(batch.quantity_remaining, remaining)
+                    StockAdjustment.objects.create(
+                        stock=stock, batch=batch, quantity_change=-take,
+                        reason=StockAdjustment.Reason.COUNT_CORRECTION,
+                        notes=f'Stock take {count.reference}',
+                        adjusted_by=request.user if request.user.is_authenticated else None,
+                    )
+                    batch.quantity_remaining -= take
+                    batch.save(update_fields=['quantity_remaining'])
+                    remaining -= take
+                adjustments_created += 1
+
+        count.status = InventoryCount.Status.COMPLETED
+        count.completed_at = timezone.now()
+        count.completed_by = request.user if request.user.is_authenticated else None
+        count.save(update_fields=['status', 'completed_at', 'completed_by'])
+        return Response({**self.get_serializer(count).data, 'adjustments_created': adjustments_created})
+
+
+# ─────────────────────────────────────────────────────────────────────────
+#  Stock Transfers
+# ─────────────────────────────────────────────────────────────────────────
+class StockTransferViewSet(viewsets.ModelViewSet):
+    queryset = StockTransfer.objects.select_related(
+        'source_branch', 'dest_branch', 'requested_by', 'approved_by', 'received_by'
+    ).prefetch_related('lines__stock__unit').all()
+    serializer_class = StockTransferSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status', 'source_branch', 'dest_branch']
+    search_fields = ['reference', 'notes']
+    ordering_fields = ['requested_at', 'shipped_at', 'received_at']
+
+    def _set_status(self, transfer, new_status, user, field):
+        transfer.status = new_status
+        if user and user.is_authenticated:
+            setattr(transfer, field, user)
+        if new_status == StockTransfer.Status.IN_TRANSIT:
+            transfer.shipped_at = timezone.now()
+        if new_status == StockTransfer.Status.COMPLETED:
+            transfer.received_at = timezone.now()
+        transfer.save()
+
+    @action(detail=True, methods=['post'])
+    def submit(self, request, pk=None):
+        """Move from draft to requested."""
+        transfer = self.get_object()
+        if transfer.status != StockTransfer.Status.DRAFT:
+            return Response({'detail': 'Only drafts can be submitted.'}, status=400)
+        transfer.status = StockTransfer.Status.REQUESTED
+        transfer.save(update_fields=['status'])
+        return Response(self.get_serializer(transfer).data)
+
+    @action(detail=True, methods=['post'])
+    def approve(self, request, pk=None):
+        """Approve and ship: deduct from source-branch stock immediately."""
+        transfer = self.get_object()
+        if transfer.status not in (StockTransfer.Status.REQUESTED, StockTransfer.Status.DRAFT):
+            return Response({'detail': 'Only requested transfers can be approved.'}, status=400)
+
+        # FEFO deduction at source branch (or any batch if branch unset)
+        for line in transfer.lines.all():
+            remaining = line.quantity
+            batches = line.stock.batches.filter(
+                quantity_remaining__gt=0,
+            ).order_by('expiry_date')
+            # Prefer batches at source branch first
+            src_batches = list(batches.filter(branch=transfer.source_branch))
+            other = [b for b in batches if b.branch_id != transfer.source_branch_id]
+            for batch in src_batches + other:
+                if remaining <= 0:
+                    break
+                take = min(batch.quantity_remaining, remaining)
+                batch.quantity_remaining -= take
+                batch.save(update_fields=['quantity_remaining'])
+                remaining -= take
+
+        self._set_status(transfer, StockTransfer.Status.IN_TRANSIT, request.user, 'approved_by')
+        return Response(self.get_serializer(transfer).data)
+
+    @action(detail=True, methods=['post'])
+    def receive(self, request, pk=None):
+        """Receive at destination: create a new batch per line.
+
+        Optional payload: {lines: [{id, quantity_received}]} to record short receipts.
+        """
+        transfer = self.get_object()
+        if transfer.status != StockTransfer.Status.IN_TRANSIT:
+            return Response({'detail': 'Only in-transit transfers can be received.'}, status=400)
+
+        received_map = {}
+        for payload in (request.data.get('lines') or []):
+            received_map[payload.get('id')] = payload.get('quantity_received')
+
+        from datetime import date as _d, timedelta as _td
+        for line in transfer.lines.all():
+            qr = received_map.get(line.id)
+            qty_received = int(qr) if qr not in (None, '') else line.quantity
+            line.quantity_received = qty_received
+            line.save(update_fields=['quantity_received'])
+            if qty_received > 0:
+                StockBatch.objects.create(
+                    stock=line.stock,
+                    batch_number=f'TRF-{transfer.reference}',
+                    quantity_received=qty_received,
+                    quantity_remaining=qty_received,
+                    cost_price_per_unit=line.stock.cost_price or 0,
+                    expiry_date=_d.today() + _td(days=365),
+                    branch=transfer.dest_branch,
+                )
+
+        self._set_status(transfer, StockTransfer.Status.COMPLETED, request.user, 'received_by')
+        return Response(self.get_serializer(transfer).data)
+
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        transfer = self.get_object()
+        if transfer.status in (StockTransfer.Status.COMPLETED, StockTransfer.Status.CANCELLED):
+            return Response({'detail': 'Cannot cancel this transfer.'}, status=400)
+        transfer.status = StockTransfer.Status.CANCELLED
+        transfer.save(update_fields=['status'])
+        return Response(self.get_serializer(transfer).data)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+#  Controlled Substance Register
+# ─────────────────────────────────────────────────────────────────────────
+class ControlledSubstanceLogViewSet(viewsets.ModelViewSet):
+    queryset = ControlledSubstanceLog.objects.select_related('recorded_by').all()
+    serializer_class = ControlledSubstanceLogSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['action', 'medication_name', 'schedule']
+    search_fields = ['medication_name', 'patient_name', 'patient_id_number',
+                     'prescriber_name', 'prescription_reference', 'batch_number']
+    ordering_fields = ['created_at', 'medication_name']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        df = self.request.query_params.get('date_from')
+        dt = self.request.query_params.get('date_to')
+        if df:
+            qs = qs.filter(created_at__date__gte=df)
+        if dt:
+            qs = qs.filter(created_at__date__lte=dt)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(recorded_by=self.request.user if self.request.user.is_authenticated else None)
+
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        from django.db.models import Sum
+        qs = self.get_queryset()
+        by_action = {}
+        for row in qs.values('action').annotate(c=Sum('quantity')):
+            by_action[row['action']] = float(row['c'] or 0)
+        by_med = list(
+            qs.values('medication_name')
+              .annotate(total=Sum('quantity'))
+              .order_by('-total')[:10]
+        )
+        return Response({
+            'total_records': qs.count(),
+            'by_action': by_action,
+            'top_medications': by_med,
+        })
+

@@ -149,11 +149,12 @@ class _DoctorDirectoryScreenState
               ? 2
               : 1;
       return GridView.builder(
+        padding: const EdgeInsets.only(bottom: 24),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: crossAxisCount,
           mainAxisSpacing: 16,
           crossAxisSpacing: 16,
-          childAspectRatio: 1.35,
+          childAspectRatio: 1.05,
         ),
         itemCount: _data!.results.length,
         itemBuilder: (context, index) {
@@ -182,153 +183,193 @@ class _DoctorCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final initials = doctor.name.trim().isNotEmpty
+        ? doctor.name.trim().split(RegExp(r'\s+')).map((w) => w[0]).take(2).join().toUpperCase()
+        : 'D';
+    final hasPhoto = doctor.profilePictureUrl?.isNotEmpty == true;
+
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    radius: 24,
-                    backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-                    child: Text(
-                      doctor.name.isNotEmpty
-                          ? doctor.name[0].toUpperCase()
-                          : 'D',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Dr. ${doctor.name}',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 15,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          doctor.specialization,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ── Left 50% — photo panel ────────────────────────
+            Flexible(
+              flex: 1,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.10),
+                  image: hasPhoto
+                      ? DecorationImage(
+                          image: NetworkImage(doctor.profilePictureUrl!),
+                          fit: BoxFit.cover,
+                          onError: (_, __) {},
+                        )
+                      : null,
+                ),
+                child: !hasPhoto
+                    ? Center(
+                        child: Text(
+                          initials,
                           style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
                             color: AppColors.primary,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      )
+                    : null,
+              ),
+            ),
+            // ── Right 50% — details ───────────────────────────
+            Flexible(
+              flex: 1,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 12, 10, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Name + verified
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Dr. ${doctor.name}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (doctor.isVerified)
+                          Icon(Icons.verified,
+                              color: AppColors.primary, size: 15),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    // Specialization
+                    Text(
+                      doctor.specialization,
+                      style: TextStyle(
+                        color: AppColors.primary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    // Experience
+                    if (doctor.yearsOfExperience > 0)
+                      Row(
+                        children: [
+                          Icon(Icons.work_outline,
+                              size: 12, color: AppColors.textSecondary),
+                          const SizedBox(width: 3),
+                          Text(
+                            '${doctor.yearsOfExperience} yrs exp',
+                            style: TextStyle(
+                                fontSize: 11, color: AppColors.textSecondary),
+                          ),
+                        ],
+                      ),
+                    // Languages
+                    if (doctor.languages.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.translate,
+                              size: 12, color: AppColors.textSecondary),
+                          const SizedBox(width: 3),
+                          Expanded(
+                            child: Text(
+                              doctor.languages.join(', '),
+                              style: TextStyle(
+                                  fontSize: 11, color: AppColors.textSecondary),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    // Available days
+                    if (doctor.availableDays.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.calendar_today_outlined,
+                              size: 12, color: AppColors.textSecondary),
+                          const SizedBox(width: 3),
+                          Expanded(
+                            child: Text(
+                              doctor.availableDays
+                                  .map((d) => d.length >= 3
+                                      ? d.substring(0, 3)
+                                      : d)
+                                  .join(' · '),
+                              style: TextStyle(
+                                  fontSize: 11, color: AppColors.textSecondary),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    const Spacer(),
+                    // Fee
+                    if (doctor.consultationFee > 0)
+                      Text(
+                        'KES ${doctor.consultationFee.toStringAsFixed(0)}',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primary,
+                          fontSize: 13,
+                        ),
+                      ),
+                    const SizedBox(height: 8),
+                    // Buttons
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: onTap,
+                            style: OutlinedButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              minimumSize: const Size(0, 30),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            child: const Text('Profile',
+                                style: TextStyle(fontSize: 11)),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: onChat,
+                            style: FilledButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              minimumSize: const Size(0, 30),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            child: const Text('Consult',
+                                style: TextStyle(fontSize: 11)),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  if (doctor.isVerified)
-                    Tooltip(
-                      message: 'Verified',
-                      child: Icon(Icons.verified,
-                          color: AppColors.primary, size: 20),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              if (doctor.qualification.isNotEmpty ||
-                  doctor.yearsOfExperience > 0)
-                Row(
-                  children: [
-                    if (doctor.qualification.isNotEmpty) ...[
-                      Icon(Icons.school_outlined,
-                          size: 14, color: AppColors.textSecondary),
-                      const SizedBox(width: 4),
-                      Text(doctor.qualification,
-                          style: TextStyle(
-                              fontSize: 12, color: AppColors.textSecondary)),
-                      const SizedBox(width: 12),
-                    ],
-                    if (doctor.yearsOfExperience > 0) ...[
-                      Icon(Icons.work_outline,
-                          size: 14, color: AppColors.textSecondary),
-                      const SizedBox(width: 4),
-                      Text('${doctor.yearsOfExperience} yrs',
-                          style: TextStyle(
-                              fontSize: 12, color: AppColors.textSecondary)),
-                    ],
                   ],
                 ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: doctor.practiceType == 'independent'
-                          ? Colors.blue.withValues(alpha: 0.1)
-                          : Colors.green.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      doctor.practiceType == 'independent'
-                          ? 'Independent'
-                          : doctor.hospitalName ?? 'Hospital',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: doctor.practiceType == 'independent'
-                            ? Colors.blue
-                            : Colors.green,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  if (doctor.consultationFee > 0)
-                    Text(
-                      'KES ${doctor.consultationFee.toStringAsFixed(0)}',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                ],
               ),
-              const Spacer(),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: onTap,
-                      icon: const Icon(Icons.info_outline, size: 16),
-                      label: const Text('Profile'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: onChat,
-                      icon: const Icon(Icons.chat_outlined, size: 16),
-                      label: const Text('Consult'),
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

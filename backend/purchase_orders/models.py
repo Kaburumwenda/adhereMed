@@ -9,6 +9,7 @@ class PurchaseOrder(models.Model):
         RECEIVED = 'received', 'Received'
         PARTIAL = 'partial', 'Partially Received'
         CANCELLED = 'cancelled', 'Cancelled'
+        RETURNED = 'returned', 'Returned'
 
     po_number = models.CharField(max_length=50, unique=True)
     supplier = models.ForeignKey('suppliers.Supplier', on_delete=models.CASCADE, related_name='purchase_orders')

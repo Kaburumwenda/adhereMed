@@ -1,0 +1,40 @@
+{
+  "name": "adheremed",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "description": "AdhereMed - Hospital & Pharmacy Ecosystem (Nuxt 3 frontend)",
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare"
+  },
+  "dependencies": {
+    "@mdi/font": "^7.4.47",
+    "@pinia/nuxt": "^0.5.5",
+    "axios": "^1.7.9",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.7",
+    "nuxt": "3.13.2",
+    "pinia": "^2.3.0",
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0",
+    "vuetify": "^3.7.6"
+  },
+  "devDependencies": {
+    "sass": "^1.83.0",
+    "vite-plugin-vuetify": "^2.0.4"
+  },
+  "overrides": {
+    "vite-plugin-vuetify": {
+      "vite": "^5.4.0"
+    },
+    "esbuild": "0.23.1",
+    "nitropack": {
+      "esbuild": "0.23.1"
+    }
+  }
+}

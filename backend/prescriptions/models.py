@@ -41,6 +41,14 @@ class PrescriptionItem(models.Model):
     duration = models.CharField(max_length=100, help_text='e.g., 7 days')
     quantity = models.PositiveIntegerField(default=1)
     instructions = models.TextField(blank=True, help_text='e.g., Take after meals')
+    schedule = models.CharField(
+        max_length=100, blank=True,
+        help_text='e.g., Morning, Afternoon & Night / Before meals',
+    )
+    refills = models.PositiveSmallIntegerField(
+        default=0,
+        help_text='Number of times this prescription can be refilled',
+    )
 
     def __str__(self):
         name = self.custom_medication_name if self.is_custom else self.medication_name

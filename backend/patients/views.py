@@ -3,8 +3,10 @@ import secrets
 
 from django.contrib.auth import get_user_model
 from rest_framework import viewsets, filters, status
+from rest_framework.decorators import action
 from rest_framework.generics import CreateAPIView
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 
 from .models import Patient
@@ -27,7 +29,7 @@ class PatientViewSet(viewsets.ModelViewSet):
     serializer_class = PatientSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['gender', 'blood_type']
-    search_fields = ['patient_number', 'user__first_name', 'user__last_name']
+    search_fields = ['patient_number', 'user__first_name', 'user__last_name', 'national_id']
     ordering_fields = ['created_at', 'patient_number']
 
     def create(self, request, *args, **kwargs):
@@ -113,6 +115,22 @@ class PatientViewSet(viewsets.ModelViewSet):
                 user_changed = True
         if user_changed:
             user.save()
+
+        return Response(PatientSerializer(patient).data)
+
+    @action(detail=False, methods=['get', 'patch'], url_path='me',
+            permission_classes=[IsAuthenticated])
+    def me(self, request):
+        """Return or update the patient profile of the currently logged-in user."""
+        try:
+            patient = Patient.objects.select_related('user').get(user=request.user)
+        except Patient.DoesNotExist:
+            return Response({'detail': 'Patient profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.method == 'PATCH':
+            # Temporarily set pk in kwargs so partial_update can resolve the object
+            self.kwargs['pk'] = patient.pk
+            return self.partial_update(request, pk=patient.pk)
 
         return Response(PatientSerializer(patient).data)
 

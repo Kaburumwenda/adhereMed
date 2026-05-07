@@ -25,7 +25,7 @@ class Patient(models.Model):
     date_of_birth = models.DateField()
     gender = models.CharField(max_length=10, choices=Gender.choices)
     blood_type = models.CharField(max_length=5, choices=BloodType.choices, blank=True)
-    national_id = models.CharField(max_length=30, blank=True)
+    national_id = models.CharField(max_length=30, unique=True)
     address = models.TextField(blank=True)
     allergies = models.JSONField(default=list, blank=True)
     chronic_conditions = models.JSONField(default=list, blank=True)

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/theme.dart';
 import '../../../core/widgets/loading_widget.dart';
@@ -16,10 +17,115 @@ class TopProductSalesScreen extends ConsumerStatefulWidget {
 class _TopProductSalesScreenState
     extends ConsumerState<TopProductSalesScreen> {
   String _period = 'month';
+  DateTime? _dateFrom;
+  DateTime? _dateTo;
+
+  bool get _isCustomRange => _dateFrom != null && _dateTo != null;
+
+  ({String period, int? branchId, String? dateFrom, String? dateTo})
+      _providerParams() {
+    final fmt = DateFormat('yyyy-MM-dd');
+    return (
+      period: _period,
+      branchId: null,
+      dateFrom: _isCustomRange ? fmt.format(_dateFrom!) : null,
+      dateTo: _isCustomRange ? fmt.format(_dateTo!) : null,
+    );
+  }
+
+  Future<void> _pickDateRange() async {
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      initialDateRange: (_dateFrom != null && _dateTo != null)
+          ? DateTimeRange(start: _dateFrom!, end: _dateTo!)
+          : null,
+    );
+    if (picked != null) {
+      setState(() {
+        _dateFrom = picked.start;
+        _dateTo = picked.end;
+      });
+    }
+  }
+
+  void _clearDateRange() =>
+      setState(() { _dateFrom = null; _dateTo = null; });
+
+  Widget _buildDateRangeButton() {
+    final fmt = DateFormat('dd MMM');
+    if (_isCustomRange) {
+      return Container(
+        decoration: BoxDecoration(
+          color: AppColors.primary.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+              color: AppColors.primary.withValues(alpha: 0.4)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            InkWell(
+              onTap: _pickDateRange,
+              borderRadius:
+                  const BorderRadius.horizontal(left: Radius.circular(8)),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.date_range,
+                        size: 14, color: AppColors.primary),
+                    const SizedBox(width: 5),
+                    Text(
+                      '${fmt.format(_dateFrom!)} – ${fmt.format(_dateTo!)}',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Container(
+                width: 1,
+                height: 24,
+                color: AppColors.primary.withValues(alpha: 0.3)),
+            InkWell(
+              onTap: _clearDateRange,
+              borderRadius:
+                  const BorderRadius.horizontal(right: Radius.circular(8)),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 8, vertical: 8),
+                child:
+                    Icon(Icons.close, size: 14, color: AppColors.primary),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return OutlinedButton.icon(
+      onPressed: _pickDateRange,
+      icon: const Icon(Icons.date_range, size: 15),
+      label: const Text('Date Range'),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.textSecondary,
+        side: BorderSide(color: AppColors.border),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        textStyle: const TextStyle(fontSize: 12),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final salesAsync = ref.watch(salesAnalyticsProvider((period: _period, branchId: null)));
+    final salesAsync = ref.watch(salesAnalyticsProvider(_providerParams()));
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
@@ -29,23 +135,34 @@ class _TopProductSalesScreenState
           // Header
           Row(
             children: [
-              Text(
-                'Top Product Sales',
-                style: Theme.of(context)
-                    .textTheme
-                    .headlineSmall
-                    ?.copyWith(fontWeight: FontWeight.bold),
+              Expanded(
+                child: Text(
+                  'Top Product Sales',
+                  style: Theme.of(context)
+                      .textTheme
+                      .headlineSmall
+                      ?.copyWith(fontWeight: FontWeight.bold),
+                ),
               ),
-              const Spacer(),
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: 'today', label: Text('Today')),
-                  ButtonSegment(value: 'week', label: Text('Week')),
-                  ButtonSegment(value: 'month', label: Text('Month')),
-                  ButtonSegment(value: 'year', label: Text('Year')),
+              const SizedBox(width: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.end,
+                children: [
+                  _buildDateRangeButton(),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: 'today', label: Text('Today')),
+                      ButtonSegment(value: 'week', label: Text('Week')),
+                      ButtonSegment(value: 'month', label: Text('Month')),
+                      ButtonSegment(value: 'year', label: Text('Year')),
+                    ],
+                    selected: {_period},
+                    onSelectionChanged: (v) =>
+                        setState(() => _period = v.first),
+                  ),
                 ],
-                selected: {_period},
-                onSelectionChanged: (v) => setState(() => _period = v.first),
               ),
             ],
           ),

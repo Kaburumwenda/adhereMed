@@ -37,6 +37,11 @@ final _patientDashboardProvider =
         .get('/messaging/conversations/')
         .then((r) => r.data)
         .catchError((_) => <String, dynamic>{'results': [], 'count': 0}),
+    // 4 – doctors
+    dio
+        .get('/doctors/', queryParameters: {'page_size': 12})
+        .then((r) => r.data)
+        .catchError((_) => <String, dynamic>{'results': []}),
   ]);
 
   return _PatientDashboardData(
@@ -44,6 +49,7 @@ final _patientDashboardProvider =
     exchanges: results[1] as Map<String, dynamic>,
     orders: results[2] as Map<String, dynamic>,
     conversations: results[3],
+    doctors: results[4] as Map<String, dynamic>,
   );
 });
 
@@ -52,12 +58,14 @@ class _PatientDashboardData {
   final Map<String, dynamic> exchanges;
   final Map<String, dynamic> orders;
   final dynamic conversations;
+  final Map<String, dynamic> doctors;
 
   _PatientDashboardData({
     required this.appointments,
     required this.exchanges,
     required this.orders,
     required this.conversations,
+    required this.doctors,
   });
 }
 
@@ -188,6 +196,9 @@ class PatientDashboardScreen extends ConsumerWidget {
     final unreadCount = convList.fold<int>(
         0, (sum, c) => sum + ((c['unread_count'] as int?) ?? 0));
 
+    final doctorList =
+        data.doctors['results'] as List<dynamic>? ?? [];
+
     // Upcoming / active appointments
     final upcomingAppts = apptList
         .where((a) =>
@@ -284,6 +295,13 @@ class PatientDashboardScreen extends ConsumerWidget {
         ),
         const SizedBox(height: 24),
 
+        // ── Doctors ──
+        if (doctorList.isNotEmpty) ...[
+          _SectionHeader('Our Doctors'),
+          _buildDoctorsSection(context, doctorList),
+          const SizedBox(height: 24),
+        ],
+
         // ── Upcoming Appointments + Active Exchanges ──
         LayoutBuilder(builder: (ctx, c) {
           if (c.maxWidth > 900) {
@@ -374,6 +392,41 @@ class PatientDashboardScreen extends ConsumerWidget {
   // =========================================================================
   // SECTION BUILDERS
   // =========================================================================
+
+  Widget _buildDoctorsSection(
+      BuildContext context, List<dynamic> doctors) {
+    return SizedBox(
+      height: 148,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        itemCount: doctors.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (context, i) {
+          final doc = doctors[i] as Map<String, dynamic>;
+          final name =
+              '${doc['first_name'] ?? doc['user']?['first_name'] ?? ''} '
+                      '${doc['last_name'] ?? doc['user']?['last_name'] ?? ''}'
+                  .trim();
+          final displayName = name.isNotEmpty ? name : 'Dr.';
+          final photoUrl = doc['profile_picture_url'] as String?;
+          final specialty = doc['specialization'] ??
+              doc['specialization_name'] ??
+              doc['specialty'] ??
+              '';
+          final docId = doc['id'];
+          return _DoctorAvatarCard(
+            name: displayName,
+            specialty: specialty.toString(),
+            photoUrl: photoUrl,
+            onTap: docId != null
+                ? () => context.push('/doctors/$docId')
+                : null,
+          );
+        },
+      ),
+    );
+  }
 
   Widget _buildQuickActions(BuildContext context) {
     return Column(
@@ -1018,6 +1071,121 @@ class PatientDashboardScreen extends ConsumerWidget {
       default:
         return AppColors.textSecondary;
     }
+  }
+}
+
+// ===========================================================================
+// Doctor Avatar Card
+// ===========================================================================
+
+class _DoctorAvatarCard extends StatelessWidget {
+  final String name;
+  final String specialty;
+  final String? photoUrl;
+  final VoidCallback? onTap;
+
+  const _DoctorAvatarCard({
+    required this.name,
+    required this.specialty,
+    this.photoUrl,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final initials = name
+        .split(' ')
+        .where((w) => w.isNotEmpty)
+        .take(2)
+        .map((w) => w[0].toUpperCase())
+        .join();
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 110,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.border),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // ── Avatar ──────────────────────────────────────────────
+            Container(
+              width: 58,
+              height: 58,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.primary.withValues(alpha: 0.1),
+                border: Border.all(
+                    color: AppColors.primary.withValues(alpha: 0.25),
+                    width: 1.5),
+              ),
+              child: ClipOval(
+                child: photoUrl != null && photoUrl!.isNotEmpty
+                    ? Image.network(
+                        photoUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Center(
+                          child: Text(
+                            initials.isEmpty ? 'D' : initials,
+                            style: TextStyle(
+                                color: AppColors.primary,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 18),
+                          ),
+                        ),
+                      )
+                    : Center(
+                        child: Text(
+                          initials.isEmpty ? 'D' : initials,
+                          style: TextStyle(
+                              color: AppColors.primary,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 18),
+                        ),
+                      ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            // ── Name ─────────────────────────────────────────────────
+            Text(
+              name,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                  height: 1.3),
+            ),
+            if (specialty.isNotEmpty) ...[
+              const SizedBox(height: 3),
+              Text(
+                specialty,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 10,
+                    color: AppColors.textSecondary),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }
 

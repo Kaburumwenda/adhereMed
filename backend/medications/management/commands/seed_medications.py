@@ -1,176 +1,1030 @@
-import json
+"""
+Seed the shared Medication catalog from the comprehensive Kenyan-market
+pharmacy stock list.
+
+Reuses ``inventory.management.commands.seed_pharmacy_stock.STOCK_DATA``
+so the catalog stays in lockstep with the per-tenant pharmacy stock seed
+(currently 800+ unique products).
+
+Usage:
+    python manage.py seed_medications
+    python manage.py seed_medications --reset       # wipe & reseed
+    python manage.py seed_medications --skip-existing
+"""
+
+import re
+
 from django.core.management.base import BaseCommand
+from django.db import transaction
+
 from medications.models import Medication
 
+# Reuse the canonical Kenyan-market catalog used by the pharmacy stock seed.
+from inventory.management.commands.seed_pharmacy_stock import STOCK_DATA
 
-MEDICATIONS = [
-    {"generic_name": "Paracetamol", "brand_names": ["Panadol", "Tylenol", "Calpol"], "category": "analgesic", "dosage_form": "tablet", "strength": "500mg"},
-    {"generic_name": "Paracetamol", "brand_names": ["Panadol Syrup", "Calpol"], "category": "analgesic", "dosage_form": "syrup", "strength": "120mg/5ml"},
-    {"generic_name": "Ibuprofen", "brand_names": ["Brufen", "Advil", "Nurofen"], "category": "nsaid", "dosage_form": "tablet", "strength": "400mg"},
-    {"generic_name": "Ibuprofen", "brand_names": ["Brufen"], "category": "nsaid", "dosage_form": "suspension", "strength": "100mg/5ml"},
-    {"generic_name": "Diclofenac", "brand_names": ["Voltaren", "Cataflam"], "category": "nsaid", "dosage_form": "tablet", "strength": "50mg"},
-    {"generic_name": "Diclofenac", "brand_names": ["Voltaren Gel"], "category": "nsaid", "dosage_form": "gel", "strength": "1%"},
-    {"generic_name": "Aspirin", "brand_names": ["Disprin", "Bayer Aspirin"], "category": "analgesic", "dosage_form": "tablet", "strength": "300mg"},
-    {"generic_name": "Aspirin", "brand_names": ["Cardiprin"], "category": "cardiovascular", "dosage_form": "tablet", "strength": "75mg"},
-    {"generic_name": "Tramadol", "brand_names": ["Tramal"], "category": "analgesic", "dosage_form": "capsule", "strength": "50mg", "controlled_substance_class": "Schedule IV"},
-    {"generic_name": "Morphine Sulfate", "brand_names": ["MS Contin"], "category": "analgesic", "dosage_form": "tablet", "strength": "10mg", "controlled_substance_class": "Schedule II"},
-    {"generic_name": "Codeine Phosphate", "brand_names": ["Codalgin"], "category": "analgesic", "dosage_form": "tablet", "strength": "30mg", "controlled_substance_class": "Schedule V"},
+
+# ---------------------------------------------------------------------------
+# Brand names (Kenyan market) — keyed by canonical generic name (lowercase).
+# Sources: KEML, common Kenyan pharmacy distributors (Cosmos, UCL, Dawa,
+# Beta Healthcare, GSK, Pfizer, Sanofi, Cipla, Sun, Aurobindo, Hetero, etc.)
+# ---------------------------------------------------------------------------
+BRAND_NAMES: dict[str, list[str]] = {
+    # Analgesics / NSAIDs
+    "paracetamol": ["Panadol", "Calpol", "Tylenol", "Hedex", "Action", "Mara Moja"],
+    "ibuprofen": ["Brufen", "Advil", "Nurofen", "Ibucap"],
+    "diclofenac": ["Voltaren", "Cataflam", "Olfen", "Dyclo"],
+    "diclofenac sodium": ["Voltaren", "Cataflam", "Olfen"],
+    "diclofenac potassium": ["Cataflam", "Voltfast"],
+    "aspirin": ["Disprin", "Bayer Aspirin", "Cardiprin", "Ascard"],
+    "tramadol": ["Tramal", "Domadol", "Tramacip"],
+    "morphine sulfate": ["MS Contin", "Sevredol"],
+    "morphine": ["MS Contin", "Sevredol"],
+    "pethidine": ["Demerol"],
+    "codeine phosphate": ["Codalgin"],
+    "codeine": ["Codalgin"],
+    "naproxen": ["Naprosyn", "Synflex"],
+    "meloxicam": ["Mobic", "Melox"],
+    "celecoxib": ["Celebrex", "Cobix"],
+    "etoricoxib": ["Arcoxia", "Etoshine"],
+    "piroxicam": ["Feldene"],
+    "indomethacin": ["Indocin"],
+    "ketorolac": ["Toradol", "Ketanov"],
+    "nimesulide": ["Nise", "Nimulid"],
+    "mefenamic acid": ["Ponstan", "Ponstel"],
+
     # Antibiotics
-    {"generic_name": "Amoxicillin", "brand_names": ["Amoxil", "Ospamox"], "category": "antibiotic", "dosage_form": "capsule", "strength": "500mg"},
-    {"generic_name": "Amoxicillin", "brand_names": ["Amoxil"], "category": "antibiotic", "dosage_form": "suspension", "strength": "250mg/5ml"},
-    {"generic_name": "Amoxicillin/Clavulanate", "brand_names": ["Augmentin", "Amoclav"], "category": "antibiotic", "dosage_form": "tablet", "strength": "625mg"},
-    {"generic_name": "Azithromycin", "brand_names": ["Zithromax", "Azithral"], "category": "antibiotic", "dosage_form": "tablet", "strength": "500mg"},
-    {"generic_name": "Ciprofloxacin", "brand_names": ["Cipro", "Ciproxin"], "category": "antibiotic", "dosage_form": "tablet", "strength": "500mg"},
-    {"generic_name": "Metronidazole", "brand_names": ["Flagyl"], "category": "antibiotic", "dosage_form": "tablet", "strength": "400mg"},
-    {"generic_name": "Metronidazole", "brand_names": ["Flagyl IV"], "category": "antibiotic", "dosage_form": "injection", "strength": "500mg/100ml"},
-    {"generic_name": "Doxycycline", "brand_names": ["Vibramycin"], "category": "antibiotic", "dosage_form": "capsule", "strength": "100mg"},
-    {"generic_name": "Ceftriaxone", "brand_names": ["Rocephin"], "category": "antibiotic", "dosage_form": "injection", "strength": "1g"},
-    {"generic_name": "Cefuroxime", "brand_names": ["Zinnat", "Zinacef"], "category": "antibiotic", "dosage_form": "tablet", "strength": "500mg"},
-    {"generic_name": "Erythromycin", "brand_names": ["Erythrocin", "Eryc"], "category": "antibiotic", "dosage_form": "tablet", "strength": "500mg"},
-    {"generic_name": "Cloxacillin", "brand_names": ["Cloxapen"], "category": "antibiotic", "dosage_form": "capsule", "strength": "500mg"},
-    {"generic_name": "Gentamicin", "brand_names": ["Garamycin"], "category": "antibiotic", "dosage_form": "injection", "strength": "80mg/2ml"},
-    {"generic_name": "Nitrofurantoin", "brand_names": ["Macrobid", "Furadantin"], "category": "antibiotic", "dosage_form": "capsule", "strength": "100mg"},
-    {"generic_name": "Cotrimoxazole", "brand_names": ["Septrin", "Bactrim"], "category": "antibiotic", "dosage_form": "tablet", "strength": "960mg"},
-    {"generic_name": "Clindamycin", "brand_names": ["Dalacin C"], "category": "antibiotic", "dosage_form": "capsule", "strength": "300mg"},
-    {"generic_name": "Flucloxacillin", "brand_names": ["Floxapen"], "category": "antibiotic", "dosage_form": "capsule", "strength": "500mg"},
-    # Antimalarials
-    {"generic_name": "Artemether/Lumefantrine", "brand_names": ["Coartem", "ALu"], "category": "antimalarial", "dosage_form": "tablet", "strength": "20/120mg"},
-    {"generic_name": "Quinine", "brand_names": ["Quinimax"], "category": "antimalarial", "dosage_form": "injection", "strength": "300mg/ml"},
-    {"generic_name": "Mefloquine", "brand_names": ["Lariam"], "category": "antimalarial", "dosage_form": "tablet", "strength": "250mg"},
-    {"generic_name": "Artesunate", "brand_names": ["Arinate"], "category": "antimalarial", "dosage_form": "injection", "strength": "60mg"},
-    # Antifungals
-    {"generic_name": "Fluconazole", "brand_names": ["Diflucan"], "category": "antifungal", "dosage_form": "capsule", "strength": "150mg"},
-    {"generic_name": "Clotrimazole", "brand_names": ["Canesten"], "category": "antifungal", "dosage_form": "cream", "strength": "1%"},
-    {"generic_name": "Ketoconazole", "brand_names": ["Nizoral"], "category": "antifungal", "dosage_form": "tablet", "strength": "200mg"},
-    {"generic_name": "Nystatin", "brand_names": ["Mycostatin"], "category": "antifungal", "dosage_form": "suspension", "strength": "100000IU/ml"},
-    {"generic_name": "Miconazole", "brand_names": ["Daktarin"], "category": "antifungal", "dosage_form": "cream", "strength": "2%"},
-    # Antivirals
-    {"generic_name": "Acyclovir", "brand_names": ["Zovirax"], "category": "antiviral", "dosage_form": "tablet", "strength": "400mg"},
-    {"generic_name": "Acyclovir", "brand_names": ["Zovirax Cream"], "category": "antiviral", "dosage_form": "cream", "strength": "5%"},
-    # Antihistamines
-    {"generic_name": "Cetirizine", "brand_names": ["Zyrtec", "Cetrizet"], "category": "antihistamine", "dosage_form": "tablet", "strength": "10mg"},
-    {"generic_name": "Loratadine", "brand_names": ["Claritin", "Lorfast"], "category": "antihistamine", "dosage_form": "tablet", "strength": "10mg"},
-    {"generic_name": "Chlorpheniramine", "brand_names": ["Piriton", "Chlor-Trimeton"], "category": "antihistamine", "dosage_form": "tablet", "strength": "4mg"},
-    {"generic_name": "Fexofenadine", "brand_names": ["Allegra"], "category": "antihistamine", "dosage_form": "tablet", "strength": "180mg"},
-    # Antihypertensives
-    {"generic_name": "Amlodipine", "brand_names": ["Norvasc", "Amlopin"], "category": "antihypertensive", "dosage_form": "tablet", "strength": "5mg"},
-    {"generic_name": "Amlodipine", "brand_names": ["Norvasc"], "category": "antihypertensive", "dosage_form": "tablet", "strength": "10mg"},
-    {"generic_name": "Enalapril", "brand_names": ["Renitec", "Vasotec"], "category": "antihypertensive", "dosage_form": "tablet", "strength": "10mg"},
-    {"generic_name": "Losartan", "brand_names": ["Cozaar", "Losacar"], "category": "antihypertensive", "dosage_form": "tablet", "strength": "50mg"},
-    {"generic_name": "Atenolol", "brand_names": ["Tenormin"], "category": "antihypertensive", "dosage_form": "tablet", "strength": "50mg"},
-    {"generic_name": "Hydrochlorothiazide", "brand_names": ["HCT", "Esidrex"], "category": "antihypertensive", "dosage_form": "tablet", "strength": "25mg"},
-    {"generic_name": "Nifedipine", "brand_names": ["Adalat"], "category": "antihypertensive", "dosage_form": "tablet", "strength": "20mg"},
-    {"generic_name": "Lisinopril", "brand_names": ["Zestril", "Prinivil"], "category": "antihypertensive", "dosage_form": "tablet", "strength": "10mg"},
-    {"generic_name": "Captopril", "brand_names": ["Capoten"], "category": "antihypertensive", "dosage_form": "tablet", "strength": "25mg"},
-    {"generic_name": "Methyldopa", "brand_names": ["Aldomet"], "category": "antihypertensive", "dosage_form": "tablet", "strength": "250mg"},
-    # Cardiovascular
-    {"generic_name": "Furosemide", "brand_names": ["Lasix"], "category": "cardiovascular", "dosage_form": "tablet", "strength": "40mg"},
-    {"generic_name": "Furosemide", "brand_names": ["Lasix"], "category": "cardiovascular", "dosage_form": "injection", "strength": "20mg/ml"},
-    {"generic_name": "Atorvastatin", "brand_names": ["Lipitor"], "category": "cardiovascular", "dosage_form": "tablet", "strength": "20mg"},
-    {"generic_name": "Simvastatin", "brand_names": ["Zocor"], "category": "cardiovascular", "dosage_form": "tablet", "strength": "20mg"},
-    {"generic_name": "Warfarin", "brand_names": ["Coumadin", "Marevan"], "category": "cardiovascular", "dosage_form": "tablet", "strength": "5mg"},
-    {"generic_name": "Digoxin", "brand_names": ["Lanoxin"], "category": "cardiovascular", "dosage_form": "tablet", "strength": "0.25mg"},
-    {"generic_name": "Spironolactone", "brand_names": ["Aldactone"], "category": "cardiovascular", "dosage_form": "tablet", "strength": "25mg"},
-    {"generic_name": "Clopidogrel", "brand_names": ["Plavix"], "category": "cardiovascular", "dosage_form": "tablet", "strength": "75mg"},
-    # Antidiabetics
-    {"generic_name": "Metformin", "brand_names": ["Glucophage", "Daonil"], "category": "antidiabetic", "dosage_form": "tablet", "strength": "500mg"},
-    {"generic_name": "Metformin", "brand_names": ["Glucophage"], "category": "antidiabetic", "dosage_form": "tablet", "strength": "850mg"},
-    {"generic_name": "Glibenclamide", "brand_names": ["Daonil", "Glyburide"], "category": "antidiabetic", "dosage_form": "tablet", "strength": "5mg"},
-    {"generic_name": "Glimepiride", "brand_names": ["Amaryl"], "category": "antidiabetic", "dosage_form": "tablet", "strength": "2mg"},
-    {"generic_name": "Insulin (Soluble)", "brand_names": ["Actrapid", "Humulin R"], "category": "antidiabetic", "dosage_form": "injection", "strength": "100IU/ml"},
-    {"generic_name": "Insulin (NPH)", "brand_names": ["Insulatard", "Humulin N"], "category": "antidiabetic", "dosage_form": "injection", "strength": "100IU/ml"},
-    {"generic_name": "Insulin Glargine", "brand_names": ["Lantus"], "category": "antidiabetic", "dosage_form": "injection", "strength": "100IU/ml"},
-    # GI / Antacids
-    {"generic_name": "Omeprazole", "brand_names": ["Losec", "Prilosec"], "category": "antacid", "dosage_form": "capsule", "strength": "20mg"},
-    {"generic_name": "Pantoprazole", "brand_names": ["Controloc", "Protonix"], "category": "antacid", "dosage_form": "tablet", "strength": "40mg"},
-    {"generic_name": "Ranitidine", "brand_names": ["Zantac"], "category": "antacid", "dosage_form": "tablet", "strength": "150mg"},
-    {"generic_name": "Magnesium Trisilicate", "brand_names": ["Gelusil"], "category": "antacid", "dosage_form": "tablet", "strength": "500mg"},
-    {"generic_name": "Loperamide", "brand_names": ["Imodium"], "category": "antacid", "dosage_form": "capsule", "strength": "2mg"},
-    {"generic_name": "Metoclopramide", "brand_names": ["Plasil", "Maxolon"], "category": "antacid", "dosage_form": "tablet", "strength": "10mg"},
-    {"generic_name": "Ondansetron", "brand_names": ["Zofran"], "category": "antacid", "dosage_form": "tablet", "strength": "8mg"},
-    {"generic_name": "Domperidone", "brand_names": ["Motilium"], "category": "antacid", "dosage_form": "tablet", "strength": "10mg"},
-    {"generic_name": "Hyoscine Butylbromide", "brand_names": ["Buscopan"], "category": "antacid", "dosage_form": "tablet", "strength": "10mg"},
-    {"generic_name": "ORS (Oral Rehydration Salts)", "brand_names": ["ORS"], "category": "antacid", "dosage_form": "powder", "strength": "20.5g/L"},
-    # Respiratory
-    {"generic_name": "Salbutamol", "brand_names": ["Ventolin"], "category": "respiratory", "dosage_form": "inhaler", "strength": "100mcg"},
-    {"generic_name": "Salbutamol", "brand_names": ["Ventolin Nebule"], "category": "respiratory", "dosage_form": "solution", "strength": "5mg/ml"},
-    {"generic_name": "Beclometasone", "brand_names": ["Becotide", "Qvar"], "category": "respiratory", "dosage_form": "inhaler", "strength": "250mcg"},
-    {"generic_name": "Aminophylline", "brand_names": ["Phyllocontin"], "category": "respiratory", "dosage_form": "tablet", "strength": "100mg"},
-    {"generic_name": "Salbutamol", "brand_names": ["Ventolin Syrup"], "category": "respiratory", "dosage_form": "syrup", "strength": "2mg/5ml"},
-    {"generic_name": "Prednisolone", "brand_names": ["Deltasone"], "category": "hormone", "dosage_form": "tablet", "strength": "5mg"},
-    {"generic_name": "Dexamethasone", "brand_names": ["Decadron"], "category": "hormone", "dosage_form": "tablet", "strength": "4mg"},
-    {"generic_name": "Dexamethasone", "brand_names": ["Decadron"], "category": "hormone", "dosage_form": "injection", "strength": "4mg/ml"},
-    {"generic_name": "Hydrocortisone", "brand_names": ["Solu-Cortef"], "category": "hormone", "dosage_form": "injection", "strength": "100mg"},
-    {"generic_name": "Hydrocortisone", "brand_names": ["HC Cream"], "category": "dermatological", "dosage_form": "cream", "strength": "1%"},
-    # CNS
-    {"generic_name": "Diazepam", "brand_names": ["Valium"], "category": "cns", "dosage_form": "tablet", "strength": "5mg", "controlled_substance_class": "Schedule IV"},
-    {"generic_name": "Carbamazepine", "brand_names": ["Tegretol"], "category": "cns", "dosage_form": "tablet", "strength": "200mg"},
-    {"generic_name": "Phenytoin", "brand_names": ["Dilantin", "Epanutin"], "category": "cns", "dosage_form": "tablet", "strength": "100mg"},
-    {"generic_name": "Sodium Valproate", "brand_names": ["Epilim", "Depakene"], "category": "cns", "dosage_form": "tablet", "strength": "200mg"},
-    {"generic_name": "Amitriptyline", "brand_names": ["Elavil", "Tryptanol"], "category": "cns", "dosage_form": "tablet", "strength": "25mg"},
-    {"generic_name": "Fluoxetine", "brand_names": ["Prozac"], "category": "cns", "dosage_form": "capsule", "strength": "20mg"},
-    {"generic_name": "Haloperidol", "brand_names": ["Haldol"], "category": "cns", "dosage_form": "tablet", "strength": "5mg"},
-    {"generic_name": "Chlorpromazine", "brand_names": ["Largactil"], "category": "cns", "dosage_form": "tablet", "strength": "100mg"},
-    # Vitamins & Supplements
-    {"generic_name": "Ferrous Sulfate", "brand_names": ["FeSO4"], "category": "vitamin", "dosage_form": "tablet", "strength": "200mg"},
-    {"generic_name": "Folic Acid", "brand_names": ["Folvite"], "category": "vitamin", "dosage_form": "tablet", "strength": "5mg"},
-    {"generic_name": "Vitamin B Complex", "brand_names": ["Neurobion"], "category": "vitamin", "dosage_form": "tablet", "strength": ""},
-    {"generic_name": "Vitamin C (Ascorbic Acid)", "brand_names": ["Celin"], "category": "vitamin", "dosage_form": "tablet", "strength": "500mg"},
-    {"generic_name": "Multivitamin", "brand_names": ["Centrum", "Supradyn"], "category": "vitamin", "dosage_form": "tablet", "strength": ""},
-    {"generic_name": "Calcium + Vitamin D3", "brand_names": ["Caltrate", "Shelcal"], "category": "vitamin", "dosage_form": "tablet", "strength": "500mg/250IU"},
-    {"generic_name": "Zinc Sulfate", "brand_names": ["Zincovit"], "category": "vitamin", "dosage_form": "tablet", "strength": "20mg"},
-    # Hormonal
-    {"generic_name": "Levothyroxine", "brand_names": ["Eltroxin", "Synthroid"], "category": "hormone", "dosage_form": "tablet", "strength": "50mcg"},
-    {"generic_name": "Levonorgestrel", "brand_names": ["Postinor-2"], "category": "hormone", "dosage_form": "tablet", "strength": "0.75mg"},
-    {"generic_name": "Combined OCP (Ethinylestradiol/Levonorgestrel)", "brand_names": ["Microgynon"], "category": "hormone", "dosage_form": "tablet", "strength": "0.03/0.15mg"},
-    {"generic_name": "Oxytocin", "brand_names": ["Pitocin"], "category": "hormone", "dosage_form": "injection", "strength": "10IU/ml"},
-    {"generic_name": "Medroxyprogesterone", "brand_names": ["Depo-Provera"], "category": "hormone", "dosage_form": "injection", "strength": "150mg/ml"},
-    # Antiparasitics
-    {"generic_name": "Albendazole", "brand_names": ["Zentel"], "category": "antiparasitic", "dosage_form": "tablet", "strength": "400mg"},
-    {"generic_name": "Mebendazole", "brand_names": ["Vermox"], "category": "antiparasitic", "dosage_form": "tablet", "strength": "100mg"},
-    {"generic_name": "Praziquantel", "brand_names": ["Biltricide"], "category": "antiparasitic", "dosage_form": "tablet", "strength": "600mg"},
-    {"generic_name": "Ivermectin", "brand_names": ["Stromectol", "Mectizan"], "category": "antiparasitic", "dosage_form": "tablet", "strength": "3mg"},
-    {"generic_name": "Permethrin", "brand_names": ["Lyclear"], "category": "antiparasitic", "dosage_form": "cream", "strength": "5%"},
-    # Dermatological
-    {"generic_name": "Betamethasone", "brand_names": ["Betnovate"], "category": "dermatological", "dosage_form": "cream", "strength": "0.1%"},
-    {"generic_name": "Silver Sulfadiazine", "brand_names": ["Flamazine"], "category": "dermatological", "dosage_form": "cream", "strength": "1%"},
-    {"generic_name": "Calamine Lotion", "brand_names": ["Calamine"], "category": "dermatological", "dosage_form": "solution", "strength": ""},
-    {"generic_name": "Benzoyl Peroxide", "brand_names": ["Benzac"], "category": "dermatological", "dosage_form": "gel", "strength": "5%"},
-    # Ophthalmic
-    {"generic_name": "Chloramphenicol Eye Drops", "brand_names": ["Chlorsig"], "category": "ophthalmic", "dosage_form": "drops", "strength": "0.5%"},
-    {"generic_name": "Gentamicin Eye Drops", "brand_names": ["Garamycin Eye"], "category": "ophthalmic", "dosage_form": "drops", "strength": "0.3%"},
-    {"generic_name": "Timolol Eye Drops", "brand_names": ["Timoptol"], "category": "ophthalmic", "dosage_form": "drops", "strength": "0.5%"},
-    {"generic_name": "Tetracaine Eye Drops", "brand_names": ["Minims Amethocaine"], "category": "ophthalmic", "dosage_form": "drops", "strength": "1%"},
-    # Emergency / Other
-    {"generic_name": "Adrenaline (Epinephrine)", "brand_names": ["EpiPen"], "category": "cardiovascular", "dosage_form": "injection", "strength": "1mg/ml"},
-    {"generic_name": "Atropine", "brand_names": ["Atropine Sulfate"], "category": "cardiovascular", "dosage_form": "injection", "strength": "0.6mg/ml"},
-    {"generic_name": "Lidocaine", "brand_names": ["Xylocaine"], "category": "analgesic", "dosage_form": "injection", "strength": "2%"},
-    {"generic_name": "Normal Saline", "brand_names": ["NS 0.9%"], "category": "other", "dosage_form": "solution", "strength": "0.9%"},
-    {"generic_name": "Ringer's Lactate", "brand_names": ["Hartmann's Solution"], "category": "other", "dosage_form": "solution", "strength": ""},
-    {"generic_name": "Dextrose", "brand_names": ["D5W"], "category": "other", "dosage_form": "solution", "strength": "5%"},
-]
+    "amoxicillin": ["Amoxil", "Ospamox", "Moxypen"],
+    "amoxicillin/clavulanate": ["Augmentin", "Amoclav", "Clavam"],
+    "amoxicillin/clavulanic acid": ["Augmentin", "Amoclav", "Clavam"],
+    "ampicillin": ["Penbritin"],
+    "ampicillin/cloxacillin": ["Ampiclox"],
+    "azithromycin": ["Zithromax", "Azithral", "Azee"],
+    "ciprofloxacin": ["Cipro", "Ciproxin", "Cifran"],
+    "levofloxacin": ["Levaquin", "Tavanic"],
+    "ofloxacin": ["Floxin", "Tarivid"],
+    "moxifloxacin": ["Avelox", "Mosi"],
+    "metronidazole": ["Flagyl", "Metrogyl"],
+    "doxycycline": ["Vibramycin", "Doxy"],
+    "tetracycline": ["Achromycin"],
+    "ceftriaxone": ["Rocephin", "Cefaxone"],
+    "cefuroxime": ["Zinnat", "Zinacef", "Cefuro"],
+    "cefixime": ["Suprax", "Cefspan"],
+    "cefpodoxime": ["Vantin", "Cefpod"],
+    "cefaclor": ["Ceclor"],
+    "cefadroxil": ["Duricef", "Cedrox"],
+    "cefalexin": ["Keflex", "Sporidex"],
+    "cephalexin": ["Keflex", "Sporidex"],
+    "cefotaxime": ["Claforan"],
+    "ceftazidime": ["Fortum"],
+    "cefepime": ["Maxipime"],
+    "meropenem": ["Meronem"],
+    "imipenem": ["Tienam"],
+    "erythromycin": ["Erythrocin", "Eryc"],
+    "clarithromycin": ["Klacid", "Klaricid"],
+    "cloxacillin": ["Cloxapen", "Orbenin"],
+    "flucloxacillin": ["Floxapen"],
+    "benzylpenicillin": ["Crystapen"],
+    "phenoxymethylpenicillin": ["Penicillin V"],
+    "benzathine penicillin": ["Penadur"],
+    "procaine penicillin": ["Pro-Pen"],
+    "gentamicin": ["Garamycin", "Gentacyn"],
+    "amikacin": ["Amikin"],
+    "streptomycin": ["Strepto"],
+    "nitrofurantoin": ["Macrobid", "Furadantin"],
+    "cotrimoxazole": ["Septrin", "Bactrim", "Septran"],
+    "trimethoprim/sulfamethoxazole": ["Septrin", "Bactrim"],
+    "clindamycin": ["Dalacin C", "Cleocin"],
+    "lincomycin": ["Lincocin"],
+    "vancomycin": ["Vancocin"],
+    "linezolid": ["Zyvox"],
+    "chloramphenicol": ["Chloromycetin"],
 
+    # Antituberculosis
+    "rifampicin": ["Rifadin", "Rimactane"],
+    "isoniazid": ["INH"],
+    "ethambutol": ["Myambutol"],
+    "pyrazinamide": ["Pyzina"],
+    "rifampicin/isoniazid": ["Rifinah"],
+    "rifampicin/isoniazid/pyrazinamide/ethambutol": ["RHZE", "Forecox"],
+
+    # Antifungals
+    "fluconazole": ["Diflucan", "Forcan"],
+    "itraconazole": ["Sporanox", "Canditral"],
+    "ketoconazole": ["Nizoral"],
+    "clotrimazole": ["Canesten", "Candid"],
+    "miconazole": ["Daktarin"],
+    "nystatin": ["Mycostatin", "Nilstat"],
+    "terbinafine": ["Lamisil"],
+    "griseofulvin": ["Grisovin"],
+    "amphotericin b": ["Fungizone"],
+
+    # Antivirals / ARVs
+    "acyclovir": ["Zovirax", "Acivir"],
+    "valacyclovir": ["Valtrex"],
+    "oseltamivir": ["Tamiflu"],
+    "tenofovir": ["Viread"],
+    "tenofovir/lamivudine": ["Truvada"],
+    "tenofovir/lamivudine/dolutegravir": ["TLD", "Acriptega"],
+    "tenofovir/lamivudine/efavirenz": ["TLE", "Atripla"],
+    "zidovudine": ["Retrovir", "AZT"],
+    "lamivudine": ["Epivir", "3TC"],
+    "efavirenz": ["Stocrin", "Sustiva"],
+    "nevirapine": ["Viramune"],
+    "dolutegravir": ["Tivicay"],
+    "lopinavir/ritonavir": ["Kaletra", "Aluvia"],
+    "abacavir": ["Ziagen"],
+    "atazanavir": ["Reyataz"],
+    "raltegravir": ["Isentress"],
+
+    # Antimalarials
+    "artemether/lumefantrine": ["Coartem", "ALu", "Lumartem"],
+    "artesunate": ["Arinate", "Larinate"],
+    "artesunate/amodiaquine": ["Camoquin Plus", "Coarsucam"],
+    "dihydroartemisinin/piperaquine": ["Duo-Cotecxin", "Eurartesim"],
+    "quinine": ["Quinimax", "Quinoric"],
+    "mefloquine": ["Lariam", "Mephaquin"],
+    "primaquine": ["Primacip"],
+    "sulfadoxine/pyrimethamine": ["Fansidar", "SP"],
+    "amodiaquine": ["Camoquin"],
+
+    # Antiparasitics / Anthelmintics
+    "albendazole": ["Zentel", "Albamax"],
+    "mebendazole": ["Vermox", "Wormin"],
+    "praziquantel": ["Biltricide", "Cestox"],
+    "ivermectin": ["Mectizan", "Stromectol"],
+    "levamisole": ["Decaris", "Ergamisol"],
+    "niclosamide": ["Yomesan"],
+    "tinidazole": ["Tindamax", "Fasigyn"],
+    "secnidazole": ["Flagentyl"],
+
+    # Antihistamines
+    "cetirizine": ["Zyrtec", "Cetrizet", "Zincet"],
+    "loratadine": ["Claritin", "Lorfast", "Lorinol"],
+    "desloratadine": ["Aerius"],
+    "fexofenadine": ["Allegra", "Telfast"],
+    "levocetirizine": ["Xyzal", "Levocet"],
+    "chlorpheniramine": ["Piriton", "Chlor-Trimeton"],
+    "promethazine": ["Phenergan", "Avomine"],
+    "diphenhydramine": ["Benadryl"],
+    "hydroxyzine": ["Atarax"],
+
+    # Antihypertensives
+    "amlodipine": ["Norvasc", "Amlopin", "Amlong"],
+    "nifedipine": ["Adalat", "Nifedicor"],
+    "felodipine": ["Plendil"],
+    "enalapril": ["Renitec", "Vasotec"],
+    "lisinopril": ["Zestril", "Prinivil", "Lisinop"],
+    "captopril": ["Capoten"],
+    "ramipril": ["Tritace", "Cardace"],
+    "perindopril": ["Coversyl"],
+    "losartan": ["Cozaar", "Losacar", "Repace"],
+    "valsartan": ["Diovan"],
+    "telmisartan": ["Micardis", "Telma"],
+    "irbesartan": ["Aprovel", "Avapro"],
+    "atenolol": ["Tenormin"],
+    "bisoprolol": ["Concor", "Cardicor"],
+    "metoprolol": ["Lopressor", "Betaloc"],
+    "carvedilol": ["Coreg", "Dilatrend"],
+    "propranolol": ["Inderal"],
+    "labetalol": ["Trandate"],
+    "hydrochlorothiazide": ["HCT", "Esidrex"],
+    "methyldopa": ["Aldomet"],
+    "hydralazine": ["Apresoline"],
+    "prazosin": ["Minipress"],
+    "doxazosin": ["Cardura"],
+    "clonidine": ["Catapres"],
+
+    # Cardiovascular / Anticoagulant / Diuretic
+    "furosemide": ["Lasix", "Frusemide"],
+    "spironolactone": ["Aldactone"],
+    "indapamide": ["Natrilix"],
+    "bumetanide": ["Bumex"],
+    "atorvastatin": ["Lipitor", "Atorlip"],
+    "simvastatin": ["Zocor", "Simvotin"],
+    "rosuvastatin": ["Crestor", "Rozavel"],
+    "pravastatin": ["Pravachol"],
+    "fenofibrate": ["Tricor", "Lipanthyl"],
+    "warfarin": ["Coumadin", "Marevan"],
+    "heparin": ["Heparin Sodium"],
+    "enoxaparin": ["Clexane", "Lovenox"],
+    "clopidogrel": ["Plavix", "Clopilet"],
+    "ticagrelor": ["Brilinta"],
+    "digoxin": ["Lanoxin"],
+    "isosorbide dinitrate": ["Isordil", "Sorbitrate"],
+    "isosorbide mononitrate": ["Imdur", "Monit"],
+    "glyceryl trinitrate": ["Nitrolingual", "Nitrostat"],
+    "nitroglycerin": ["Nitrolingual", "Nitrostat"],
+    "amiodarone": ["Cordarone"],
+
+    # Antidiabetics
+    "metformin": ["Glucophage", "Glycomet", "Diaformin"],
+    "glibenclamide": ["Daonil", "Glyburide", "Euglucon"],
+    "gliclazide": ["Diamicron"],
+    "glimepiride": ["Amaryl", "Glimy"],
+    "pioglitazone": ["Actos", "Pioz"],
+    "sitagliptin": ["Januvia", "Istavel"],
+    "vildagliptin": ["Galvus"],
+    "linagliptin": ["Trajenta"],
+    "empagliflozin": ["Jardiance"],
+    "dapagliflozin": ["Forxiga"],
+    "insulin (soluble)": ["Actrapid", "Humulin R"],
+    "insulin soluble": ["Actrapid", "Humulin R"],
+    "insulin (nph)": ["Insulatard", "Humulin N"],
+    "insulin nph": ["Insulatard", "Humulin N"],
+    "insulin glargine": ["Lantus", "Basaglar"],
+    "insulin aspart": ["NovoRapid"],
+    "insulin lispro": ["Humalog"],
+    "insulin mixtard": ["Mixtard 30/70"],
+
+    # GI / Antacids
+    "omeprazole": ["Losec", "Prilosec", "Omez"],
+    "esomeprazole": ["Nexium", "Esoz"],
+    "pantoprazole": ["Controloc", "Protonix", "Pantop"],
+    "lansoprazole": ["Prevacid", "Lanzol"],
+    "rabeprazole": ["Pariet", "Razo"],
+    "ranitidine": ["Zantac", "Rantac"],
+    "famotidine": ["Pepcid"],
+    "cimetidine": ["Tagamet"],
+    "magnesium trisilicate": ["Gelusil"],
+    "aluminium hydroxide/magnesium hydroxide": ["Mucaine", "Maalox"],
+    "loperamide": ["Imodium"],
+    "metoclopramide": ["Plasil", "Maxolon", "Reglan"],
+    "ondansetron": ["Zofran", "Emeset"],
+    "domperidone": ["Motilium", "Domstal"],
+    "hyoscine butylbromide": ["Buscopan"],
+    "ors": ["Oralite", "Resta"],
+    "ors (oral rehydration salts)": ["Oralite", "Resta"],
+    "lactulose": ["Duphalac"],
+    "bisacodyl": ["Dulcolax"],
+    "mesalazine": ["Pentasa", "Asacol"],
+    "sucralfate": ["Carafate"],
+
+    # Respiratory
+    "salbutamol": ["Ventolin", "Asthalin"],
+    "salbutamol/ipratropium": ["Combivent", "Duolin"],
+    "ipratropium bromide": ["Atrovent"],
+    "ipratropium": ["Atrovent"],
+    "beclometasone": ["Becotide", "Qvar", "Beclate"],
+    "budesonide": ["Pulmicort", "Budecort"],
+    "fluticasone": ["Flixotide", "Flixonase"],
+    "fluticasone/salmeterol": ["Seretide", "Adoair"],
+    "formoterol/budesonide": ["Symbicort"],
+    "montelukast": ["Singulair", "Montair"],
+    "aminophylline": ["Phyllocontin"],
+    "theophylline": ["Theo-Dur", "Quibron"],
+
+    # CNS / Psychiatric
+    "diazepam": ["Valium", "Calmpose"],
+    "lorazepam": ["Ativan"],
+    "midazolam": ["Dormicum"],
+    "alprazolam": ["Xanax"],
+    "carbamazepine": ["Tegretol", "Zeptol"],
+    "phenytoin": ["Dilantin", "Epanutin"],
+    "sodium valproate": ["Epilim", "Depakene", "Valparin"],
+    "valproic acid": ["Depakene", "Valparin"],
+    "lamotrigine": ["Lamictal"],
+    "levetiracetam": ["Keppra"],
+    "phenobarbital": ["Luminal"],
+    "amitriptyline": ["Elavil", "Tryptanol"],
+    "imipramine": ["Tofranil"],
+    "fluoxetine": ["Prozac", "Fludac"],
+    "sertraline": ["Zoloft", "Serlift"],
+    "citalopram": ["Cipram"],
+    "escitalopram": ["Lexapro", "Cipralex"],
+    "paroxetine": ["Paxil", "Seroxat"],
+    "venlafaxine": ["Effexor"],
+    "haloperidol": ["Haldol", "Serenace"],
+    "chlorpromazine": ["Largactil"],
+    "olanzapine": ["Zyprexa", "Oleanz"],
+    "risperidone": ["Risperdal", "Sizodon"],
+    "quetiapine": ["Seroquel"],
+    "lithium carbonate": ["Lithicarb"],
+
+    # Hormonal / Steroids
+    "prednisolone": ["Deltasone", "Prednis"],
+    "prednisone": ["Deltasone"],
+    "dexamethasone": ["Decadron", "Dexa"],
+    "hydrocortisone": ["Solu-Cortef", "Cortef"],
+    "methylprednisolone": ["Solu-Medrol", "Medrol"],
+    "betamethasone": ["Betnesol", "Celestone"],
+    "triamcinolone": ["Kenacort"],
+    "levothyroxine": ["Eltroxin", "Synthroid", "Thyronorm"],
+    "carbimazole": ["Neo-Mercazole"],
+    "propylthiouracil": ["PTU"],
+    "tamoxifen": ["Nolvadex"],
+    "testosterone": ["Sustanon"],
+    "progesterone": ["Utrogestan", "Crinone"],
+    "estradiol": ["Progynova"],
+
+    # Contraceptives
+    "ethinylestradiol/levonorgestrel": ["Microgynon", "Pilplan"],
+    "levonorgestrel": ["Postinor 2", "Plan B", "Truston 2"],
+    "medroxyprogesterone": ["Depo-Provera"],
+    "norethisterone": ["Primolut N"],
+
+    # Vitamins / Supplements
+    "ferrous sulfate": ["Fefol", "Sangobion"],
+    "ferrous fumarate": ["Galfer", "Fersamal"],
+    "folic acid": ["Folvite"],
+    "ferrous sulfate/folic acid": ["Iberet", "Fefol"],
+    "vitamin b complex": ["Neurobion", "Becosules"],
+    "vitamin b12": ["Macrabin", "Methycobal"],
+    "cyanocobalamin": ["Macrabin"],
+    "thiamine": ["Benerva"],
+    "vitamin c (ascorbic acid)": ["Celin", "Limcee"],
+    "ascorbic acid": ["Celin", "Limcee"],
+    "vitamin a": ["Aquasol A"],
+    "vitamin d3": ["D-Cal", "Calcirol"],
+    "cholecalciferol": ["D-Cal", "Calcirol"],
+    "multivitamin": ["Centrum", "Supradyn", "Pharmaton"],
+    "calcium + vitamin d3": ["Caltrate", "Shelcal", "Calcimax"],
+    "calcium carbonate": ["Caltrate", "Shelcal"],
+    "zinc sulfate": ["Zincovit"],
+    "magnesium sulfate": ["Mag Sulph"],
+
+    # Dermatological
+    "betamethasone (cream)": ["Betnovate", "Betnesol"],
+    "mometasone": ["Elocon", "Momate"],
+    "permethrin": ["Lyclear", "Elimite"],
+    "benzyl benzoate": ["Ascabiol"],
+    "calamine": ["Calamine Lotion"],
+    "salicylic acid": ["Duofilm"],
+    "benzoyl peroxide": ["Panoxyl", "Persol"],
+    "tretinoin": ["Retin-A"],
+    "adapalene": ["Differin"],
+    "silver sulfadiazine": ["Silvadene", "Flamazine"],
+    "fusidic acid": ["Fucidin"],
+    "mupirocin": ["Bactroban"],
+
+    # Ophthalmic
+    "ciprofloxacin (eye)": ["Ciplox-D", "Cipla Eye"],
+    "chloramphenicol (eye)": ["Chlorsig"],
+    "tobramycin (eye)": ["Tobrex"],
+    "tropicamide": ["Mydriacyl"],
+    "timolol (eye)": ["Timoptol"],
+    "latanoprost": ["Xalatan"],
+    "prednisolone (eye)": ["Pred Forte"],
+    "artificial tears": ["Tears Naturale", "Refresh"],
+
+    # Emergency / IV Fluids / Anaesthetics
+    "normal saline": ["NSS"],
+    "ringers lactate": ["RL", "Hartmann's"],
+    "dextrose 5%": ["D5W"],
+    "dextrose 10%": ["D10W"],
+    "dextrose normal saline": ["DNS"],
+    "adrenaline": ["Epinephrine"],
+    "epinephrine": ["EpiPen"],
+    "atropine": ["Atropine Sulphate"],
+    "lignocaine": ["Xylocaine"],
+    "lidocaine": ["Xylocaine"],
+    "bupivacaine": ["Marcaine", "Sensorcaine"],
+    "ketamine": ["Ketalar"],
+    "propofol": ["Diprivan"],
+    "thiopental": ["Pentothal"],
+    "suxamethonium": ["Anectine", "Scoline"],
+
+    # Muscle relaxants
+    "baclofen": ["Lioresal"],
+    "tizanidine": ["Sirdalud", "Zanaflex"],
+    "orphenadrine": ["Norflex"],
+    "chlorzoxazone": ["Parafon"],
+
+    # Urology
+    "tamsulosin": ["Flomax", "Urimax"],
+    "finasteride": ["Proscar", "Propecia"],
+    "dutasteride": ["Avodart"],
+    "sildenafil": ["Viagra", "Suhagra"],
+    "tadalafil": ["Cialis", "Tadacip"],
+    "oxybutynin": ["Ditropan"],
+    "solifenacin": ["Vesicare"],
+}
+
+
+def _brand_lookup(generic_name: str) -> list[str]:
+    """Return brand name list for a generic name (case-insensitive)."""
+    key = generic_name.lower().strip()
+    if key in BRAND_NAMES:
+        return list(BRAND_NAMES[key])
+    # Try without trailing parenthetical (e.g. "Insulin (Soluble)" already keyed)
+    no_paren = re.sub(r"\s*\([^)]*\)\s*$", "", key).strip()
+    if no_paren and no_paren != key and no_paren in BRAND_NAMES:
+        return list(BRAND_NAMES[no_paren])
+    # Try first token (e.g. "Amoxicillin/Clavulanate" → "amoxicillin")
+    first = key.split("/")[0].strip()
+    if first != key and first in BRAND_NAMES:
+        return list(BRAND_NAMES[first])
+    return []
+
+
+# ---------------------------------------------------------------------------
+# Abbreviations / shorthand codes — keyed by canonical generic name (lowercase).
+# Common in Kenyan clinical practice + pharmacy worksheets.
+# ---------------------------------------------------------------------------
+ABBREVIATIONS: dict[str, str] = {
+    # Analgesics / NSAIDs
+    "paracetamol": "PCM",
+    "ibuprofen": "IBU",
+    "diclofenac": "DCF",
+    "diclofenac sodium": "DCF-Na",
+    "diclofenac potassium": "DCF-K",
+    "aspirin": "ASA",
+    "tramadol": "TRM",
+    "morphine sulfate": "MOR",
+    "morphine": "MOR",
+    "pethidine": "PETH",
+    "codeine phosphate": "COD",
+    "codeine": "COD",
+    "naproxen": "NPX",
+    "meloxicam": "MLX",
+    "celecoxib": "CLX",
+    "etoricoxib": "ETX",
+    "indomethacin": "INDO",
+    "ketorolac": "KTR",
+    "mefenamic acid": "MFA",
+
+    # Antibiotics
+    "amoxicillin": "AMOX",
+    "amoxicillin/clavulanate": "AMC",
+    "amoxicillin/clavulanic acid": "AMC",
+    "ampicillin": "AMP",
+    "ampicillin/cloxacillin": "AMP/CLX",
+    "azithromycin": "AZM",
+    "ciprofloxacin": "CIP",
+    "levofloxacin": "LVX",
+    "ofloxacin": "OFX",
+    "moxifloxacin": "MXF",
+    "metronidazole": "MTZ",
+    "doxycycline": "DOX",
+    "tetracycline": "TET",
+    "ceftriaxone": "CRO",
+    "cefuroxime": "CXM",
+    "cefixime": "CFM",
+    "cefpodoxime": "CPD",
+    "cefaclor": "CEC",
+    "cefadroxil": "CDR",
+    "cefalexin": "LEX",
+    "cephalexin": "LEX",
+    "cefotaxime": "CTX",
+    "ceftazidime": "CAZ",
+    "cefepime": "FEP",
+    "meropenem": "MEM",
+    "imipenem": "IPM",
+    "erythromycin": "ERY",
+    "clarithromycin": "CLR",
+    "cloxacillin": "CLX",
+    "flucloxacillin": "FLX",
+    "benzylpenicillin": "PEN-G",
+    "phenoxymethylpenicillin": "PEN-V",
+    "benzathine penicillin": "BPG",
+    "procaine penicillin": "PPG",
+    "gentamicin": "GEN",
+    "amikacin": "AMK",
+    "streptomycin": "SM",
+    "nitrofurantoin": "NIT",
+    "cotrimoxazole": "SXT",
+    "trimethoprim/sulfamethoxazole": "TMP-SMX",
+    "clindamycin": "CLI",
+    "lincomycin": "LIN",
+    "vancomycin": "VAN",
+    "linezolid": "LZD",
+    "chloramphenicol": "CHL",
+
+    # TB
+    "rifampicin": "R",
+    "isoniazid": "H",
+    "ethambutol": "E",
+    "pyrazinamide": "Z",
+    "rifampicin/isoniazid": "RH",
+    "rifampicin/isoniazid/pyrazinamide/ethambutol": "RHZE",
+
+    # Antifungals
+    "fluconazole": "FLU",
+    "itraconazole": "ITR",
+    "ketoconazole": "KTC",
+    "clotrimazole": "CTM",
+    "miconazole": "MCZ",
+    "nystatin": "NYS",
+    "terbinafine": "TBF",
+    "griseofulvin": "GRI",
+    "amphotericin b": "AMB",
+
+    # Antivirals / ARVs
+    "acyclovir": "ACV",
+    "valacyclovir": "VCV",
+    "oseltamivir": "OST",
+    "tenofovir": "TDF",
+    "tenofovir/lamivudine": "TDF/3TC",
+    "tenofovir/lamivudine/dolutegravir": "TLD",
+    "tenofovir/lamivudine/efavirenz": "TLE",
+    "zidovudine": "AZT",
+    "lamivudine": "3TC",
+    "efavirenz": "EFV",
+    "nevirapine": "NVP",
+    "dolutegravir": "DTG",
+    "lopinavir/ritonavir": "LPV/r",
+    "abacavir": "ABC",
+    "atazanavir": "ATV",
+    "raltegravir": "RAL",
+
+    # Antimalarials
+    "artemether/lumefantrine": "AL",
+    "artesunate": "AS",
+    "artesunate/amodiaquine": "AS/AQ",
+    "dihydroartemisinin/piperaquine": "DHA-PPQ",
+    "quinine": "QN",
+    "mefloquine": "MQ",
+    "primaquine": "PQ",
+    "sulfadoxine/pyrimethamine": "SP",
+    "amodiaquine": "AQ",
+
+    # Antiparasitics
+    "albendazole": "ALB",
+    "mebendazole": "MBZ",
+    "praziquantel": "PZQ",
+    "ivermectin": "IVM",
+    "levamisole": "LEV",
+    "tinidazole": "TNZ",
+    "secnidazole": "SCZ",
+
+    # Antihistamines
+    "cetirizine": "CTZ",
+    "loratadine": "LOR",
+    "desloratadine": "DLR",
+    "fexofenadine": "FEX",
+    "levocetirizine": "L-CTZ",
+    "chlorpheniramine": "CPM",
+    "promethazine": "PMZ",
+    "diphenhydramine": "DPH",
+    "hydroxyzine": "HXZ",
+
+    # Cardiovascular / Antihypertensives
+    "amlodipine": "AML",
+    "nifedipine": "NIF",
+    "felodipine": "FLD",
+    "enalapril": "ENA",
+    "lisinopril": "LIS",
+    "captopril": "CAP",
+    "ramipril": "RAM",
+    "perindopril": "PER",
+    "losartan": "LOS",
+    "valsartan": "VAL",
+    "telmisartan": "TEL",
+    "irbesartan": "IRB",
+    "atenolol": "ATN",
+    "bisoprolol": "BIS",
+    "metoprolol": "MET",
+    "carvedilol": "CVD",
+    "propranolol": "PRP",
+    "labetalol": "LBT",
+    "hydrochlorothiazide": "HCTZ",
+    "methyldopa": "MDP",
+    "hydralazine": "HYD",
+    "prazosin": "PRZ",
+    "doxazosin": "DOX-A",
+    "clonidine": "CLN",
+    "furosemide": "FUR",
+    "spironolactone": "SPL",
+    "indapamide": "IND",
+    "atorvastatin": "ATV-S",
+    "simvastatin": "SIM",
+    "rosuvastatin": "RSV",
+    "warfarin": "WAR",
+    "heparin": "HEP",
+    "enoxaparin": "ENX",
+    "clopidogrel": "CLP",
+    "ticagrelor": "TCG",
+    "digoxin": "DGX",
+    "isosorbide dinitrate": "ISDN",
+    "isosorbide mononitrate": "ISMN",
+    "glyceryl trinitrate": "GTN",
+    "nitroglycerin": "NTG",
+    "amiodarone": "AMD",
+
+    # Antidiabetics
+    "metformin": "MTF",
+    "glibenclamide": "GLB",
+    "gliclazide": "GLZ",
+    "glimepiride": "GLM",
+    "pioglitazone": "PIO",
+    "sitagliptin": "STG",
+    "vildagliptin": "VLG",
+    "linagliptin": "LNG",
+    "empagliflozin": "EMP",
+    "dapagliflozin": "DPG",
+    "insulin (soluble)": "INS-R",
+    "insulin soluble": "INS-R",
+    "insulin (nph)": "INS-N",
+    "insulin nph": "INS-N",
+    "insulin glargine": "INS-G",
+    "insulin aspart": "INS-A",
+    "insulin lispro": "INS-L",
+    "insulin mixtard": "INS-M",
+
+    # GI
+    "omeprazole": "OMP",
+    "esomeprazole": "ESO",
+    "pantoprazole": "PAN",
+    "lansoprazole": "LAN",
+    "rabeprazole": "RAB",
+    "ranitidine": "RAN",
+    "famotidine": "FAM",
+    "cimetidine": "CIM",
+    "loperamide": "LOP",
+    "metoclopramide": "MCP",
+    "ondansetron": "OND",
+    "domperidone": "DOM",
+    "hyoscine butylbromide": "HBB",
+    "ors": "ORS",
+    "ors (oral rehydration salts)": "ORS",
+    "lactulose": "LAC",
+    "bisacodyl": "BIS-C",
+
+    # Respiratory
+    "salbutamol": "SAL",
+    "salbutamol/ipratropium": "SAL/IPR",
+    "ipratropium bromide": "IPR",
+    "ipratropium": "IPR",
+    "beclometasone": "BEC",
+    "budesonide": "BUD",
+    "fluticasone": "FLT",
+    "fluticasone/salmeterol": "FLT/SAL",
+    "formoterol/budesonide": "FOR/BUD",
+    "montelukast": "MTK",
+    "aminophylline": "AMP-H",
+    "theophylline": "THP",
+
+    # CNS
+    "diazepam": "DZP",
+    "lorazepam": "LZP",
+    "midazolam": "MDZ",
+    "alprazolam": "ALP",
+    "carbamazepine": "CBZ",
+    "phenytoin": "PHT",
+    "sodium valproate": "VPA",
+    "valproic acid": "VPA",
+    "lamotrigine": "LTG",
+    "levetiracetam": "LEV-T",
+    "phenobarbital": "PB",
+    "amitriptyline": "AMT",
+    "imipramine": "IMI",
+    "fluoxetine": "FLX-T",
+    "sertraline": "SRT",
+    "citalopram": "CIT",
+    "escitalopram": "ESC",
+    "paroxetine": "PRX",
+    "venlafaxine": "VEN",
+    "haloperidol": "HAL",
+    "chlorpromazine": "CPZ",
+    "olanzapine": "OLZ",
+    "risperidone": "RIS",
+    "quetiapine": "QTP",
+    "lithium carbonate": "Li2CO3",
+
+    # Steroids / Hormones
+    "prednisolone": "PRD",
+    "prednisone": "PRD",
+    "dexamethasone": "DEX",
+    "hydrocortisone": "HC",
+    "methylprednisolone": "MPS",
+    "betamethasone": "BTM",
+    "triamcinolone": "TAC",
+    "levothyroxine": "L-T4",
+    "carbimazole": "CMZ",
+    "propylthiouracil": "PTU",
+    "tamoxifen": "TAM",
+    "testosterone": "TST",
+    "progesterone": "PRG",
+    "estradiol": "E2",
+
+    # Contraceptives
+    "ethinylestradiol/levonorgestrel": "EE/LNG",
+    "levonorgestrel": "LNG",
+    "medroxyprogesterone": "DMPA",
+    "norethisterone": "NET",
+
+    # Vitamins
+    "ferrous sulfate": "FeSO4",
+    "ferrous fumarate": "FeFum",
+    "folic acid": "FA",
+    "ferrous sulfate/folic acid": "FeSO4/FA",
+    "vitamin b complex": "Vit-B",
+    "vitamin b12": "B12",
+    "cyanocobalamin": "B12",
+    "thiamine": "B1",
+    "vitamin c (ascorbic acid)": "Vit-C",
+    "ascorbic acid": "Vit-C",
+    "vitamin a": "Vit-A",
+    "vitamin d3": "Vit-D3",
+    "cholecalciferol": "Vit-D3",
+    "multivitamin": "MVI",
+    "calcium + vitamin d3": "Ca/D3",
+    "calcium carbonate": "CaCO3",
+    "zinc sulfate": "ZnSO4",
+    "magnesium sulfate": "MgSO4",
+    "magnesium citrate": "MgCit",
+
+    # Emergency / Anaesthesia / IV
+    "normal saline": "NS",
+    "ringers lactate": "RL",
+    "dextrose 5%": "D5W",
+    "dextrose 10%": "D10W",
+    "dextrose normal saline": "DNS",
+    "adrenaline": "ADR",
+    "epinephrine": "EPI",
+    "atropine": "ATR",
+    "lignocaine": "LIG",
+    "lidocaine": "LID",
+    "bupivacaine": "BUP",
+    "ketamine": "KET",
+    "propofol": "PROP",
+    "thiopental": "TPL",
+    "suxamethonium": "SUX",
+
+    # Muscle relaxants / Urology
+    "baclofen": "BAC",
+    "tizanidine": "TZN",
+    "tamsulosin": "TAM-S",
+    "finasteride": "FIN",
+    "dutasteride": "DUT",
+    "sildenafil": "SIL",
+    "tadalafil": "TDL",
+
+    # Dermatological
+    "permethrin": "PERM",
+    "benzyl benzoate": "BB",
+    "salicylic acid": "SA",
+    "benzoyl peroxide": "BPO",
+    "tretinoin": "TRT",
+    "adapalene": "ADP",
+    "silver sulfadiazine": "SSD",
+    "fusidic acid": "FA-D",
+    "mupirocin": "MUP",
+}
+
+
+def _abbrev_lookup(generic_name: str) -> str:
+    """Return shorthand code for a generic name (case-insensitive)."""
+    key = generic_name.lower().strip()
+    if key in ABBREVIATIONS:
+        return ABBREVIATIONS[key]
+    no_paren = re.sub(r"\s*\([^)]*\)\s*$", "", key).strip()
+    if no_paren and no_paren != key and no_paren in ABBREVIATIONS:
+        return ABBREVIATIONS[no_paren]
+    first = key.split("/")[0].strip()
+    if first != key and first in ABBREVIATIONS:
+        return ABBREVIATIONS[first]
+    return ""
+
+
+# ---------------------------------------------------------------------------
+# Mapping helpers
+# ---------------------------------------------------------------------------
+
+CATEGORY_MAP = {
+    "Analgesic / Pain Reliever":    Medication.Category.ANALGESIC,
+    "Antibiotic":                   Medication.Category.ANTIBIOTIC,
+    "Antifungal":                   Medication.Category.ANTIFUNGAL,
+    "Antiviral":                    Medication.Category.ANTIVIRAL,
+    "Antiparasitic":                Medication.Category.ANTIPARASITIC,
+    "Antimalarial":                 Medication.Category.ANTIMALARIAL,
+    "Antituberculosis":             Medication.Category.ANTIBIOTIC,
+    "Antiretroviral (ARV)":         Medication.Category.ANTIVIRAL,
+    "Antihypertensive":             Medication.Category.ANTIHYPERTENSIVE,
+    "Antidiabetic":                 Medication.Category.ANTIDIABETIC,
+    "Antihistamine":                Medication.Category.ANTIHISTAMINE,
+    "Antacid / GI":                 Medication.Category.ANTACID,
+    "Cardiovascular":               Medication.Category.CARDIOVASCULAR,
+    "Respiratory":                  Medication.Category.RESPIRATORY,
+    "Central Nervous System":       Medication.Category.CNS,
+    "Psychiatric":                  Medication.Category.CNS,
+    "Hormonal":                     Medication.Category.HORMONE,
+    "Contraceptive":                Medication.Category.HORMONE,
+    "Vitamin / Supplement":         Medication.Category.VITAMIN,
+    "Vaccine":                      Medication.Category.VACCINE,
+    "Dermatological":               Medication.Category.DERMATOLOGICAL,
+    "Ophthalmic":                   Medication.Category.OPHTHALMIC,
+    "ENT (Ear/Nose/Throat)":        Medication.Category.OTHER,
+    "Emergency / IV Fluids":        Medication.Category.OTHER,
+    "Anticoagulant":                Medication.Category.CARDIOVASCULAR,
+    "Diuretic":                     Medication.Category.CARDIOVASCULAR,
+    "Oncology":                     Medication.Category.ONCOLOGY,
+    "Urology":                      Medication.Category.OTHER,
+    "Muscle Relaxant":              Medication.Category.OTHER,
+    "Anaesthetic":                  Medication.Category.OTHER,
+    "Herbal / Traditional":         Medication.Category.OTHER,
+    "Nutrition / Infant Formula":   Medication.Category.VITAMIN,
+    "First Aid / Wound Care":       Medication.Category.OTHER,
+    "Medical Device / Consumable":  Medication.Category.OTHER,
+    "Other":                        Medication.Category.OTHER,
+}
+
+UNIT_TO_FORM = {
+    "Tablets":      Medication.DosageForm.TABLET,
+    "Capsules":     Medication.DosageForm.CAPSULE,
+    "Syrup":        Medication.DosageForm.SYRUP,
+    "Suspension":   Medication.DosageForm.SUSPENSION,
+    "Solution":     Medication.DosageForm.SOLUTION,
+    "Injection":    Medication.DosageForm.INJECTION,
+    "Vial":         Medication.DosageForm.INJECTION,
+    "Ampoule":      Medication.DosageForm.INJECTION,
+    "Cream/Gel":    Medication.DosageForm.CREAM,
+    "Ointment":     Medication.DosageForm.OINTMENT,
+    "Lotion":       Medication.DosageForm.SOLUTION,
+    "Drops":        Medication.DosageForm.DROPS,
+    "Inhaler":      Medication.DosageForm.INHALER,
+    "Nebule":       Medication.DosageForm.SOLUTION,
+    "Suppository":  Medication.DosageForm.SUPPOSITORY,
+    "Pessary":      Medication.DosageForm.SUPPOSITORY,
+    "Powder":       Medication.DosageForm.POWDER,
+    "Patch":        Medication.DosageForm.PATCH,
+    "IV Bag":       Medication.DosageForm.SOLUTION,
+    "Sachet":       Medication.DosageForm.POWDER,
+    "Bottle":       Medication.DosageForm.SOLUTION,
+    "Box":          Medication.DosageForm.OTHER,
+    "Piece":        Medication.DosageForm.OTHER,
+    "Roll":         Medication.DosageForm.OTHER,
+}
+
+# Trailing dosage-form keywords often baked into the product name.
+FORM_WORDS = (
+    r"Tablet|Tablets|Capsule|Capsules|Syrup|Suspension|Solution|Injection|"
+    r"Inj|Vial|Ampoule|Cream|Gel|Ointment|Lotion|Drops|Drop|Inhaler|"
+    r"Nebule|Nebuliser|Suppository|Pessary|Powder|Patch|Sachet|Bottle|"
+    r"Box|Piece|Roll|Spray|Lozenge|Pastille|MDI|DPI|IV Infusion|IV|Infusion"
+)
+
+# Strength regex: a number (with optional decimal/fraction) followed by
+# a unit or %, optionally with a /denominator (e.g. 250mg/5ml, 20/120mg).
+STRENGTH_RE = re.compile(
+    r"\b("
+    r"\d+(?:[.,]\d+)?(?:/\d+(?:[.,]\d+)?)?"        # 250 or 20/120 or 0.5
+    r"\s*"
+    r"(?:mg|mcg|g|kg|ml|l|iu|u|%|meq|mmol)"        # unit
+    r"(?:/\s*\d*\s*(?:ml|tab|dose|kg|hr|h|day))?"  # /5ml, /tab, /dose
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _parse_name(raw: str, unit: str) -> tuple[str, str, str]:
+    """
+    Split a stock-catalog product name like
+        "Amoxicillin 500mg Capsule"
+    into (generic_name, strength, dosage_form).
+
+    Falls back to the unit-derived dosage form when the trailing word is
+    missing or ambiguous.
+    """
+    name = raw.strip()
+
+    # 1) extract strength (first match wins)
+    strength = ""
+    m = STRENGTH_RE.search(name)
+    if m:
+        strength = re.sub(r"\s+", "", m.group(1))
+        name = (name[:m.start()] + " " + name[m.end():]).strip()
+
+    # 2) strip trailing form keyword(s) and any parenthetical qualifier
+    form_match = re.search(rf"\b({FORM_WORDS})\b\s*\(?[^)]*\)?\s*$", name, re.IGNORECASE)
+    parsed_form = None
+    if form_match:
+        parsed_form = form_match.group(1).lower()
+        name = name[:form_match.start()].strip(" -,")
+
+    # 3) drop a trailing parenthetical qualifier on the generic name
+    name = re.sub(r"\s*\([^)]*\)\s*$", "", name).strip(" -,")
+
+    # 4) decide dosage form
+    form_lookup = {
+        "tablet": Medication.DosageForm.TABLET,
+        "tablets": Medication.DosageForm.TABLET,
+        "capsule": Medication.DosageForm.CAPSULE,
+        "capsules": Medication.DosageForm.CAPSULE,
+        "syrup": Medication.DosageForm.SYRUP,
+        "suspension": Medication.DosageForm.SUSPENSION,
+        "solution": Medication.DosageForm.SOLUTION,
+        "injection": Medication.DosageForm.INJECTION,
+        "inj": Medication.DosageForm.INJECTION,
+        "vial": Medication.DosageForm.INJECTION,
+        "ampoule": Medication.DosageForm.INJECTION,
+        "cream": Medication.DosageForm.CREAM,
+        "gel": Medication.DosageForm.GEL,
+        "ointment": Medication.DosageForm.OINTMENT,
+        "lotion": Medication.DosageForm.SOLUTION,
+        "drops": Medication.DosageForm.DROPS,
+        "drop": Medication.DosageForm.DROPS,
+        "inhaler": Medication.DosageForm.INHALER,
+        "mdi": Medication.DosageForm.INHALER,
+        "dpi": Medication.DosageForm.INHALER,
+        "nebule": Medication.DosageForm.SOLUTION,
+        "nebuliser": Medication.DosageForm.SOLUTION,
+        "suppository": Medication.DosageForm.SUPPOSITORY,
+        "pessary": Medication.DosageForm.SUPPOSITORY,
+        "powder": Medication.DosageForm.POWDER,
+        "sachet": Medication.DosageForm.POWDER,
+        "patch": Medication.DosageForm.PATCH,
+        "spray": Medication.DosageForm.SPRAY,
+        "lozenge": Medication.DosageForm.LOZENGE,
+        "pastille": Medication.DosageForm.LOZENGE,
+        "iv": Medication.DosageForm.SOLUTION,
+        "infusion": Medication.DosageForm.SOLUTION,
+        "iv infusion": Medication.DosageForm.SOLUTION,
+        "bottle": Medication.DosageForm.SOLUTION,
+        "box": Medication.DosageForm.OTHER,
+        "piece": Medication.DosageForm.OTHER,
+        "roll": Medication.DosageForm.OTHER,
+    }
+    dosage_form = (
+        form_lookup.get(parsed_form)
+        or UNIT_TO_FORM.get(unit, Medication.DosageForm.OTHER)
+    )
+
+    if not name:
+        name = raw.strip()
+
+    return name, strength, dosage_form
+
+
+# ---------------------------------------------------------------------------
+# Command
+# ---------------------------------------------------------------------------
 
 class Command(BaseCommand):
-    help = 'Seed the global medication pool with common medications'
+    help = "Seed the shared Medication catalog from the Kenyan-market pharmacy stock list."
 
-    def handle(self, *args, **options):
-        created_count = 0
-        for med_data in MEDICATIONS:
-            _, created = Medication.objects.get_or_create(
-                generic_name=med_data['generic_name'],
-                dosage_form=med_data['dosage_form'],
-                strength=med_data.get('strength', ''),
-                defaults={
-                    'brand_names': med_data.get('brand_names', []),
-                    'category': med_data.get('category', 'other'),
-                    'controlled_substance_class': med_data.get('controlled_substance_class', ''),
-                    'requires_prescription': med_data.get('category') != 'vitamin',
-                },
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--reset",
+            action="store_true",
+            help="Delete all existing medications before seeding.",
+        )
+        parser.add_argument(
+            "--skip-existing",
+            action="store_true",
+            help="Skip rows that already exist (matched on generic_name + strength + dosage_form).",
+        )
+
+    @transaction.atomic
+    def handle(self, *args, **opts):
+        reset = opts["reset"]
+        skip_existing = opts["skip_existing"]
+
+        if reset:
+            removed = Medication.objects.all().delete()[0]
+            self.stdout.write(self.style.WARNING(f"Deleted {removed} existing medications."))
+
+        # Build canonical key set for skip-existing
+        existing_keys: set[tuple[str, str, str]] = set()
+        if skip_existing or not reset:
+            existing_keys = set(
+                Medication.objects.values_list("generic_name", "strength", "dosage_form")
             )
-            if created:
-                created_count += 1
+
+        to_create: list[Medication] = []
+        seen: set[tuple[str, str, str]] = set()
+        skipped = 0
+
+        for raw_name, raw_category, raw_unit in STOCK_DATA:
+            generic_name, strength, dosage_form = _parse_name(raw_name, raw_unit)
+            category = CATEGORY_MAP.get(raw_category, Medication.Category.OTHER)
+            key = (generic_name, strength, dosage_form)
+
+            if key in seen:
+                continue
+            seen.add(key)
+
+            if key in existing_keys:
+                skipped += 1
+                continue
+
+            to_create.append(Medication(
+                generic_name=generic_name,
+                abbreviation=_abbrev_lookup(generic_name),
+                brand_names=_brand_lookup(generic_name),
+                category=category,
+                subcategory=raw_category,
+                dosage_form=dosage_form,
+                strength=strength,
+                unit=raw_unit,
+                requires_prescription=category in {
+                    Medication.Category.ANTIBIOTIC,
+                    Medication.Category.ANTIVIRAL,
+                    Medication.Category.ANTIMALARIAL,
+                    Medication.Category.ANTIHYPERTENSIVE,
+                    Medication.Category.ANTIDIABETIC,
+                    Medication.Category.CARDIOVASCULAR,
+                    Medication.Category.CNS,
+                    Medication.Category.HORMONE,
+                    Medication.Category.ONCOLOGY,
+                    Medication.Category.IMMUNOSUPPRESSANT,
+                },
+                is_active=True,
+            ))
+
+        Medication.objects.bulk_create(to_create, batch_size=500, ignore_conflicts=True)
 
         self.stdout.write(self.style.SUCCESS(
-            f'Seeded {created_count} medications (total: {Medication.objects.count()})'
+            f"Seeded {len(to_create)} medications "
+            f"({skipped} skipped, {len(seen)} unique source rows, "
+            f"{len(STOCK_DATA)} raw rows)."
         ))

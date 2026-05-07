@@ -32,6 +32,20 @@ class LabRepository {
     return tests;
   }
 
+  Future<LabTestCatalog> createCatalogTest(Map<String, dynamic> data) async {
+    final response = await _dio.post('/lab/catalog/', data: data);
+    return LabTestCatalog.fromJson(response.data);
+  }
+
+  Future<LabTestCatalog> updateCatalogTest(int id, Map<String, dynamic> data) async {
+    final response = await _dio.patch('/lab/catalog/$id/', data: data);
+    return LabTestCatalog.fromJson(response.data);
+  }
+
+  Future<void> deleteCatalogTest(int id) async {
+    await _dio.delete('/lab/catalog/$id/');
+  }
+
   // ─── Lab Orders ───
   Future<PaginatedResponse<LabOrder>> getOrders({
     int page = 1,

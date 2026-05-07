@@ -6,6 +6,7 @@ class POSTransaction {
   final String? customerName;
   final String? customerPhone;
   final String paymentMethod;
+  final String status;
   final double subtotal;
   final double discount;
   final double taxAmount;
@@ -22,6 +23,7 @@ class POSTransaction {
     this.customerName,
     this.customerPhone,
     required this.paymentMethod,
+    this.status = 'completed',
     this.subtotal = 0,
     this.discount = 0,
     this.taxAmount = 0,
@@ -40,6 +42,7 @@ class POSTransaction {
         customerName: json['customer_name'],
         customerPhone: json['customer_phone'],
         paymentMethod: json['payment_method'] ?? 'cash',
+        status: json['status'] ?? 'completed',
         subtotal: _toDouble(json['subtotal']),
         discount: _toDouble(json['discount']),
         taxAmount: _toDouble(json['tax'] ?? json['tax_amount']),

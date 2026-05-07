@@ -24,6 +24,7 @@ SHARED_APPS = [
     'corsheaders',
     'django_filters',
     'drf_spectacular',
+    'storages',
     # shared apps
     'tenants',
     'accounts',
@@ -32,6 +33,8 @@ SHARED_APPS = [
     'doctors',
     'messaging',
     'superadmin',
+    'clinical_catalog',
+    'usage_billing',
 ]
 
 TENANT_APPS = [
@@ -58,6 +61,9 @@ TENANT_APPS = [
     'purchase_orders',
     'pos',
     'dispensing',
+    'expenses',
+    'insurance',
+    'reports',
 ]
 
 INSTALLED_APPS = list(SHARED_APPS) + [
@@ -85,6 +91,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'usage_billing.middleware.RequestUsageMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -149,16 +156,19 @@ REST_FRAMEWORK = {
         'rest_framework.filters.SearchFilter',
         'rest_framework.filters.OrderingFilter',
     ),
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'DEFAULT_PAGINATION_CLASS': 'config.pagination.StandardPagination',
     'PAGE_SIZE': 20,
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
-    'ROTATE_REFRESH_TOKENS': True,
-    'BLACKLIST_AFTER_ROTATION': True,
+    # No silent refresh: issue a long-lived access token so the user stays
+    # logged in until they explicitly log out (which blacklists the refresh
+    # token below). Adjust if a stricter session policy is required.
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=365),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=365),
+    'ROTATE_REFRESH_TOKENS': False,
+    'BLACKLIST_AFTER_ROTATION': False,
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
@@ -209,11 +219,60 @@ USE_I18N = True
 USE_TZ = True
 
 # ──────────────────────────────────────────────
-# Static & Media
+# Static & Media  (local dev or AWS S3)
 # ──────────────────────────────────────────────
-STATIC_URL = 'static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
-MEDIA_URL = 'media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+USE_S3 = config('USE_S3', default=False, cast=bool)
+
+if USE_S3:
+    # ── AWS credentials ──
+    AWS_ACCESS_KEY_ID     = config('AWS_ACCESS_KEY_ID')
+    AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY')
+    AWS_STORAGE_BUCKET_NAME = config('AWS_STORAGE_BUCKET_NAME')
+    AWS_S3_REGION_NAME      = config('AWS_S3_REGION_NAME', default='us-east-1')
+
+    # Use path-style or virtual-hosted-style URL
+    AWS_S3_CUSTOM_DOMAIN = (
+        config('AWS_CLOUDFRONT_DOMAIN', default='')
+        or f'{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com'
+    )
+
+    # ── Bucket behaviour ──
+    AWS_S3_FILE_OVERWRITE     = False   # keep originals; append suffix on collision
+    AWS_DEFAULT_ACL           = None    # rely on bucket policy; don't set object ACLs
+    AWS_S3_OBJECT_PARAMETERS  = {'CacheControl': 'max-age=86400'}
+
+    # ── Static files (public, no signed URLs) ──
+    STATIC_LOCATION = 'static'
+    STATIC_URL      = f'https://{AWS_S3_CUSTOM_DOMAIN}/{STATIC_LOCATION}/'
+
+    # ── Media files (signed URLs for privacy) ──
+    MEDIA_LOCATION = 'media'
+    MEDIA_URL      = f'https://{AWS_S3_CUSTOM_DOMAIN}/{MEDIA_LOCATION}/'
+
+    STORAGES = {
+        # media/upload files — private, signed URLs
+        'default': {
+            'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage',
+            'OPTIONS': {
+                'location': MEDIA_LOCATION,
+                'querystring_auth': True,
+                'default_acl': None,
+            },
+        },
+        # static files — public, no auth needed
+        'staticfiles': {
+            'BACKEND': 'storages.backends.s3boto3.S3StaticStorage',
+            'OPTIONS': {
+                'location': STATIC_LOCATION,
+                'querystring_auth': False,
+                'default_acl': None,
+            },
+        },
+    }
+else:
+    STATIC_URL  = 'static/'
+    STATIC_ROOT = BASE_DIR / 'staticfiles'
+    MEDIA_URL   = 'media/'
+    MEDIA_ROOT  = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

@@ -53,4 +53,8 @@ class MedicationRepository {
     final response = await _dio.patch('/medications/$id/', data: data);
     return Medication.fromJson(response.data);
   }
+
+  Future<void> deactivateMedication(int id) async {
+    await _dio.patch('/medications/$id/', data: {'is_active': false});
+  }
 }

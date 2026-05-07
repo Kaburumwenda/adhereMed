@@ -46,6 +46,8 @@ class Medication(models.Model):
         OTHER = 'other', 'Other'
 
     generic_name = models.CharField(max_length=255, db_index=True)
+    abbreviation = models.CharField(max_length=20, blank=True, db_index=True,
+                                    help_text='Short code/abbreviation, e.g. PCM, AMOX, RHZE')
     brand_names = models.JSONField(default=list, blank=True)
     category = models.CharField(max_length=30, choices=Category.choices, db_index=True)
     subcategory = models.CharField(max_length=100, blank=True)
@@ -57,6 +59,7 @@ class Medication(models.Model):
     controlled_substance_class = models.CharField(max_length=20, blank=True, help_text='e.g. Schedule II')
     side_effects = models.TextField(blank=True)
     contraindications = models.TextField(blank=True)
+    interactions = models.TextField(blank=True, help_text='Free-text interaction notes')
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -69,3 +72,39 @@ class Medication(models.Model):
     def __str__(self):
         strength = f' {self.strength}' if self.strength else ''
         return f'{self.generic_name}{strength} ({self.get_dosage_form_display()})'
+
+
+class DrugInteraction(models.Model):
+    """Pairwise drug-drug interaction database. Lookups are bidirectional."""
+    class Severity(models.TextChoices):
+        MINOR = 'minor', 'Minor'
+        MODERATE = 'moderate', 'Moderate'
+        MAJOR = 'major', 'Major'
+        CONTRAINDICATED = 'contraindicated', 'Contraindicated'
+
+    drug_a = models.ForeignKey(
+        Medication, on_delete=models.CASCADE, related_name='interactions_a',
+    )
+    drug_b = models.ForeignKey(
+        Medication, on_delete=models.CASCADE, related_name='interactions_b',
+    )
+    severity = models.CharField(max_length=20, choices=Severity.choices, default=Severity.MODERATE)
+    description = models.TextField(help_text='What happens when these drugs interact')
+    clinical_advice = models.TextField(blank=True, help_text='Recommended action / monitoring')
+    source = models.CharField(max_length=255, blank=True, help_text='Reference / citation')
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-severity', 'drug_a__generic_name']
+        indexes = [
+            models.Index(fields=['drug_a', 'drug_b']),
+            models.Index(fields=['severity']),
+        ]
+        constraints = [
+            models.UniqueConstraint(fields=['drug_a', 'drug_b'], name='uniq_drug_pair'),
+        ]
+
+    def __str__(self):
+        return f'{self.drug_a} ↔ {self.drug_b} ({self.severity})'

@@ -3,6 +3,7 @@ class AppConstants {
   AppConstants._();
 
   static const String appName = 'AdhereMed';
+  // static const String baseUrl = 'https://adheremed.tiktek-ex.com/api';
   static const String baseUrl = 'http://127.0.0.1:8000/api';
 
   // Storage keys

@@ -75,6 +75,8 @@ List<_NavSection> _getNavSections(String role, String? tenantType) {
       _NavItemData(icon: Icons.business_outlined, activeIcon: Icons.business, label: 'Tenants', path: '/superadmin/tenants'),
       _NavItemData(icon: Icons.people_outline, activeIcon: Icons.people, label: 'All Users', path: '/superadmin/users'),
       _NavItemData(icon: Icons.storage_outlined, activeIcon: Icons.storage, label: 'Seed Data', path: '/superadmin/seed'),
+      _NavItemData(icon: Icons.health_and_safety_outlined, activeIcon: Icons.health_and_safety, label: 'Clinical Catalog', path: '/superadmin/clinical-catalog'),
+      _NavItemData(icon: Icons.library_books_outlined, activeIcon: Icons.library_books, label: 'Catalog Manager', path: '/admin/catalog'),
       _NavItemData(icon: Icons.add_business_outlined, activeIcon: Icons.add_business, label: 'New Tenant', path: '/superadmin/tenants/new'),
     ]));
     return sections; // Super admin only sees the super admin section
@@ -103,7 +105,7 @@ List<_NavSection> _getNavSections(String role, String? tenantType) {
         _NavItemData(icon: Icons.local_hotel_outlined, activeIcon: Icons.local_hotel, label: 'Wards', path: '/wards'),
         _NavItemData(icon: Icons.receipt_long_outlined, activeIcon: Icons.receipt_long, label: 'Billing', path: '/billing'),
         _NavItemData(icon: Icons.business_outlined, activeIcon: Icons.business, label: 'Departments', path: '/departments'),
-      ]));
+      ]));  
     }
   }
 
@@ -157,14 +159,14 @@ List<_NavSection> _getNavSections(String role, String? tenantType) {
     if (['tenant_admin', 'lab_admin', 'lab_tech', 'admin'].contains(role)) {
       sections.add(const _NavSection(label: 'LABORATORY', items: [
         _NavItemData(icon: Icons.pending_actions_outlined, activeIcon: Icons.pending_actions, label: 'Lab Requests', path: '/lab-exchange'),
-        _NavItemData(icon: Icons.biotech_outlined, activeIcon: Icons.biotech, label: 'Test Catalog', path: '/lab-catalog'),
-      ]));
+      ]));    
     }
   }
 
   // Patient role
   if (['patient', 'admin'].contains(role)) {
     sections.add(const _NavSection(label: 'MY HEALTH', items: [
+      _NavItemData(icon: Icons.account_circle_outlined, activeIcon: Icons.account_circle, label: 'My Profile', path: '/my-profile'),
       _NavItemData(icon: Icons.receipt_outlined, activeIcon: Icons.receipt, label: 'My Prescriptions', path: '/my-prescriptions'),
       _NavItemData(icon: Icons.local_pharmacy_outlined, activeIcon: Icons.local_pharmacy, label: 'Pharmacies', path: '/pharmacy-store', children: [
         _NavItemData(icon: Icons.store_outlined, activeIcon: Icons.store, label: 'Browse Pharmacies', path: '/pharmacy-store'),
@@ -178,6 +180,7 @@ List<_NavSection> _getNavSections(String role, String? tenantType) {
   // Doctor role
   if (['doctor', 'clinical_officer', 'dentist'].contains(role)) {
     sections.add(const _NavSection(label: 'MY PRACTICE', items: [
+      _NavItemData(icon: Icons.account_circle_outlined, activeIcon: Icons.account_circle, label: 'My Profile', path: '/doctor-profile'),
       _NavItemData(icon: Icons.search_outlined, activeIcon: Icons.search, label: 'Doctor Directory', path: '/doctors'),
       _NavItemData(icon: Icons.medication_outlined, activeIcon: Icons.medication, label: 'Prescriptions', path: '/prescriptions', children: [
         _NavItemData(icon: Icons.list_alt_outlined, activeIcon: Icons.list_alt, label: 'View Prescriptions', path: '/prescriptions'),

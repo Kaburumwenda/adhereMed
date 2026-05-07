@@ -1,0 +1,3 @@
+<template>
+  <FormsExpenseForm />
+</template>

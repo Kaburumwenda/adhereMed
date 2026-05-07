@@ -5,6 +5,8 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+import '../../../core/providers/connectivity_provider.dart';
+import '../../../core/services/offline_queue_service.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/loading_widget.dart';
 import '../../../core/widgets/search_field.dart';
@@ -39,6 +41,7 @@ class POSScreen extends ConsumerStatefulWidget {
 class _POSScreenState extends ConsumerState<POSScreen> {
   final _inventoryRepo = InventoryRepository();
   final _posRepo = POSRepository();
+  final _queue = OfflineQueueService.instance;
 
   // Product search state
   List<MedicationStock> _products = [];
@@ -55,6 +58,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
 
   // Cart state
   final List<_CartItem> _cart = [];
+  final Map<int, TextEditingController> _qtyCtrlMap = {};
 
   // Payment state
   String _paymentMethod = 'cash';
@@ -64,12 +68,20 @@ class _POSScreenState extends ConsumerState<POSScreen> {
   final _amountTenderedCtrl = TextEditingController();
 
   bool _completing = false;
+  bool _syncing = false;
+  int _pendingCount = 0;
 
   @override
   void initState() {
     super.initState();
     _searchProducts('');
     _loadCategories();
+    _initQueue();
+  }
+
+  Future<void> _initQueue() async {
+    await _queue.load();
+    if (mounted) setState(() => _pendingCount = _queue.pendingCount);
   }
 
   Future<void> _loadCategories() async {
@@ -85,6 +97,9 @@ class _POSScreenState extends ConsumerState<POSScreen> {
     _customerPhoneCtrl.dispose();
     _discountCtrl.dispose();
     _amountTenderedCtrl.dispose();
+    for (final c in _qtyCtrlMap.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -128,6 +143,8 @@ class _POSScreenState extends ConsumerState<POSScreen> {
   }
 
   void _removeFromCart(int index) {
+    final stockId = _cart[index].stockId;
+    _qtyCtrlMap.remove(stockId)?.dispose();
     setState(() => _cart.removeAt(index));
   }
 
@@ -135,9 +152,21 @@ class _POSScreenState extends ConsumerState<POSScreen> {
     setState(() {
       _cart[index].quantity += delta;
       if (_cart[index].quantity <= 0) {
+        final stockId = _cart[index].stockId;
+        _qtyCtrlMap.remove(stockId)?.dispose();
         _cart.removeAt(index);
+      } else {
+        _qtyCtrlMap[_cart[index].stockId]?.text =
+            '${_cart[index].quantity}';
       }
     });
+  }
+
+  TextEditingController _qtyCtrl(_CartItem item) {
+    return _qtyCtrlMap.putIfAbsent(
+      item.stockId,
+      () => TextEditingController(text: '${item.quantity}'),
+    );
   }
 
   double get _subtotal =>
@@ -193,26 +222,89 @@ class _POSScreenState extends ConsumerState<POSScreen> {
             .toList(),
       };
 
-      final result = await _posRepo.createTransaction(data);
+      final isOnline = ref.read(isOnlineProvider);
 
-      if (mounted) {
-        // Capture snapshot before clearing
-        final cartSnapshot = List<_CartItem>.from(_cart);
-        final storeName = ref.read(authProvider).valueOrNull?.tenantName ?? 'AfyaOne Pharmacy';
-        _showReceiptDialog(
-          receiptNumber: result.receiptNumber ?? 'N/A',
-          total: result.totalAmount,
-          cartItems: cartSnapshot,
-          storeName: storeName,
+      if (!isOnline) {
+        // ── Offline path: enqueue and show offline receipt ──
+        await _queue.enqueue(
+          payload: data,
+          totalAmount: _grandTotal,
+          customerName: _customerNameCtrl.text.trim().isEmpty
+              ? null
+              : _customerNameCtrl.text.trim(),
         );
-        setState(() {
-          _cart.clear();
-          _customerNameCtrl.clear();
-          _customerPhoneCtrl.clear();
-          _discountCtrl.text = '0';
-          _amountTenderedCtrl.clear();
-          _completing = false;
-        });
+        if (mounted) {
+          final cartSnapshot = List<_CartItem>.from(_cart);
+          final storeName =
+              ref.read(authProvider).valueOrNull?.tenantName ?? 'AfyaOne Pharmacy';
+          setState(() {
+            _pendingCount = _queue.pendingCount;
+            _cart.clear();
+            _customerNameCtrl.clear();
+            _customerPhoneCtrl.clear();
+            _discountCtrl.text = '0';
+            _amountTenderedCtrl.clear();
+            _completing = false;
+          });
+          _showOfflineReceiptDialog(
+            total: _grandTotal,
+            cartItems: cartSnapshot,
+            storeName: storeName,
+          );
+        }
+        return;
+      }
+
+      // ── Online path ──
+      try {
+        final result = await _posRepo.createTransaction(data);
+        if (mounted) {
+          final cartSnapshot = List<_CartItem>.from(_cart);
+          final storeName =
+              ref.read(authProvider).valueOrNull?.tenantName ?? 'AfyaOne Pharmacy';
+          _showReceiptDialog(
+            receiptNumber: result.receiptNumber ?? 'N/A',
+            total: result.totalAmount,
+            cartItems: cartSnapshot,
+            storeName: storeName,
+          );
+          setState(() {
+            _cart.clear();
+            _customerNameCtrl.clear();
+            _customerPhoneCtrl.clear();
+            _discountCtrl.text = '0';
+            _amountTenderedCtrl.clear();
+            _completing = false;
+          });
+        }
+      } catch (_) {
+        // Network failed mid-request — save offline
+        await _queue.enqueue(
+          payload: data,
+          totalAmount: _grandTotal,
+          customerName: _customerNameCtrl.text.trim().isEmpty
+              ? null
+              : _customerNameCtrl.text.trim(),
+        );
+        if (mounted) {
+          final cartSnapshot = List<_CartItem>.from(_cart);
+          final storeName =
+              ref.read(authProvider).valueOrNull?.tenantName ?? 'AfyaOne Pharmacy';
+          setState(() {
+            _pendingCount = _queue.pendingCount;
+            _cart.clear();
+            _customerNameCtrl.clear();
+            _customerPhoneCtrl.clear();
+            _discountCtrl.text = '0';
+            _amountTenderedCtrl.clear();
+            _completing = false;
+          });
+          _showOfflineReceiptDialog(
+            total: _grandTotal,
+            cartItems: cartSnapshot,
+            storeName: storeName,
+          );
+        }
       }
     } catch (e) {
       setState(() => _completing = false);
@@ -225,6 +317,135 @@ class _POSScreenState extends ConsumerState<POSScreen> {
         );
       }
     }
+  }
+
+  /// Sync all pending offline sales to the server.
+  Future<void> _syncQueue() async {
+    if (_syncing || _queue.pendingCount == 0) return;
+    setState(() => _syncing = true);
+    final synced = await _queue.syncAll((sale) async {
+      await _posRepo.createTransaction(sale.payload);
+    });
+    if (mounted) {
+      setState(() {
+        _syncing = false;
+        _pendingCount = _queue.pendingCount;
+      });
+      if (synced > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$synced offline sale${synced > 1 ? 's' : ''} synced successfully'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+      if (_queue.pendingCount > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${_queue.pendingCount} sale${_queue.pendingCount > 1 ? 's' : ''} could not be synced — will retry when online'),
+            backgroundColor: AppColors.warning,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showOfflineReceiptDialog({
+    required double total,
+    required List<_CartItem> cartItems,
+    required String storeName,
+  }) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.warning.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.wifi_off_rounded,
+                      color: AppColors.warning, size: 36),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Sale Saved Offline',
+                  style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'No internet connection. This sale has been saved and will be automatically synced when you come back online.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      color: AppColors.textSecondary, fontSize: 13),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: AppColors.background,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Total',
+                          style: TextStyle(color: AppColors.textSecondary)),
+                      Text(
+                        _formatCurrency(total),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.warning.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.pending_actions_rounded,
+                          size: 15, color: AppColors.warning),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${_queue.pendingCount} pending sale${_queue.pendingCount > 1 ? 's' : ''} waiting to sync',
+                        style: TextStyle(
+                            fontSize: 12, color: AppColors.warning),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('OK'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   void _showReceiptDialog({
@@ -492,11 +713,30 @@ class _POSScreenState extends ConsumerState<POSScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isOnline = ref.watch(isOnlineProvider);
+
+    // Auto-sync when connection is restored and there are pending sales
+    ref.listen(isOnlineProvider, (prev, next) {
+      if (next == true && (prev == false || prev == null) && _queue.pendingCount > 0) {
+        _syncQueue();
+      }
+    });
+
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Offline / pending-sync banner ──
+          if (!isOnline || _pendingCount > 0)
+            _OfflineBanner(
+              isOnline: isOnline,
+              pendingCount: _pendingCount,
+              syncing: _syncing,
+              onSync: isOnline ? _syncQueue : null,
+            ),
+          if (!isOnline || _pendingCount > 0) const SizedBox(height: 12),
+
           // ── Header ──
           Row(
             children: [
@@ -771,7 +1011,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                             ],
                           ),
                         ),
-                        // Cart items
+                        // Cart items (scrollable)
                         Expanded(
                           child: _cart.isEmpty
                               ? Center(
@@ -793,15 +1033,13 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                                       Text('No items yet',
                                           style: TextStyle(
                                               fontWeight: FontWeight.w500,
-                                              color:
-                                                  AppColors.textSecondary)),
+                                              color: AppColors.textSecondary)),
                                       const SizedBox(height: 4),
                                       Text(
                                           'Click on products to add them',
                                           style: TextStyle(
                                               fontSize: 12,
-                                              color:
-                                                  AppColors.textSecondary)),
+                                              color: AppColors.textSecondary)),
                                     ],
                                   ),
                                 )
@@ -856,16 +1094,53 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                                               children: [
                                                 _qtyButton(Icons.remove,
                                                     () => _updateQty(index, -1)),
-                                                Padding(
-                                                  padding: const EdgeInsets
-                                                      .symmetric(
-                                                      horizontal: 10),
-                                                  child: Text(
-                                                      '${item.quantity}',
-                                                      style: const TextStyle(
-                                                          fontWeight:
-                                                              FontWeight.w600,
-                                                          fontSize: 13)),
+                                                SizedBox(
+                                                  width: 42,
+                                                  child: TextField(
+                                                    controller: _qtyCtrl(item),
+                                                    textAlign: TextAlign.center,
+                                                    keyboardType:
+                                                        TextInputType.number,
+                                                    style: const TextStyle(
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                        fontSize: 13),
+                                                    decoration:
+                                                        const InputDecoration(
+                                                      isDense: true,
+                                                      border: InputBorder.none,
+                                                      contentPadding:
+                                                          EdgeInsets.symmetric(
+                                                              vertical: 6),
+                                                    ),
+                                                    onSubmitted: (val) {
+                                                      final qty =
+                                                          int.tryParse(val) ?? 1;
+                                                      if (qty <= 0) {
+                                                        _removeFromCart(index);
+                                                      } else {
+                                                        setState(() {
+                                                          _cart[index].quantity =
+                                                              qty;
+                                                        });
+                                                      }
+                                                    },
+                                                    onTapOutside: (_) {
+                                                      final val = _qtyCtrl(
+                                                              item)
+                                                          .text;
+                                                      final qty =
+                                                          int.tryParse(val) ?? 1;
+                                                      if (qty <= 0) {
+                                                        _removeFromCart(index);
+                                                      } else {
+                                                        setState(() {
+                                                          _cart[index].quantity =
+                                                              qty;
+                                                        });
+                                                      }
+                                                    },
+                                                  ),
                                                 ),
                                                 _qtyButton(Icons.add,
                                                     () => _updateQty(index, 1)),
@@ -903,7 +1178,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                                   },
                                 ),
                         ),
-                        // ── Checkout section ──
+                        // ── Checkout section (always visible) ──
                         Container(
                           padding: const EdgeInsets.all(20),
                           decoration: BoxDecoration(
@@ -915,237 +1190,232 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                           ),
                           child: Column(
                             children: [
-                              // Totals
-                              _totalRow(
-                                  'Subtotal', _formatCurrency(_subtotal)),
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  Text('Discount',
-                                      style: TextStyle(
-                                          color: AppColors.textSecondary,
-                                          fontSize: 13)),
-                                  const Spacer(),
-                                  SizedBox(
-                                    width: 90,
-                                    height: 30,
-                                    child: TextField(
-                                      controller: _discountCtrl,
-                                      keyboardType: TextInputType.number,
-                                      textAlign: TextAlign.right,
-                                      style: const TextStyle(fontSize: 13),
-                                      decoration: InputDecoration(
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                                horizontal: 8, vertical: 4),
-                                        border: OutlineInputBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(6)),
-                                        isDense: true,
-                                        prefixText: 'KSh ',
-                                        prefixStyle:
-                                            const TextStyle(fontSize: 12),
-                                        filled: true,
-                                        fillColor: AppColors.surface,
-                                      ),
-                                      onChanged: (_) => setState(() {}),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              if (_tax > 0) ...[
-                                const SizedBox(height: 4),
-                                _totalRow('Tax', _formatCurrency(_tax)),
-                              ],
-                              const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 8),
-                                child: Divider(height: 1),
-                              ),
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  const Text('Total',
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 16)),
-                                  Text(_formatCurrency(_grandTotal),
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 18,
-                                          color: AppColors.primary)),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-                              // Customer
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: TextField(
-                                      controller: _customerNameCtrl,
-                                      decoration: InputDecoration(
-                                        hintText: 'Customer name',
-                                        border: OutlineInputBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(8)),
-                                        isDense: true,
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                                horizontal: 10,
-                                                vertical: 10),
-                                        filled: true,
-                                        fillColor: AppColors.surface,
-                                      ),
-                                      style: const TextStyle(fontSize: 13),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: TextField(
-                                      controller: _customerPhoneCtrl,
-                                      decoration: InputDecoration(
-                                        hintText: 'Phone',
-                                        border: OutlineInputBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(8)),
-                                        isDense: true,
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                                horizontal: 10,
-                                                vertical: 10),
-                                        filled: true,
-                                        fillColor: AppColors.surface,
-                                      ),
-                                      style: const TextStyle(fontSize: 13),
-                                      keyboardType: TextInputType.phone,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              // Payment method
-                              SegmentedButton<String>(
-                                segments: const [
-                                  ButtonSegment(
-                                      value: 'cash',
-                                      label: Text('Cash'),
-                                      icon: Icon(Icons.payments_outlined,
-                                          size: 16)),
-                                  ButtonSegment(
-                                      value: 'card',
-                                      label: Text('Card'),
-                                      icon: Icon(
-                                          Icons.credit_card_rounded,
-                                          size: 16)),
-                                  ButtonSegment(
-                                      value: 'mpesa',
-                                      label: Text('M-Pesa'),
-                                      icon: Icon(
-                                          Icons.phone_android_rounded,
-                                          size: 16)),
-                                ],
-                                selected: {_paymentMethod},
-                                onSelectionChanged: (val) =>
-                                    setState(() =>
-                                        _paymentMethod = val.first),
-                                style: ButtonStyle(
-                                  visualDensity: VisualDensity.compact,
-                                  textStyle: WidgetStateProperty.all(
-                                      const TextStyle(fontSize: 12)),
-                                ),
-                              ),
-                              if (_paymentMethod == 'cash') ...[
-                                const SizedBox(height: 12),
-                                TextField(
-                                  controller: _amountTenderedCtrl,
-                                  decoration: InputDecoration(
-                                    hintText: 'Amount tendered (KSh)',
-                                    border: OutlineInputBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(8)),
-                                    isDense: true,
-                                    contentPadding:
-                                        const EdgeInsets.symmetric(
-                                            horizontal: 10, vertical: 10),
-                                    filled: true,
-                                    fillColor: AppColors.surface,
-                                  ),
-                                  style: const TextStyle(fontSize: 13),
-                                  keyboardType: TextInputType.number,
-                                  onChanged: (_) => setState(() {}),
-                                ),
-                                if (_amountTendered > 0)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 8),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 12, vertical: 8),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.success
-                                            .withValues(alpha: 0.1),
-                                        borderRadius:
-                                            BorderRadius.circular(8),
-                                      ),
-                                      child: Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceBetween,
+                                      // Totals
+                                      _totalRow(
+                                          'Subtotal', _formatCurrency(_subtotal)),
+                                      const SizedBox(height: 4),
+                                      Row(
                                         children: [
-                                          Text('Change',
+                                          Text('Discount',
                                               style: TextStyle(
-                                                  fontWeight:
-                                                      FontWeight.w600,
-                                                  color: AppColors.success,
+                                                  color: AppColors.textSecondary,
                                                   fontSize: 13)),
-                                          Text(
-                                            _formatCurrency(_change > 0
-                                                ? _change
-                                                : 0),
-                                            style: TextStyle(
-                                                fontWeight: FontWeight.w700,
-                                                color: AppColors.success,
-                                                fontSize: 15),
+                                          const Spacer(),
+                                          SizedBox(
+                                            width: 90,
+                                            height: 30,
+                                            child: TextField(
+                                              controller: _discountCtrl,
+                                              keyboardType: TextInputType.number,
+                                              textAlign: TextAlign.right,
+                                              style: const TextStyle(fontSize: 13),
+                                              decoration: InputDecoration(
+                                                contentPadding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 8, vertical: 4),
+                                                border: OutlineInputBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(6)),
+                                                isDense: true,
+                                                prefixText: 'KSh ',
+                                                prefixStyle:
+                                                    const TextStyle(fontSize: 12),
+                                                filled: true,
+                                                fillColor: AppColors.surface,
+                                              ),
+                                              onChanged: (_) => setState(() {}),
+                                            ),
                                           ),
                                         ],
                                       ),
-                                    ),
-                                  ),
-                              ],
-                              const SizedBox(height: 16),
-                              // Complete button
-                              SizedBox(
-                                width: double.infinity,
-                                height: 46,
-                                child: FilledButton.icon(
-                                  onPressed:
-                                      _completing ? null : _completeSale,
-                                  icon: _completing
-                                      ? const SizedBox(
-                                          width: 18,
-                                          height: 18,
-                                          child:
-                                              CircularProgressIndicator(
-                                                  strokeWidth: 2,
-                                                  color: Colors.white),
-                                        )
-                                      : const Icon(
-                                          Icons.check_circle_rounded),
-                                  label: Text(
-                                      _completing
-                                          ? 'Processing...'
-                                          : 'Complete Sale  •  ${_formatCurrency(_grandTotal)}',
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.w600)),
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: AppColors.success,
-                                    shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(10)),
+                                      if (_tax > 0) ...[
+                                        const SizedBox(height: 4),
+                                        _totalRow('Tax', _formatCurrency(_tax)),
+                                      ],
+                                      const Padding(
+                                        padding: EdgeInsets.symmetric(vertical: 8),
+                                        child: Divider(height: 1),
+                                      ),
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          const Text('Total',
+                                              style: TextStyle(
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 16)),
+                                          Text(_formatCurrency(_grandTotal),
+                                              style: TextStyle(
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 18,
+                                                  color: AppColors.primary)),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 16),
+                                      // Customer
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: TextField(
+                                              controller: _customerNameCtrl,
+                                              decoration: InputDecoration(
+                                                hintText: 'Customer name',
+                                                border: OutlineInputBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(8)),
+                                                isDense: true,
+                                                contentPadding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 10,
+                                                        vertical: 10),
+                                                filled: true,
+                                                fillColor: AppColors.surface,
+                                              ),
+                                              style: const TextStyle(fontSize: 13),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: TextField(
+                                              controller: _customerPhoneCtrl,
+                                              decoration: InputDecoration(
+                                                hintText: 'Phone',
+                                                border: OutlineInputBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(8)),
+                                                isDense: true,
+                                                contentPadding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 10,
+                                                        vertical: 10),
+                                                filled: true,
+                                                fillColor: AppColors.surface,
+                                              ),
+                                              style: const TextStyle(fontSize: 13),
+                                              keyboardType: TextInputType.phone,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      // Payment method
+                                      Wrap(
+                                        spacing: 6,
+                                        runSpacing: 6,
+                                        children: [
+                                          for (final entry in const [
+                                            ('cash', 'Cash', Icons.payments_outlined),
+                                            ('card', 'Card', Icons.credit_card_rounded),
+                                            ('mpesa', 'M-Pesa', Icons.phone_android_rounded),
+                                            ('credit', 'Credit', Icons.account_balance_wallet_outlined),
+                                          ])
+                                            ChoiceChip(
+                                              label: Text(entry.$2,
+                                                  style: const TextStyle(fontSize: 12)),
+                                              avatar: Icon(entry.$3, size: 14),
+                                              selected: _paymentMethod == entry.$1,
+                                              onSelected: (_) => setState(
+                                                  () => _paymentMethod = entry.$1),
+                                              visualDensity: VisualDensity.compact,
+                                            ),
+                                        ],
+                                      ),
+                                      if (_paymentMethod == 'cash') ...[
+                                        const SizedBox(height: 12),
+                                        TextField(
+                                          controller: _amountTenderedCtrl,
+                                          decoration: InputDecoration(
+                                            hintText: 'Amount tendered (KSh)',
+                                            border: OutlineInputBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(8)),
+                                            isDense: true,
+                                            contentPadding:
+                                                const EdgeInsets.symmetric(
+                                                    horizontal: 10, vertical: 10),
+                                            filled: true,
+                                            fillColor: AppColors.surface,
+                                          ),
+                                          style: const TextStyle(fontSize: 13),
+                                          keyboardType: TextInputType.number,
+                                          onChanged: (_) => setState(() {}),
+                                        ),
+                                        if (_amountTendered > 0)
+                                          Padding(
+                                            padding: const EdgeInsets.only(top: 8),
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                  horizontal: 12, vertical: 8),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.success
+                                                    .withValues(alpha: 0.1),
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              child: Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.spaceBetween,
+                                                children: [
+                                                  Text('Change',
+                                                      style: TextStyle(
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                          color: AppColors.success,
+                                                          fontSize: 13)),
+                                                  Text(
+                                                    _formatCurrency(_change > 0
+                                                        ? _change
+                                                        : 0),
+                                                    style: TextStyle(
+                                                        fontWeight: FontWeight.w700,
+                                                        color: AppColors.success,
+                                                        fontSize: 15),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                      const SizedBox(height: 16),
+                                      // Complete button
+                                      SizedBox(
+                                        width: double.infinity,
+                                        height: 46,
+                                        child: FilledButton.icon(
+                                          onPressed:
+                                              _completing ? null : _completeSale,
+                                          icon: _completing
+                                              ? const SizedBox(
+                                                  width: 18,
+                                                  height: 18,
+                                                  child: CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                      color: Colors.white),
+                                                )
+                                              : Icon(!isOnline
+                                                  ? Icons.wifi_off_rounded
+                                                  : Icons.check_circle_rounded),
+                                          label: Text(
+                                              _completing
+                                                  ? 'Processing...'
+                                                  : !isOnline
+                                                      ? 'Save Offline  •  ${_formatCurrency(_grandTotal)}'
+                                                      : 'Complete Sale  •  ${_formatCurrency(_grandTotal)}',
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.w600)),
+                                          style: FilledButton.styleFrom(
+                                            backgroundColor: !isOnline
+                                                ? AppColors.warning
+                                                : AppColors.success,
+                                            shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(10)),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ),
-                            ],
-                          ),
-                        ),
                       ],
                     ),
                   ),
@@ -1391,6 +1661,79 @@ class _ThermalReceiptWidget extends StatelessWidget {
         children: [
           Text(label, style: style),
           Text(value, style: style),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Offline Banner Widget ────────────────────────────────────────────────────
+
+class _OfflineBanner extends StatelessWidget {
+  final bool isOnline;
+  final int pendingCount;
+  final bool syncing;
+  final VoidCallback? onSync;
+
+  const _OfflineBanner({
+    required this.isOnline,
+    required this.pendingCount,
+    required this.syncing,
+    this.onSync,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isOnline ? AppColors.warning : AppColors.error;
+    final bg = color.withValues(alpha: 0.08);
+    final border = color.withValues(alpha: 0.3);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isOnline ? Icons.sync_problem_rounded : Icons.wifi_off_rounded,
+            color: color,
+            size: 18,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              isOnline
+                  ? '$pendingCount offline sale${pendingCount > 1 ? 's' : ''} waiting to sync'
+                  : 'No internet connection — sales will be saved offline',
+              style: TextStyle(
+                  color: color, fontSize: 13, fontWeight: FontWeight.w500),
+            ),
+          ),
+          if (isOnline && pendingCount > 0) ...[
+            const SizedBox(width: 8),
+            syncing
+                ? SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: color),
+                  )
+                : TextButton(
+                    onPressed: onSync,
+                    style: TextButton.styleFrom(
+                      foregroundColor: color,
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                    ),
+                    child: const Text('Sync Now',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 12)),
+                  ),
+          ],
         ],
       ),
     );

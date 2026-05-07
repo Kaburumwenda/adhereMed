@@ -1,7 +1,7 @@
 from django.db import transaction
 from rest_framework import serializers
 
-from .models import POSTransaction, TransactionItem, Customer
+from .models import POSTransaction, TransactionItem, Customer, ParkedSale, CashierShift, LoyaltyTransaction
 from inventory.models import MedicationStock, StockBatch
 
 
@@ -10,20 +10,25 @@ class CustomerSerializer(serializers.ModelSerializer):
         model = Customer
         fields = [
             'id', 'name', 'phone', 'email', 'address', 'notes',
-            'total_purchases', 'visit_count', 'is_active',
+            'total_purchases', 'visit_count',
+            'loyalty_points', 'loyalty_tier', 'loyalty_joined_at',
+            'is_active',
             'created_at', 'updated_at',
         ]
-        read_only_fields = ['id', 'total_purchases', 'visit_count', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'total_purchases', 'visit_count',
+                            'loyalty_points', 'loyalty_tier', 'loyalty_joined_at',
+                            'created_at', 'updated_at']
 
 
 class TransactionItemSerializer(serializers.ModelSerializer):
     stock_name = serializers.CharField(source='stock.medication_name', read_only=True)
+    category_name = serializers.CharField(source='stock.category.name', read_only=True, default='Uncategorized')
 
     class Meta:
         model = TransactionItem
         fields = [
             'id', 'transaction', 'stock', 'stock_name',
-            'batch', 'medication_name',
+            'batch', 'medication_name', 'category_name',
             'quantity', 'unit_price', 'total_price',
         ]
         read_only_fields = ['id']
@@ -42,6 +47,7 @@ class POSTransactionSerializer(serializers.ModelSerializer):
             'payment_method', 'payment_reference',
             'cashier', 'cashier_name',
             'branch', 'branch_name',
+            'status',
             'items', 'created_at',
         ]
         read_only_fields = ['id', 'created_at']
@@ -144,3 +150,66 @@ class POSCheckoutSerializer(serializers.Serializer):
             TransactionItem.objects.create(transaction=pos_txn, **ti)
 
         return pos_txn
+
+
+class ParkedSaleSerializer(serializers.ModelSerializer):
+    cashier_name = serializers.CharField(source='cashier.full_name', read_only=True)
+    item_count = serializers.IntegerField(read_only=True)
+    total = serializers.FloatField(read_only=True)
+
+    class Meta:
+        model = ParkedSale
+        fields = [
+            'id', 'park_number', 'customer_name', 'customer_phone',
+            'payment_method', 'discount', 'items', 'notes',
+            'cashier', 'cashier_name', 'branch',
+            'item_count', 'total',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'park_number', 'cashier', 'cashier_name', 'created_at', 'updated_at']
+
+    def create(self, validated_data):
+        import uuid
+        request = self.context.get('request')
+        if request and request.user and request.user.is_authenticated:
+            validated_data['cashier'] = request.user
+        validated_data['park_number'] = f'PARK-{uuid.uuid4().hex[:8].upper()}'
+        return super().create(validated_data)
+
+
+class CashierShiftSerializer(serializers.ModelSerializer):
+    cashier_name = serializers.SerializerMethodField(read_only=True)
+    branch_name = serializers.CharField(source='branch.name', read_only=True, default=None)
+
+    class Meta:
+        model = CashierShift
+        fields = '__all__'
+        read_only_fields = ('reference', 'cashier', 'expected_cash', 'cash_variance',
+                            'closed_at', 'z_report', 'opened_at')
+
+    def get_cashier_name(self, obj):
+        u = obj.cashier
+        if not u:
+            return ''
+        return f'{u.first_name} {u.last_name}'.strip() or u.email
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        validated_data['cashier'] = request.user
+        return super().create(validated_data)
+
+
+class LoyaltyTransactionSerializer(serializers.ModelSerializer):
+    customer_name = serializers.CharField(source='customer.name', read_only=True)
+    created_by_name = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = LoyaltyTransaction
+        fields = '__all__'
+        read_only_fields = ('balance_after', 'created_by', 'created_at')
+
+    def get_created_by_name(self, obj):
+        u = obj.created_by
+        if not u:
+            return ''
+        return f'{u.first_name} {u.last_name}'.strip() or u.email

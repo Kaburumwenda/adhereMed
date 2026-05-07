@@ -285,6 +285,11 @@ class DoctorDashboardScreen extends ConsumerWidget {
                 label: 'Prescriptions',
                 color: const Color(0xFF8B5CF6),
                 onTap: () => context.push('/prescriptions')),
+            _QuickAction(
+                icon: Icons.account_circle_outlined,
+                label: 'My Profile',
+                color: AppColors.secondary,
+                onTap: () => context.push('/doctor-profile')),
           ],
         ),
         const SizedBox(height: 24),

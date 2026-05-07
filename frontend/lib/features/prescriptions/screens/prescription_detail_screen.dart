@@ -1,12 +1,18 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:printing/printing.dart';
 
 import '../../../core/theme.dart';
 import '../../../core/widgets/loading_widget.dart';
 import '../../../core/widgets/error_widget.dart' as app_error;
 import '../models/prescription_model.dart';
 import '../repository/prescription_repository.dart';
+import '../utils/prescription_pdf.dart';
+import '../../doctors/repository/doctor_repository.dart';
+import '../../doctors/models/doctor_model.dart';
 import '../../pharmacy_store/models/pharmacy_store_models.dart';
 import '../../pharmacy_store/repository/pharmacy_store_repository.dart';
 
@@ -28,6 +34,10 @@ class _PrescriptionDetailScreenState
   String? _error;
   bool _sendingToExchange = false;
 
+  // ── Doctor profile (best-effort — used for PDF logo) ──────────────────────
+  DoctorProfile? _doctorProfile;
+  bool _generatingPdf = false;
+
   void _getQuoteFromPharmacy() {
     final p = _prescription;
     if (p == null) return;
@@ -43,6 +53,114 @@ class _PrescriptionDetailScreenState
   void initState() {
     super.initState();
     _loadData();
+    _tryLoadDoctorProfile();
+  }
+
+  /// Tries to load the current user's doctor profile for the PDF left logo.
+  /// Silently ignored if the user is not a doctor.
+  Future<void> _tryLoadDoctorProfile() async {
+    try {
+      final profile = await DoctorRepository().getMyProfile();
+      if (mounted) setState(() => _doctorProfile = profile);
+    } catch (_) {}
+  }
+
+  /// Resolves the left-side logo bytes for the PDF:
+  /// independent doctor → profile picture; under hospital → hos_default.png.
+  Future<Uint8List?> _resolveLeftLogo() async {
+    final profile = _doctorProfile;
+    if (profile == null) return null; // PDF utility will use default
+    if (profile.practiceType.toLowerCase() == 'independent') {
+      final url = profile.profilePictureUrl;
+      if (url != null && url.isNotEmpty) {
+        return fetchNetworkImageBytes(url);
+      }
+    }
+    // Under hospital or no profile picture → PDF utility uses hos_default.png
+    return null;
+  }
+
+  /// Returns the display name, email, and location to show under the left logo.
+  /// Independent doctor → doctor's own name; hospital doctor → hospital name.
+  ({String? name, String? email, String? location}) _resolveLeftInfo() {
+    final profile = _doctorProfile;
+    if (profile == null) return (name: null, email: null, location: null);
+    if (profile.practiceType.toLowerCase() == 'independent') {
+      return (
+        name: profile.name.isNotEmpty ? profile.name : null,
+        email: profile.email.isNotEmpty ? profile.email : 'info@example.com',
+        location: 'Kenya',
+      );
+    }
+    // Under a hospital → use hospital name with fallback contact
+    return (
+      name: profile.hospitalName?.isNotEmpty == true
+          ? profile.hospitalName
+          : null,
+      email: 'info@example.com',
+      location: 'Kenya',
+    );
+  }
+
+  Future<void> _printPrescription() async {
+    final p = _prescription;
+    if (p == null) return;
+    setState(() => _generatingPdf = true);
+    try {
+      final leftLogo = await _resolveLeftLogo();
+      final info = _resolveLeftInfo();
+      await Printing.layoutPdf(
+        onLayout: (_) => buildPrescriptionPdf(
+          prescription: p,
+          leftLogoBytes: leftLogo,
+          leftName: info.name,
+          leftEmail: info.email,
+          leftLocation: info.location,
+        ),
+        name: 'Prescription_${p.id}.pdf',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not generate PDF: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+    if (mounted) setState(() => _generatingPdf = false);
+  }
+
+  Future<void> _downloadPrescription() async {
+    final p = _prescription;
+    if (p == null) return;
+    setState(() => _generatingPdf = true);
+    try {
+      final leftLogo = await _resolveLeftLogo();
+      final info = _resolveLeftInfo();
+      final bytes = await buildPrescriptionPdf(
+        prescription: p,
+        leftLogoBytes: leftLogo,
+        leftName: info.name,
+        leftEmail: info.email,
+        leftLocation: info.location,
+      );
+      await Printing.sharePdf(
+        bytes: bytes,
+        filename: 'Prescription_${p.id}.pdf',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not generate PDF: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+    if (mounted) setState(() => _generatingPdf = false);
   }
 
   Future<void> _loadData() async {
@@ -245,6 +363,29 @@ class _PrescriptionDetailScreenState
                 ),
                 if (p.status == 'active') ...[
                   const SizedBox(height: 18),
+                  // ── PDF / Print buttons (always shown) ──
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _PdfActionButton(
+                          icon: Icons.print_rounded,
+                          label: 'Print',
+                          loading: _generatingPdf,
+                          onTap: _printPrescription,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _PdfActionButton(
+                          icon: Icons.download_rounded,
+                          label: 'Download PDF',
+                          loading: _generatingPdf,
+                          onTap: _downloadPrescription,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
@@ -291,6 +432,29 @@ class _PrescriptionDetailScreenState
                     p.status == 'completed' ||
                     p.status == 'dispensed') ...[
                   const SizedBox(height: 18),
+                  // ── PDF / Print buttons ──
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _PdfActionButton(
+                          icon: Icons.print_rounded,
+                          label: 'Print',
+                          loading: _generatingPdf,
+                          onTap: _printPrescription,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _PdfActionButton(
+                          icon: Icons.download_rounded,
+                          label: 'Download PDF',
+                          loading: _generatingPdf,
+                          onTap: _downloadPrescription,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
@@ -308,35 +472,43 @@ class _PrescriptionDetailScreenState
                     ),
                   ),
                 ],
+                // ── PDF / Print for cancelled / expired / other statuses ──
+                if (p.status != 'active' &&
+                    p.status != 'sent_to_exchange' &&
+                    p.status != 'completed' &&
+                    p.status != 'dispensed') ...[
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _PdfActionButton(
+                          icon: Icons.print_rounded,
+                          label: 'Print',
+                          loading: _generatingPdf,
+                          onTap: _printPrescription,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _PdfActionButton(
+                          icon: Icons.download_rounded,
+                          label: 'Download PDF',
+                          loading: _generatingPdf,
+                          onTap: _downloadPrescription,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
           const SizedBox(height: 24),
 
           // ── Patient & Doctor Cards ──
-          Row(
-            children: [
-              Expanded(
-                child: _InfoTile(
-                  icon: Icons.person_rounded,
-                  iconBg: AppColors.primary.withValues(alpha: 0.1),
-                  iconColor: AppColors.primary,
-                  label: 'Patient',
-                  value: p.patientName ?? 'Unknown Patient',
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _InfoTile(
-                  icon: Icons.medical_services_rounded,
-                  iconBg: AppColors.secondary.withValues(alpha: 0.1),
-                  iconColor: AppColors.secondary,
-                  label: 'Prescribing Doctor',
-                  value: p.doctorName ?? 'Unknown Doctor',
-                ),
-              ),
-            ],
-          ),
+          _PatientInfoCard(prescription: p),
+          const SizedBox(height: 12),
+          _DoctorInfoCard(prescription: p),
           const SizedBox(height: 16),
 
           // ── Notes Card ──
@@ -443,6 +615,391 @@ class _PrescriptionDetailScreenState
             }),
         ],
       ),
+    );
+  }
+}
+
+// ── Patient Info Card (name + phone + email) ──
+class _PatientInfoCard extends StatelessWidget {
+  final Prescription prescription;
+  const _PatientInfoCard({required this.prescription});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = prescription;
+    final hasPhone = (p.patientPhone ?? '').isNotEmpty;
+    final hasEmail = (p.patientEmail ?? '').isNotEmpty;
+    final hasNationalId = (p.patientNationalId ?? '').isNotEmpty;
+    final hasInsurance = (p.patientInsuranceProvider ?? '').isNotEmpty ||
+        (p.patientInsuranceNumber ?? '').isNotEmpty;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Header row ────────────────────────────────────────────────
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(Icons.person_rounded,
+                    color: AppColors.primary, size: 20),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Patient',
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            color: AppColors.textSecondary,
+                            fontWeight: FontWeight.w500)),
+                    const SizedBox(height: 2),
+                    Text(p.patientName ?? 'Unknown Patient',
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary)),
+                    if (hasNationalId || hasPhone || hasEmail) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 20,
+                        runSpacing: 6,
+                        children: [
+                          if (hasNationalId)
+                            _PatientContactChip(
+                              icon: Icons.badge_outlined,
+                              label: 'NID',
+                              value: p.patientNationalId!,
+                            ),
+                          if (hasPhone)
+                            _PatientContactChip(
+                              icon: Icons.phone_outlined,
+                              value: p.patientPhone!,
+                            ),
+                          if (hasEmail)
+                            _PatientContactChip(
+                              icon: Icons.email_outlined,
+                              value: p.patientEmail!,
+                            ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          // ── Allergies ─────────────────────────────────────────────────
+          const SizedBox(height: 14),
+          Divider(height: 1, color: AppColors.border),
+          const SizedBox(height: 12),
+          _MedicalRow(
+            icon: Icons.warning_amber_rounded,
+            iconColor: const Color(0xFFEF4444),
+            label: 'Allergies',
+            items: p.patientAllergies,
+            chipColor: const Color(0xFFEF4444),
+          ),
+
+          // ── Chronic Conditions ────────────────────────────────────────
+          const SizedBox(height: 12),
+          _MedicalRow(
+            icon: Icons.monitor_heart_outlined,
+            iconColor: const Color(0xFFF59E0B),
+            label: 'Chronic Conditions',
+            items: p.patientChronicConditions,
+            chipColor: const Color(0xFFF59E0B),
+          ),
+
+          // ── Insurance ─────────────────────────────────────────────────
+          if (hasInsurance) ...[
+            const SizedBox(height: 12),
+            Divider(height: 1, color: AppColors.border),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(Icons.health_and_safety_outlined,
+                    size: 15, color: AppColors.primary),
+                const SizedBox(width: 6),
+                Text('Insurance',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textSecondary)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 20,
+              runSpacing: 6,
+              children: [
+                if ((p.patientInsuranceProvider ?? '').isNotEmpty)
+                  _PatientContactChip(
+                    icon: Icons.business_outlined,
+                    label: 'Provider',
+                    value: p.patientInsuranceProvider!,
+                  ),
+                if ((p.patientInsuranceNumber ?? '').isNotEmpty)
+                  _PatientContactChip(
+                    icon: Icons.confirmation_number_outlined,
+                    label: 'Policy No.',
+                    value: p.patientInsuranceNumber!,
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _MedicalRow extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final List<String> items;
+  final Color chipColor;
+
+  const _MedicalRow({
+    required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.items,
+    required this.chipColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 15, color: iconColor),
+            const SizedBox(width: 6),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondary)),
+          ],
+        ),
+        const SizedBox(height: 6),
+        items.isEmpty
+            ? Text('None',
+                style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                    fontStyle: FontStyle.italic))
+            : Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: items
+                    .map((item) => Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: chipColor.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                                color: chipColor.withValues(alpha: 0.30)),
+                          ),
+                          child: Text(item,
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: chipColor,
+                                  fontWeight: FontWeight.w500)),
+                        ))
+                    .toList(),
+              ),
+      ],
+    );
+  }
+}
+
+class _PatientContactChip extends StatelessWidget {
+  final IconData icon;
+  final String? label;
+  final String value;
+  const _PatientContactChip(
+      {required this.icon, required this.value, this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 13, color: AppColors.textSecondary),
+        const SizedBox(width: 4),
+        if (label != null) ...[
+          Text('$label: ',
+              style: TextStyle(
+                  fontSize: 11,
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w500)),
+        ],
+        Text(value,
+            style: TextStyle(
+                fontSize: 12.5,
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w500)),
+      ],
+    );
+  }
+}
+
+// ── Doctor Info Card (name + license + practice type + signature) ──
+class _DoctorInfoCard extends StatelessWidget {
+  final Prescription prescription;
+  const _DoctorInfoCard({required this.prescription});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = prescription;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.secondary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(Icons.medical_services_rounded,
+                    color: AppColors.secondary, size: 20),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Prescribing Doctor',
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            color: AppColors.textSecondary,
+                            fontWeight: FontWeight.w500)),
+                    const SizedBox(height: 2),
+                    Text(p.doctorName ?? 'Unknown Doctor',
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (p.doctorLicenseNumber != null ||
+              p.doctorPracticeType != null) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 20,
+              runSpacing: 8,
+              children: [
+                if (p.doctorLicenseNumber?.isNotEmpty == true)
+                  _DoctorMetaChip(
+                      icon: Icons.card_membership_outlined,
+                      label: 'License',
+                      value: p.doctorLicenseNumber!),
+                if (p.doctorPracticeType?.isNotEmpty == true)
+                  _DoctorMetaChip(
+                      icon: Icons.local_hospital_outlined,
+                      label: 'Practice',
+                      value: p.doctorPracticeType!),
+              ],
+            ),
+          ],
+          if (p.doctorSignatureUrl != null) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(Icons.draw_outlined,
+                    size: 14, color: AppColors.textSecondary),
+                const SizedBox(width: 6),
+                Text('Signature',
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w500)),
+              ],
+            ),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: Container(
+                height: 64,
+                width: 200,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(color: AppColors.border),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Image.network(
+                  p.doctorSignatureUrl!,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const Center(
+                      child: Icon(Icons.broken_image_outlined, size: 24)),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DoctorMetaChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  const _DoctorMetaChip(
+      {required this.icon, required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 13, color: AppColors.textSecondary),
+        const SizedBox(width: 4),
+        Text('$label: ',
+            style: TextStyle(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w500)),
+        Text(value,
+            style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary)),
+      ],
     );
   }
 }
@@ -600,31 +1157,37 @@ class _MedicationCard extends StatelessWidget {
           // Card body — details grid
           Padding(
             padding: const EdgeInsets.all(18),
-            child: Row(
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 8,
               children: [
-                Expanded(
-                  child: _DetailChip(
-                    icon: Icons.science_rounded,
-                    label: 'Dosage',
-                    value: item.dosage,
-                  ),
+                _DetailChip(
+                  icon: Icons.science_rounded,
+                  label: 'Dosage',
+                  value: item.dosage,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _DetailChip(
-                    icon: Icons.repeat_rounded,
-                    label: 'Frequency',
-                    value: item.frequency,
-                  ),
+                _DetailChip(
+                  icon: Icons.repeat_rounded,
+                  label: 'Frequency',
+                  value: item.frequency,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _DetailChip(
-                    icon: Icons.timer_rounded,
-                    label: 'Duration',
-                    value: item.duration,
-                  ),
+                _DetailChip(
+                  icon: Icons.timer_rounded,
+                  label: 'Duration',
+                  value: item.duration,
                 ),
+                if ((item.schedule ?? '').isNotEmpty)
+                  _DetailChip(
+                    icon: Icons.schedule_rounded,
+                    label: 'Schedule',
+                    value: item.schedule!,
+                  ),
+                if (item.refills > 0)
+                  _DetailChip(
+                    icon: Icons.refresh_rounded,
+                    label: 'Refills',
+                    value: '${item.refills}',
+                  ),
               ],
             ),
           ),
@@ -713,6 +1276,43 @@ class _DetailChip extends StatelessWidget {
 // ===========================================================================
 // Get Quote from Pharmacy – Bottom Sheet
 // ===========================================================================
+
+// ── PDF action button (Print / Download) ─────────────────────────────────────
+
+class _PdfActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool loading;
+  final VoidCallback onTap;
+
+  const _PdfActionButton({
+    required this.icon,
+    required this.label,
+    required this.loading,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: loading ? null : onTap,
+      icon: loading
+          ? const SizedBox(
+              width: 14,
+              height: 14,
+              child:
+                  CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+          : Icon(icon, size: 16),
+      label: Text(label),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: Colors.white,
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.7)),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+}
 
 class _PharmacyQuoteSheet extends StatefulWidget {
   final List<PrescriptionItem> items;

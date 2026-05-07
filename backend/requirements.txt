@@ -18,6 +18,10 @@ django-celery-beat==2.9.0
 # Email
 django-anymail==13.1
 
+# Storage (AWS S3)
+boto3==1.38.9
+django-storages[s3]==1.14.4
+
 # Utilities
 python-decouple==3.8
 Pillow==11.2.1

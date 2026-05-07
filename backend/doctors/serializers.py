@@ -13,6 +13,8 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
     hospital_name = serializers.CharField(
         source='hospital.name', read_only=True, default=None,
     )
+    profile_picture_url = serializers.SerializerMethodField()
+    signature_url = serializers.SerializerMethodField()
 
     class Meta:
         model = DoctorProfile
@@ -23,9 +25,31 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
             'years_of_experience', 'bio', 'consultation_fee',
             'is_accepting_patients', 'is_verified',
             'languages', 'available_days', 'available_hours',
+            'profile_picture', 'profile_picture_url',
+            'signature', 'signature_url',
             'created_at', 'updated_at',
         ]
-        read_only_fields = ['id', 'user', 'is_verified', 'created_at', 'updated_at']
+        read_only_fields = [
+            'id', 'user', 'is_verified',
+            'profile_picture_url', 'signature_url',
+            'created_at', 'updated_at',
+        ]
+
+    def get_profile_picture_url(self, obj):
+        if not obj.profile_picture:
+            return None
+        request = self.context.get('request')
+        if request:
+            return request.build_absolute_uri(obj.profile_picture.url)
+        return obj.profile_picture.url
+
+    def get_signature_url(self, obj):
+        if not obj.signature:
+            return None
+        request = self.context.get('request')
+        if request:
+            return request.build_absolute_uri(obj.signature.url)
+        return obj.signature.url
 
 
 class DoctorRegistrationSerializer(serializers.Serializer):
@@ -104,6 +128,7 @@ class DoctorDirectorySerializer(serializers.ModelSerializer):
     hospital_name = serializers.CharField(
         source='hospital.name', read_only=True, default=None,
     )
+    profile_picture_url = serializers.SerializerMethodField()
 
     class Meta:
         model = DoctorProfile
@@ -114,4 +139,13 @@ class DoctorDirectorySerializer(serializers.ModelSerializer):
             'years_of_experience', 'bio', 'consultation_fee',
             'is_accepting_patients', 'is_verified',
             'languages', 'available_days', 'available_hours',
+            'profile_picture_url',
         ]
+
+    def get_profile_picture_url(self, obj):
+        if not obj.profile_picture:
+            return None
+        request = self.context.get('request')
+        if request:
+            return request.build_absolute_uri(obj.profile_picture.url)
+        return obj.profile_picture.url

@@ -25,6 +25,8 @@ class PharmacyReportsScreen extends ConsumerStatefulWidget {
 class _PharmacyReportsScreenState
     extends ConsumerState<PharmacyReportsScreen> {
   String _period = 'month';
+  DateTime? _dateFrom;
+  DateTime? _dateTo;
   bool _exportingPdf = false;
   final _nf = NumberFormat('#,##0', 'en_US');
 
@@ -32,6 +34,47 @@ class _PharmacyReportsScreenState
       v is num ? v.toDouble() : double.tryParse('$v') ?? 0.0;
   static int _i(dynamic v) =>
       v is int ? v : (v is num ? v.toInt() : int.tryParse('$v') ?? 0);
+
+  bool get _isCustomRange => _dateFrom != null && _dateTo != null;
+
+  ({String period, int? branchId, String? dateFrom, String? dateTo})
+      _providerParams(int? branchId) {
+    final fmt = DateFormat('yyyy-MM-dd');
+    return (
+      period: _period,
+      branchId: branchId,
+      dateFrom: _isCustomRange ? fmt.format(_dateFrom!) : null,
+      dateTo: _isCustomRange ? fmt.format(_dateTo!) : null,
+    );
+  }
+
+  Future<void> _pickDateRange() async {
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      initialDateRange: (_dateFrom != null && _dateTo != null)
+          ? DateTimeRange(start: _dateFrom!, end: _dateTo!)
+          : null,
+      builder: (context, child) => Theme(
+        data: Theme.of(context),
+        child: child!,
+      ),
+    );
+    if (picked != null) {
+      setState(() {
+        _dateFrom = picked.start;
+        _dateTo = picked.end;
+      });
+    }
+  }
+
+  void _clearDateRange() {
+    setState(() {
+      _dateFrom = null;
+      _dateTo = null;
+    });
+  }
 
   String _fmt(dynamic v) => 'KSh ${_nf.format(_d(v).toInt())}';
 
@@ -42,6 +85,10 @@ class _PharmacyReportsScreenState
   }
 
   String get _periodLabel {
+    if (_isCustomRange) {
+      final fmt = DateFormat('dd MMM yyyy');
+      return '${fmt.format(_dateFrom!)} – ${fmt.format(_dateTo!)}';
+    }
     switch (_period) {
       case 'today':
         return 'Today';
@@ -58,7 +105,7 @@ class _PharmacyReportsScreenState
 
   Future<void> _downloadPdf() async {
     final activeBranch = ref.read(activeBranchProvider);
-    final salesAsync = ref.read(salesAnalyticsProvider((period: _period, branchId: activeBranch?.id)));
+    final salesAsync = ref.read(salesAnalyticsProvider(_providerParams(activeBranch?.id)));
     final inventoryAsync = ref.read(inventoryAnalyticsProvider);
     final sales = salesAsync.valueOrNull;
     final inv = inventoryAsync.valueOrNull;
@@ -303,7 +350,7 @@ class _PharmacyReportsScreenState
   @override
   Widget build(BuildContext context) {
     final activeBranch = ref.watch(activeBranchProvider);
-    final salesAsync = ref.watch(salesAnalyticsProvider((period: _period, branchId: activeBranch?.id)));
+    final salesAsync = ref.watch(salesAnalyticsProvider(_providerParams(activeBranch?.id)));
     final inventoryAsync = ref.watch(inventoryAnalyticsProvider);
 
     return LayoutBuilder(
@@ -379,6 +426,8 @@ class _PharmacyReportsScreenState
       mainAxisSize: MainAxisSize.min,
       children: [
         _buildPeriodSelector(),
+        const SizedBox(width: 8),
+        _buildDateRangeButton(),
         const SizedBox(width: 10),
         downloadBtn,
       ],
@@ -444,6 +493,75 @@ class _PharmacyReportsScreenState
               onTap: () => setState(() => _period = e.$1),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDateRangeButton() {
+    final fmt = DateFormat('dd MMM');
+    if (_isCustomRange) {
+      return Container(
+        decoration: BoxDecoration(
+          color: AppColors.primary.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            InkWell(
+              onTap: _pickDateRange,
+              borderRadius: const BorderRadius.horizontal(
+                  left: Radius.circular(8)),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.date_range,
+                        size: 14, color: AppColors.primary),
+                    const SizedBox(width: 5),
+                    Text(
+                      '${fmt.format(_dateFrom!)} – ${fmt.format(_dateTo!)}',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Container(
+                width: 1,
+                height: 24,
+                color: AppColors.primary.withValues(alpha: 0.3)),
+            InkWell(
+              onTap: _clearDateRange,
+              borderRadius: const BorderRadius.horizontal(
+                  right: Radius.circular(8)),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 8, vertical: 8),
+                child: Icon(Icons.close,
+                    size: 14, color: AppColors.primary),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return OutlinedButton.icon(
+      onPressed: _pickDateRange,
+      icon: const Icon(Icons.date_range, size: 15),
+      label: const Text('Date Range'),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.textSecondary,
+        side: BorderSide(color: AppColors.border),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        textStyle: const TextStyle(fontSize: 12),
       ),
     );
   }

@@ -12,9 +12,11 @@ urlpatterns = [
     path('api/medications/', include('medications.urls')),
     path('api/exchange/', include('exchange.urls')),
     path('api/superadmin/', include('superadmin.urls')),
+    path('api/usage-billing/', include('usage_billing.urls')),
     # API — Shared public apps
     path('api/doctors/', include('doctors.urls')),
     path('api/messaging/', include('messaging.urls')),
+    path('api/clinical-catalog/', include('clinical_catalog.urls')),
     # API — Hospital tenant apps
     path('api/departments/', include('departments.urls')),
     path('api/staff/', include('staff_profiles.urls')),
@@ -35,6 +37,9 @@ urlpatterns = [
     path('api/purchase-orders/', include('purchase_orders.urls')),
     path('api/pos/', include('pos.urls')),
     path('api/dispensing/', include('dispensing.urls')),
+    path('api/expenses/', include('expenses.urls')),
+    path('api/insurance/', include('insurance.urls')),
+    path('api/reports/', include('reports.urls')),
     # OpenAPI documentation
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),

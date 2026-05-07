@@ -31,6 +31,16 @@ class PatientRepository {
     return Patient.fromJson(response.data);
   }
 
+  Future<Patient> getMyProfile() async {
+    final response = await _dio.get('/patients/me/');
+    return Patient.fromJson(response.data);
+  }
+
+  Future<Patient> updateMyProfile(Map<String, dynamic> data) async {
+    final response = await _dio.patch('/patients/me/', data: data);
+    return Patient.fromJson(response.data);
+  }
+
   Future<void> deletePatient(int id) async {
     await _dio.delete('/patients/$id/');
   }

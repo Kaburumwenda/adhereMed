@@ -20,6 +20,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _lastNameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _nationalIdController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   bool _obscurePassword = true;
@@ -31,6 +32,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _lastNameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _nationalIdController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
@@ -46,6 +48,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           firstName: _firstNameController.text.trim(),
           lastName: _lastNameController.text.trim(),
           phone: _phoneController.text.trim(),
+          nationalId: _nationalIdController.text.trim(),
         );
 
     final state = ref.read(authProvider);
@@ -112,6 +115,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     lastNameController: _lastNameController,
                     emailController: _emailController,
                     phoneController: _phoneController,
+                    nationalIdController: _nationalIdController,
                     passwordController: _passwordController,
                     confirmPasswordController: _confirmPasswordController,
                     obscurePassword: _obscurePassword,
@@ -127,6 +131,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     lastNameController: _lastNameController,
                     emailController: _emailController,
                     phoneController: _phoneController,
+                    nationalIdController: _nationalIdController,
                     passwordController: _passwordController,
                     confirmPasswordController: _confirmPasswordController,
                     obscurePassword: _obscurePassword,
@@ -165,6 +170,7 @@ class _WideLayout extends StatelessWidget {
     required this.lastNameController,
     required this.emailController,
     required this.phoneController,
+    required this.nationalIdController,
     required this.passwordController,
     required this.confirmPasswordController,
     required this.obscurePassword,
@@ -179,6 +185,7 @@ class _WideLayout extends StatelessWidget {
   final TextEditingController lastNameController;
   final TextEditingController emailController;
   final TextEditingController phoneController;
+  final TextEditingController nationalIdController;
   final TextEditingController passwordController;
   final TextEditingController confirmPasswordController;
   final bool obscurePassword;
@@ -287,6 +294,7 @@ class _WideLayout extends StatelessWidget {
                 lastNameController: lastNameController,
                 emailController: emailController,
                 phoneController: phoneController,
+                nationalIdController: nationalIdController,
                 passwordController: passwordController,
                 confirmPasswordController: confirmPasswordController,
                 obscurePassword: obscurePassword,
@@ -310,6 +318,7 @@ class _NarrowLayout extends StatelessWidget {
     required this.lastNameController,
     required this.emailController,
     required this.phoneController,
+    required this.nationalIdController,
     required this.passwordController,
     required this.confirmPasswordController,
     required this.obscurePassword,
@@ -324,6 +333,7 @@ class _NarrowLayout extends StatelessWidget {
   final TextEditingController lastNameController;
   final TextEditingController emailController;
   final TextEditingController phoneController;
+  final TextEditingController nationalIdController;
   final TextEditingController passwordController;
   final TextEditingController confirmPasswordController;
   final bool obscurePassword;
@@ -370,6 +380,7 @@ class _NarrowLayout extends StatelessWidget {
             lastNameController: lastNameController,
             emailController: emailController,
             phoneController: phoneController,
+            nationalIdController: nationalIdController,
             passwordController: passwordController,
             confirmPasswordController: confirmPasswordController,
             obscurePassword: obscurePassword,
@@ -468,6 +479,7 @@ class _FormCard extends StatelessWidget {
     required this.lastNameController,
     required this.emailController,
     required this.phoneController,
+    required this.nationalIdController,
     required this.passwordController,
     required this.confirmPasswordController,
     required this.obscurePassword,
@@ -482,6 +494,7 @@ class _FormCard extends StatelessWidget {
   final TextEditingController lastNameController;
   final TextEditingController emailController;
   final TextEditingController phoneController;
+  final TextEditingController nationalIdController;
   final TextEditingController passwordController;
   final TextEditingController confirmPasswordController;
   final bool obscurePassword;
@@ -605,6 +618,15 @@ class _FormCard extends StatelessWidget {
               label: 'Phone (optional)',
               icon: Icons.phone_outlined,
               keyboardType: TextInputType.phone,
+            ),
+            const SizedBox(height: 14),
+
+            _GlassField(
+              controller: nationalIdController,
+              label: 'National ID',
+              icon: Icons.badge_outlined,
+              validator: (v) =>
+                  v == null || v.trim().isEmpty ? 'National ID is required' : null,
             ),
             const SizedBox(height: 14),
 

@@ -1,0 +1,81 @@
+<template>
+  <NuxtLayout name="auth">
+    <div class="auth-root">
+      <div class="brand-gradient bg-fill" />
+      <v-container fluid class="fill-height" style="position:relative;z-index:2;">
+        <v-row justify="center" align="center" class="fill-height">
+          <v-col cols="12" sm="9" md="6" lg="5">
+            <v-card rounded="xl" elevation="12" class="pa-6 pa-md-8">
+              <div class="text-center mb-6">
+                <BrandLogo :size="48" class="mx-auto" />
+                <h2 class="text-h5 font-weight-bold mt-4">Forgot Password</h2>
+                <p class="text-body-2 text-medium-emphasis">
+                  Enter your email to receive a reset link.
+                </p>
+              </div>
+
+              <v-alert v-if="success" type="success" variant="tonal" class="mb-4">
+                If an account exists for {{ email }}, a reset link has been sent.
+              </v-alert>
+
+              <v-form v-if="!success" ref="formRef" @submit.prevent="onSubmit">
+                <v-text-field
+                  v-model="email"
+                  label="Email"
+                  type="email"
+                  prepend-inner-icon="mdi-email-outline"
+                  :rules="[v => !!v || 'Required', v => /.+@.+\..+/.test(v) || 'Invalid']"
+                />
+                <v-btn
+                  type="submit"
+                  color="primary"
+                  block
+                  size="large"
+                  rounded="lg"
+                  class="text-none"
+                  :loading="loading"
+                >Send Reset Link</v-btn>
+              </v-form>
+
+              <div class="text-center mt-6 text-body-2">
+                <NuxtLink to="/login" class="text-primary font-weight-medium">
+                  Back to sign in
+                </NuxtLink>
+              </div>
+            </v-card>
+          </v-col>
+        </v-row>
+      </v-container>
+    </div>
+  </NuxtLayout>
+</template>
+
+<script setup>
+import { useAuthStore } from '~/stores/auth'
+
+definePageMeta({ layout: false })
+
+const auth = useAuthStore()
+const formRef = ref(null)
+const email = ref('')
+const loading = ref(false)
+const success = ref(false)
+
+async function onSubmit() {
+  const { valid } = await formRef.value.validate()
+  if (!valid) return
+  loading.value = true
+  try {
+    await auth.forgotPassword(email.value.trim())
+  } catch (_) {
+    // Always show success to avoid leaking which emails exist
+  }
+  loading.value = false
+  success.value = true
+}
+</script>
+
+<style scoped>
+.auth-root { position: relative; min-height: 100vh; overflow: hidden; }
+.bg-fill { position: absolute; inset: 0; z-index: 0; }
+</style>

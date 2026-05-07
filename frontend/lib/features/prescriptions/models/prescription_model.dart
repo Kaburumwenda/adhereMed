@@ -3,8 +3,18 @@ class Prescription {
   final int? consultationId;
   final int? patientId;
   final String? patientName;
+  final String? patientPhone;
+  final String? patientEmail;
+  final String? patientNationalId;
+  final List<String> patientAllergies;
+  final List<String> patientChronicConditions;
+  final String? patientInsuranceProvider;
+  final String? patientInsuranceNumber;
   final int? doctorId;
   final String? doctorName;
+  final String? doctorLicenseNumber;
+  final String? doctorPracticeType;
+  final String? doctorSignatureUrl;
   final String status;
   final String? notes;
   final String? createdAt;
@@ -15,8 +25,18 @@ class Prescription {
     this.consultationId,
     this.patientId,
     this.patientName,
+    this.patientPhone,
+    this.patientEmail,
+    this.patientNationalId,
+    this.patientAllergies = const [],
+    this.patientChronicConditions = const [],
+    this.patientInsuranceProvider,
+    this.patientInsuranceNumber,
     this.doctorId,
     this.doctorName,
+    this.doctorLicenseNumber,
+    this.doctorPracticeType,
+    this.doctorSignatureUrl,
     required this.status,
     this.notes,
     this.createdAt,
@@ -37,12 +57,24 @@ class Prescription {
               ? '${patient['user']?['first_name'] ?? ''} ${patient['user']?['last_name'] ?? ''}'
                   .trim()
               : null),
+      patientPhone: json['patient_phone'] as String?,
+      patientEmail: json['patient_email'] as String?,
+      patientNationalId: json['patient_national_id'] as String?,
+      patientAllergies:
+          List<String>.from(json['patient_allergies'] as List? ?? []),
+      patientChronicConditions:
+          List<String>.from(json['patient_chronic_conditions'] as List? ?? []),
+      patientInsuranceProvider: json['patient_insurance_provider'] as String?,
+      patientInsuranceNumber: json['patient_insurance_number'] as String?,
       doctorId: doctor is Map ? doctor['id'] : json['doctor'],
       doctorName: json['doctor_name'] as String? ??
           (doctor is Map
               ? '${doctor['first_name'] ?? ''} ${doctor['last_name'] ?? ''}'
                   .trim()
               : null),
+      doctorLicenseNumber: json['doctor_license_number'] as String?,
+      doctorPracticeType: json['doctor_practice_type'] as String?,
+      doctorSignatureUrl: json['doctor_signature_url'] as String?,
       status: json['status'] ?? 'active',
       notes: json['notes'],
       createdAt: json['created_at'],
@@ -73,6 +105,8 @@ class PrescriptionItem {
   final String duration;
   final int quantity;
   final String? instructions;
+  final String? schedule;
+  final int refills;
 
   PrescriptionItem({
     this.id,
@@ -85,6 +119,8 @@ class PrescriptionItem {
     required this.duration,
     this.quantity = 1,
     this.instructions,
+    this.schedule,
+    this.refills = 0,
   });
 
   factory PrescriptionItem.fromJson(Map<String, dynamic> json) =>
@@ -99,6 +135,8 @@ class PrescriptionItem {
         duration: json['duration'] ?? '',
         quantity: json['quantity'] ?? 1,
         instructions: json['instructions'],
+        schedule: json['schedule'] as String?,
+        refills: json['refills'] as int? ?? 0,
       );
 
   Map<String, dynamic> toJson() => {
@@ -111,5 +149,7 @@ class PrescriptionItem {
         'duration': duration,
         'quantity': quantity,
         'instructions': instructions,
+        'schedule': schedule,
+        'refills': refills,
       };
 }

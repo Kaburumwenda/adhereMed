@@ -365,6 +365,8 @@ mixin _$RegisterRequest {
   @JsonKey(name: 'last_name')
   String get lastName => throw _privateConstructorUsedError;
   String get phone => throw _privateConstructorUsedError;
+  @JsonKey(name: 'national_id')
+  String get nationalId => throw _privateConstructorUsedError;
 
   /// Serializes this RegisterRequest to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
@@ -389,6 +391,7 @@ abstract class $RegisterRequestCopyWith<$Res> {
     @JsonKey(name: 'first_name') String firstName,
     @JsonKey(name: 'last_name') String lastName,
     String phone,
+    @JsonKey(name: 'national_id') String nationalId,
   });
 }
 
@@ -412,6 +415,7 @@ class _$RegisterRequestCopyWithImpl<$Res, $Val extends RegisterRequest>
     Object? firstName = null,
     Object? lastName = null,
     Object? phone = null,
+    Object? nationalId = null,
   }) {
     return _then(
       _value.copyWith(
@@ -435,6 +439,10 @@ class _$RegisterRequestCopyWithImpl<$Res, $Val extends RegisterRequest>
                 ? _value.phone
                 : phone // ignore: cast_nullable_to_non_nullable
                       as String,
+            nationalId: null == nationalId
+                ? _value.nationalId
+                : nationalId // ignore: cast_nullable_to_non_nullable
+                      as String,
           )
           as $Val,
     );
@@ -456,6 +464,7 @@ abstract class _$$RegisterRequestImplCopyWith<$Res>
     @JsonKey(name: 'first_name') String firstName,
     @JsonKey(name: 'last_name') String lastName,
     String phone,
+    @JsonKey(name: 'national_id') String nationalId,
   });
 }
 
@@ -478,6 +487,7 @@ class __$$RegisterRequestImplCopyWithImpl<$Res>
     Object? firstName = null,
     Object? lastName = null,
     Object? phone = null,
+    Object? nationalId = null,
   }) {
     return _then(
       _$RegisterRequestImpl(
@@ -501,6 +511,10 @@ class __$$RegisterRequestImplCopyWithImpl<$Res>
             ? _value.phone
             : phone // ignore: cast_nullable_to_non_nullable
                   as String,
+        nationalId: null == nationalId
+            ? _value.nationalId
+            : nationalId // ignore: cast_nullable_to_non_nullable
+                  as String,
       ),
     );
   }
@@ -515,6 +529,7 @@ class _$RegisterRequestImpl implements _RegisterRequest {
     @JsonKey(name: 'first_name') required this.firstName,
     @JsonKey(name: 'last_name') required this.lastName,
     this.phone = '',
+    @JsonKey(name: 'national_id') required this.nationalId,
   });
 
   factory _$RegisterRequestImpl.fromJson(Map<String, dynamic> json) =>
@@ -533,10 +548,13 @@ class _$RegisterRequestImpl implements _RegisterRequest {
   @override
   @JsonKey()
   final String phone;
+  @override
+  @JsonKey(name: 'national_id')
+  final String nationalId;
 
   @override
   String toString() {
-    return 'RegisterRequest(email: $email, password: $password, firstName: $firstName, lastName: $lastName, phone: $phone)';
+    return 'RegisterRequest(email: $email, password: $password, firstName: $firstName, lastName: $lastName, phone: $phone, nationalId: $nationalId)';
   }
 
   @override
@@ -551,13 +569,15 @@ class _$RegisterRequestImpl implements _RegisterRequest {
                 other.firstName == firstName) &&
             (identical(other.lastName, lastName) ||
                 other.lastName == lastName) &&
-            (identical(other.phone, phone) || other.phone == phone));
+            (identical(other.phone, phone) || other.phone == phone) &&
+            (identical(other.nationalId, nationalId) ||
+                other.nationalId == nationalId));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode =>
-      Object.hash(runtimeType, email, password, firstName, lastName, phone);
+      Object.hash(runtimeType, email, password, firstName, lastName, phone, nationalId);
 
   /// Create a copy of RegisterRequest
   /// with the given fields replaced by the non-null parameter values.
@@ -583,6 +603,7 @@ abstract class _RegisterRequest implements RegisterRequest {
     @JsonKey(name: 'first_name') required final String firstName,
     @JsonKey(name: 'last_name') required final String lastName,
     final String phone,
+    @JsonKey(name: 'national_id') required final String nationalId,
   }) = _$RegisterRequestImpl;
 
   factory _RegisterRequest.fromJson(Map<String, dynamic> json) =
@@ -600,6 +621,9 @@ abstract class _RegisterRequest implements RegisterRequest {
   String get lastName;
   @override
   String get phone;
+  @override
+  @JsonKey(name: 'national_id')
+  String get nationalId;
 
   /// Create a copy of RegisterRequest
   /// with the given fields replaced by the non-null parameter values.

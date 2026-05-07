@@ -25,7 +25,14 @@ class _StartChatScreenState extends ConsumerState<StartChatScreen> {
   List<ChatMessage> _messages = [];
   int? _conversationId;
   bool _sending = false;
+  bool _checkingExisting = true;
   Timer? _pollTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkExistingConversation();
+  }
 
   @override
   void dispose() {
@@ -33,6 +40,22 @@ class _StartChatScreenState extends ConsumerState<StartChatScreen> {
     _messageCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _checkExistingConversation() async {
+    try {
+      final conversations = await _repo.getConversations();
+      final existing = conversations.where(
+        (c) => c.doctorId == int.tryParse(widget.doctorId),
+      );
+      if (!mounted) return;
+      if (existing.isNotEmpty) {
+        // Jump directly to the existing chat
+        context.replace('/messages/${existing.first.id}');
+        return;
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _checkingExisting = false);
   }
 
   void _startPolling() {
@@ -113,7 +136,11 @@ class _StartChatScreenState extends ConsumerState<StartChatScreen> {
 
     return Column(
       children: [
-        // Header
+        if (_checkingExisting)
+          const Expanded(
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else ...[
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
@@ -213,6 +240,7 @@ class _StartChatScreenState extends ConsumerState<StartChatScreen> {
             ],
           ),
         ),
+        ], // end else
       ],
     );
   }

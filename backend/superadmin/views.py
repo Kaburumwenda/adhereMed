@@ -272,11 +272,19 @@ SEED_COMMANDS = {
         "scope": "public",
         "command": "seed_medications",
     },
+    "clinical_catalog": {
+        "label": "Clinical Catalog",
+        "description": "Allergies, chronic conditions, ICD-style diagnoses & procedures",
+        "scope": "public",
+        "command": "seed_clinical_catalog",
+        "supports_clear": True,
+    },
     "pharmacy_stock": {
         "label": "Pharmacy Stock",
         "description": "150+ medication stock items with prices, categories & units",
         "scope": "tenant",
         "command": "seed_pharmacy_stock",
+        "supports_reset": True,
     },
     "lab_tests": {
         "label": "Lab Test Catalog",
@@ -298,6 +306,8 @@ def seed_catalog(request):
             "label": info["label"],
             "description": info["description"],
             "scope": info["scope"],
+            "supports_reset": info.get("supports_reset", False),
+            "supports_clear": info.get("supports_clear", False),
         })
     return Response(items)
 
@@ -314,6 +324,7 @@ def run_seed(request):
 
     cmd_key = request.data.get("command", "")
     tenant_id = request.data.get("tenant_id")
+    all_tenants = bool(request.data.get("all_tenants"))
     reset = request.data.get("reset", False)
 
     if cmd_key not in SEED_COMMANDS:
@@ -326,9 +337,29 @@ def run_seed(request):
 
     # Tenant-scoped commands need a tenant
     if info["scope"] == "tenant":
+        if all_tenants:
+            tenants_qs = Tenant.objects.exclude(schema_name="public").filter(is_active=True)
+            results = []
+            kwargs = {}
+            if reset and info.get("supports_reset"):
+                kwargs["reset"] = True
+            for t in tenants_qs:
+                try:
+                    with schema_context(t.schema_name):
+                        call_command(info["command"], **kwargs)
+                    results.append({"tenant": t.name, "status": "ok"})
+                except Exception as e:
+                    results.append({"tenant": t.name, "status": "error", "error": str(e)})
+            ok = sum(1 for r in results if r["status"] == "ok")
+            return Response({
+                "detail": f"'{info['label']}' seeded for {ok}/{len(results)} tenants.",
+                "command": cmd_key,
+                "results": results,
+            })
+
         if not tenant_id:
             return Response(
-                {"detail": "tenant_id is required for this seed command."},
+                {"detail": "tenant_id (or all_tenants=true) is required for this seed command."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         try:
@@ -341,7 +372,7 @@ def run_seed(request):
 
         try:
             kwargs = {}
-            if reset and cmd_key == "pharmacy_stock":
+            if reset and info.get("supports_reset"):
                 kwargs["reset"] = True
             with schema_context(tenant.schema_name):
                 call_command(info["command"], **kwargs)
@@ -359,7 +390,10 @@ def run_seed(request):
 
     # Public-scoped commands
     try:
-        call_command(info["command"])
+        kwargs = {}
+        if reset and info.get("supports_clear"):
+            kwargs["clear"] = True
+        call_command(info["command"], **kwargs)
     except Exception as e:
         return Response(
             {"detail": f"Seed failed: {e}"},

@@ -18,6 +18,8 @@ class DoctorProfile {
   final List<String> languages;
   final List<String> availableDays;
   final Map<String, dynamic> availableHours;
+  final String? profilePictureUrl;
+  final String? signatureUrl;
 
   DoctorProfile({
     required this.id,
@@ -39,6 +41,8 @@ class DoctorProfile {
     this.languages = const [],
     this.availableDays = const [],
     this.availableHours = const {},
+    this.profilePictureUrl,
+    this.signatureUrl,
   });
 
   factory DoctorProfile.fromJson(Map<String, dynamic> json) {
@@ -62,6 +66,8 @@ class DoctorProfile {
       languages: List<String>.from(json['languages'] ?? []),
       availableDays: List<String>.from(json['available_days'] ?? []),
       availableHours: Map<String, dynamic>.from(json['available_hours'] ?? {}),
+      profilePictureUrl: json['profile_picture_url'] as String?,
+      signatureUrl: json['signature_url'] as String?,
     );
   }
 }

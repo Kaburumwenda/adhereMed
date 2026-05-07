@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:http_parser/http_parser.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/models/paginated_response.dart';
 import '../models/doctor_model.dart';
@@ -49,6 +50,58 @@ class DoctorRepository {
   /// Update the logged-in doctor's profile.
   Future<DoctorProfile> updateMyProfile(Map<String, dynamic> data) async {
     final response = await _dio.patch('/doctors/me/', data: data);
+    return DoctorProfile.fromJson(response.data);
+  }
+
+  /// Upload a profile picture for the logged-in doctor.
+  /// [bytes] is the raw file data, [filename] is the original file name.
+  Future<DoctorProfile> uploadProfilePicture({
+    required List<int> bytes,
+    required String filename,
+  }) async {
+    final ext = filename.split('.').last.toLowerCase();
+    final mime = ext == 'png'
+        ? 'png'
+        : ext == 'gif'
+            ? 'gif'
+            : 'jpeg';
+    final formData = FormData.fromMap({
+      'profile_picture': MultipartFile.fromBytes(
+        bytes,
+        filename: filename,
+        contentType: MediaType('image', mime),
+      ),
+    });
+    final response = await _dio.patch(
+      '/doctors/me/upload-picture/',
+      data: formData,
+    );
+    return DoctorProfile.fromJson(response.data);
+  }
+
+  /// Upload a digital signature for the logged-in doctor.
+  /// [bytes] is the raw PNG data.
+  Future<DoctorProfile> uploadSignature({
+    required List<int> bytes,
+    String filename = 'signature.png',
+  }) async {
+    final formData = FormData.fromMap({
+      'signature': MultipartFile.fromBytes(
+        bytes,
+        filename: filename,
+        contentType: MediaType('image', 'png'),
+      ),
+    });
+    final response = await _dio.patch(
+      '/doctors/me/upload-signature/',
+      data: formData,
+    );
+    return DoctorProfile.fromJson(response.data);
+  }
+
+  /// Delete the stored digital signature.
+  Future<DoctorProfile> deleteSignature() async {
+    final response = await _dio.delete('/doctors/me/delete-signature/');
     return DoctorProfile.fromJson(response.data);
   }
 }

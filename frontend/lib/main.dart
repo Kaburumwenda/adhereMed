@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/network/api_client.dart';
 import 'core/router.dart';
+import 'core/services/offline_queue_service.dart';
 import 'core/theme.dart';
 
 void main() async {
@@ -30,6 +31,7 @@ void main() async {
   };
 
   await ApiClient.restoreTenantSchema();
+  await OfflineQueueService.instance.load();
   runApp(const ProviderScope(child: AdhereMedApp()));
 }
 

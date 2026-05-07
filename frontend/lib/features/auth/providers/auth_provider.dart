@@ -35,6 +35,7 @@ class AuthNotifier extends AsyncNotifier<User?> {
     required String firstName,
     required String lastName,
     String phone = '',
+    required String nationalId,
   }) async {
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() async {
@@ -44,6 +45,7 @@ class AuthNotifier extends AsyncNotifier<User?> {
         firstName: firstName,
         lastName: lastName,
         phone: phone,
+        nationalId: nationalId,
       ));
       return result.user;
     });

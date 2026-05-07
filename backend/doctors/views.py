@@ -57,3 +57,75 @@ class MyDoctorProfileView(generics.RetrieveUpdateAPIView):
         return DoctorProfile.objects.select_related('user', 'hospital').get(
             user=self.request.user,
         )
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx['request'] = self.request
+        return ctx
+
+
+class UploadDoctorPictureView(generics.GenericAPIView):
+    """PATCH /doctors/me/upload-picture/ — multipart profile picture upload."""
+    serializer_class = DoctorProfileSerializer
+
+    def patch(self, request, *args, **kwargs):
+        profile = DoctorProfile.objects.get(user=request.user)
+        picture = request.FILES.get('profile_picture')
+        if picture is None:
+            return Response(
+                {'detail': 'No file provided. Send a multipart/form-data request with field "profile_picture".'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Validate MIME type
+        content_type = getattr(picture, 'content_type', '')
+        if not content_type.startswith('image/'):
+            return Response(
+                {'detail': 'Only image files are accepted.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Delete old picture to avoid orphan files
+        if profile.profile_picture:
+            profile.profile_picture.delete(save=False)
+        profile.profile_picture = picture
+        profile.save(update_fields=['profile_picture'])
+        serializer = self.get_serializer(profile, context={'request': request})
+        return Response(serializer.data)
+
+
+class UploadDoctorSignatureView(generics.GenericAPIView):
+    """PATCH /doctors/me/upload-signature/ — saves the doctor's digital signature."""
+    serializer_class = DoctorProfileSerializer
+
+    def patch(self, request, *args, **kwargs):
+        profile = DoctorProfile.objects.get(user=request.user)
+        signature_file = request.FILES.get('signature')
+        if signature_file is None:
+            return Response(
+                {'detail': 'No file provided. Send multipart/form-data with field "signature".'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        content_type = getattr(signature_file, 'content_type', '')
+        if not content_type.startswith('image/'):
+            return Response(
+                {'detail': 'Only image files are accepted.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if profile.signature:
+            profile.signature.delete(save=False)
+        profile.signature = signature_file
+        profile.save(update_fields=['signature'])
+        serializer = self.get_serializer(profile, context={'request': request})
+        return Response(serializer.data)
+
+
+class DeleteDoctorSignatureView(generics.GenericAPIView):
+    """DELETE /doctors/me/upload-signature/ — removes the stored signature."""
+    serializer_class = DoctorProfileSerializer
+
+    def delete(self, request, *args, **kwargs):
+        profile = DoctorProfile.objects.get(user=request.user)
+        if profile.signature:
+            profile.signature.delete(save=False)
+            profile.save(update_fields=['signature'])
+        serializer = self.get_serializer(profile, context={'request': request})
+        return Response(serializer.data)

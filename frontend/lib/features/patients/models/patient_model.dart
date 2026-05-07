@@ -12,6 +12,7 @@ class Patient {
   final String? address;
   final String? emergencyContactName;
   final String? emergencyContactPhone;
+  final String? emergencyContactRelation;
   final String? allergies;
   final String? chronicConditions;
   final String? insuranceProvider;
@@ -32,6 +33,7 @@ class Patient {
     this.address,
     this.emergencyContactName,
     this.emergencyContactPhone,
+    this.emergencyContactRelation,
     this.allergies,
     this.chronicConditions,
     this.insuranceProvider,
@@ -57,6 +59,7 @@ class Patient {
       address: json['address'],
       emergencyContactName: json['emergency_contact_name'],
       emergencyContactPhone: json['emergency_contact_phone'],
+      emergencyContactRelation: json['emergency_contact_relation'],
       allergies: (json['allergies'] is List)
           ? (json['allergies'] as List).join(', ')
           : json['allergies'],
@@ -77,6 +80,7 @@ class Patient {
         'address': address,
         'emergency_contact_name': emergencyContactName,
         'emergency_contact_phone': emergencyContactPhone,
+        'emergency_contact_relation': emergencyContactRelation,
         'allergies': allergies,
         'chronic_conditions': chronicConditions,
         'insurance_provider': insuranceProvider,

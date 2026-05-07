@@ -43,6 +43,13 @@ class DoctorProfile(models.Model):
         default=dict, blank=True,
         help_text='e.g. {"start": "08:00", "end": "17:00"}',
     )
+    profile_picture = models.ImageField(
+        upload_to='doctor_pictures/', blank=True, null=True,
+    )
+    signature = models.ImageField(
+        upload_to='doctor_signatures/', blank=True, null=True,
+        help_text='Doctor\'s digital signature image (PNG)',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

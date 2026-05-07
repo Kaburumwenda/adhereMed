@@ -34,4 +34,49 @@ class POSRepository {
         .map((e) => POSTransaction.fromJson(e as Map<String, dynamic>))
         .toList();
   }
+
+  Future<POSTransaction> updateTransactionStatus(
+      int id, String txnStatus) async {
+    final response = await _dio.patch(
+      '/pos/transactions/$id/update_status/',
+      data: {'status': txnStatus},
+    );
+    return POSTransaction.fromJson(response.data);
+  }
+
+  Future<List<int>> exportTransactions({
+    String? period,
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    final params = <String, dynamic>{};
+    if (period != null) params['period'] = period;
+    if (dateFrom != null) params['date_from'] = dateFrom;
+    if (dateTo != null) params['date_to'] = dateTo;
+    final response = await _dio.get(
+      '/pos/transactions/export/',
+      queryParameters: params,
+      options: Options(responseType: ResponseType.bytes),
+    );
+    return response.data as List<int>;
+  }
+
+  /// Fetches all transactions (no pagination) for PDF export.
+  Future<List<POSTransaction>> getAllTransactionsForExport({
+    String? period,
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    final params = <String, dynamic>{'page_size': 10000};
+    if (period != null) params['period'] = period;
+    if (dateFrom != null) params['date_from'] = dateFrom;
+    if (dateTo != null) params['date_to'] = dateTo;
+    final response = await _dio.get('/pos/transactions/',
+        queryParameters: params);
+    final data = response.data;
+    final results = data is Map ? (data['results'] as List? ?? []) : data as List;
+    return results
+        .map((e) => POSTransaction.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
 }

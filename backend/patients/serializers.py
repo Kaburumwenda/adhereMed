@@ -43,7 +43,7 @@ class PatientRegistrationSerializer(serializers.Serializer):
     date_of_birth = serializers.DateField()
     gender = serializers.ChoiceField(choices=Patient.Gender.choices)
     blood_type = serializers.ChoiceField(choices=Patient.BloodType.choices, required=False, default='')
-    national_id = serializers.CharField(max_length=30, required=False, default='')
+    national_id = serializers.CharField(max_length=30)
     address = serializers.CharField(required=False, default='')
     allergies = serializers.ListField(child=serializers.CharField(), required=False, default=list)
     chronic_conditions = serializers.ListField(child=serializers.CharField(), required=False, default=list)
@@ -56,6 +56,11 @@ class PatientRegistrationSerializer(serializers.Serializer):
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
             raise serializers.ValidationError('A user with this email already exists.')
+        return value
+
+    def validate_national_id(self, value):
+        if Patient.objects.filter(national_id=value).exists():
+            raise serializers.ValidationError('A patient with this National ID already exists.')
         return value
 
     def create(self, validated_data):

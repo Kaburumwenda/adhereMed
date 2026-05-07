@@ -22,6 +22,7 @@ import '../features/dashboard/screens/patient_dashboard_screen.dart';
 import '../features/patients/screens/patient_list_screen.dart';
 import '../features/patients/screens/patient_form_screen.dart';
 import '../features/patients/screens/patient_detail_screen.dart';
+import '../features/patients/screens/patient_profile_screen.dart';
 import '../features/appointments/screens/appointment_list_screen.dart';
 import '../features/appointments/screens/appointment_form_screen.dart';
 import '../features/consultations/screens/consultation_list_screen.dart';
@@ -86,9 +87,11 @@ import '../features/pharmacy/screens/pharmacy_settings_screen.dart';
 import '../features/pharmacy/screens/staff_performance_screen.dart';
 import '../features/inventory/screens/pharmacy_alerts_screen.dart';
 import '../features/medications/screens/medication_catalog_screen.dart';
+import '../features/admin_catalog/screens/catalog_management_screen.dart';
 
 // Super Admin screens
 import '../features/superadmin/screens/superadmin_dashboard_screen.dart';
+import '../features/clinical_catalog/screens/clinical_catalog_screen.dart';
 import '../features/superadmin/screens/tenant_management_screen.dart';
 import '../features/superadmin/screens/tenant_detail_screen.dart';
 import '../features/superadmin/screens/tenant_form_screen.dart';
@@ -104,6 +107,7 @@ import '../features/exchange/screens/exchange_detail_screen.dart';
 import '../features/doctors/screens/doctor_register_screen.dart';
 import '../features/doctors/screens/doctor_directory_screen.dart';
 import '../features/doctors/screens/doctor_detail_screen.dart';
+import '../features/doctors/screens/doctor_profile_screen.dart';
 
 // Messaging screens
 import '../features/messaging/screens/conversation_list_screen.dart';
@@ -610,6 +614,12 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const MedicationCatalogScreen(),
           ),
 
+          // ─── Admin Catalog Management ───
+          GoRoute(
+            path: '/admin/catalog',
+            builder: (context, state) => const CatalogManagementScreen(),
+          ),
+
           // ─── Staff Performance ───
           GoRoute(
             path: '/staff-performance',
@@ -650,6 +660,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const ExchangeListScreen(),
           ),
           GoRoute(
+            path: '/my-profile',
+            builder: (context, state) => const PatientProfileScreen(),
+          ),
+          GoRoute(
             path: '/exchange/:id',
             builder: (context, state) => ExchangeDetailScreen(
               exchangeId: int.parse(state.pathParameters['id']!),
@@ -657,6 +671,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
 
           // ─── Doctors ───
+          GoRoute(
+            path: '/doctor-profile',
+            builder: (context, state) => const DoctorProfileScreen(),
+          ),
           GoRoute(
             path: '/doctors',
             builder: (context, state) => const DoctorDirectoryScreen(),
@@ -721,6 +739,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/superadmin/seed',
             builder: (context, state) => const SeedDataScreen(),
+          ),
+          GoRoute(
+            path: '/superadmin/clinical-catalog',
+            builder: (context, state) => const ClinicalCatalogScreen(),
           ),
 
           // ─── Pharmacy Store (Patient Portal) ───
