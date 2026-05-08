@@ -12,6 +12,10 @@ class PrescriptionExchange(models.Model):
         CANCELLED = 'cancelled', 'Cancelled'
 
     hospital_tenant_id = models.IntegerField(help_text='ID of the hospital tenant')
+    source_tenant_type = models.CharField(
+        max_length=20, default='hospital',
+        help_text="'hospital' or 'homecare' — origin of this prescription",
+    )
     patient_user_id = models.IntegerField(help_text='ID of the patient user')
     prescription_ref = models.CharField(max_length=100)
     items = models.JSONField(help_text='List of medication items with dosage info')

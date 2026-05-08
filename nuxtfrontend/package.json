@@ -25,6 +25,7 @@
     "vuetify": "^3.7.6"
   },
   "devDependencies": {
+    "@vite-pwa/nuxt": "^1.1.1",
     "sass": "^1.83.0",
     "vite-plugin-vuetify": "^2.0.4"
   },

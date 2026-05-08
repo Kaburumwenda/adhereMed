@@ -42,3 +42,47 @@ html, body, #__nuxt {
 }
 .brand-mark .bold { font-weight: 800; }
 .brand-mark .light { font-weight: 300; }
+
+/* ---------- Homecare dark-mode overrides ----------
+   The homecare pages/components use scoped styles with hardcoded light
+   backgrounds (e.g. .hc-bg, .hc-panel). These global rules use !important
+   to defeat scoped-style specificity and provide a proper dark theme. */
+.v-theme--dark .hc-bg {
+  background: linear-gradient(180deg, #0b1220 0%, #0f172a 100%) !important;
+}
+.v-theme--dark .hc-panel {
+  background: #111827 !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: rgba(255, 255, 255, 0.92);
+}
+.v-theme--dark .hc-cal {
+  background: #111827 !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+.v-theme--dark .hc-cal-cell {
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+.v-theme--dark .hc-cal-cell:hover {
+  background: rgba(13, 148, 136, 0.18) !important;
+}
+.v-theme--dark .hc-cal-cell--today {
+  background: rgba(13, 148, 136, 0.22) !important;
+  border-color: rgba(13, 148, 136, 0.55) !important;
+}
+.v-theme--dark .hc-list-row:hover {
+  background: rgba(13, 148, 136, 0.15) !important;
+}
+.v-theme--dark .hc-list-row--active {
+  background: rgba(13, 148, 136, 0.28) !important;
+}
+.v-theme--dark .hc-msg-bubble {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: rgba(255, 255, 255, 0.92);
+}
+.v-theme--dark .hc-mini-stat,
+.v-theme--dark .hc-cg-stat,
+.v-theme--dark .hc-dose,
+.v-theme--dark .hc-visit {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}

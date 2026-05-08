@@ -1,1 +1,1 @@
-<template><FormsAdjustmentForm /></template>
+<template><AdjustmentForm /></template>

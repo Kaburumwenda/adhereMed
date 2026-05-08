@@ -1,1 +1,1 @@
-<template><FormsSupplierForm /></template>
+<template><SupplierForm /></template>

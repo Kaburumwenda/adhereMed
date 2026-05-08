@@ -10,6 +10,14 @@ class Notification(models.Model):
         HOME_COLLECTION = 'home_collection', 'Home Collection'
         BILLING = 'billing', 'Billing'
         SYSTEM = 'system', 'System'
+        DOSE_REMINDER = 'dose_reminder', 'Dose Reminder'
+        DOSE_MISSED = 'dose_missed', 'Dose Missed'
+        ESCALATION = 'escalation', 'Escalation'
+        TELECONSULT = 'teleconsult', 'Teleconsult'
+        INSURANCE_CLAIM = 'insurance_claim', 'Insurance Claim'
+        CAREGIVER_UPDATE = 'caregiver_update', 'Caregiver Update'
+        STOCK_ALERT = 'stock_alert', 'Stock Alert'
+        CONSENT = 'consent', 'Consent'
 
     recipient = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='notifications',

@@ -35,6 +35,7 @@ SHARED_APPS = [
     'superadmin',
     'clinical_catalog',
     'usage_billing',
+    'django_celery_beat',
 ]
 
 TENANT_APPS = [
@@ -64,6 +65,8 @@ TENANT_APPS = [
     'expenses',
     'insurance',
     'reports',
+    # homecare tenant app
+    'homecare',
 ]
 
 INSTALLED_APPS = list(SHARED_APPS) + [
@@ -276,3 +279,19 @@ else:
     MEDIA_ROOT  = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ──────────────────────────────────────────────
+# Celery / Beat
+# ──────────────────────────────────────────────
+CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='redis://localhost:6379/1')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = True
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+# Eager mode for local dev/testing without a broker (override via env)
+CELERY_TASK_ALWAYS_EAGER = config('CELERY_TASK_ALWAYS_EAGER', default=False, cast=bool)
+CELERY_TASK_EAGER_PROPAGATES = True
+

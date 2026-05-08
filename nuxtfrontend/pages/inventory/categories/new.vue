@@ -1,1 +1,1 @@
-<template><FormsCategoryForm /></template>
+<template><CategoryForm /></template>

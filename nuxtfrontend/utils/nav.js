@@ -190,6 +190,99 @@ export function getNavSections(role, tenantType) {
     })
   }
 
+  const homecareAdminRoles = ['tenant_admin', 'homecare_admin', 'admin']
+  if (tenantType === 'homecare' && homecareAdminRoles.includes(role)) {
+    sections.push({
+      label: 'CARE OPERATIONS',
+      items: [
+        { icon: 'mdi-account-group', label: 'Patients', path: '/homecare/patients' },
+        { icon: 'mdi-account-heart', label: 'Caregivers', path: '/homecare/caregivers' },
+        {
+          icon: 'mdi-calendar-clock', label: 'Schedules', path: '/homecare/schedules',
+          children: [
+            { icon: 'mdi-format-list-bulleted', label: 'Visit list', path: '/homecare/schedules' },
+            { icon: 'mdi-calendar-month', label: 'Calendar', path: '/homecare/calendar' }
+          ]
+        },
+        { icon: 'mdi-clipboard-text', label: 'Treatment Plans', path: '/homecare/treatment-plans' },
+        { icon: 'mdi-heart-pulse', label: 'Vitals & Observations', path: '/homecare/vitals' },
+        { icon: 'mdi-note-edit', label: 'Care Notes', path: '/homecare/notes' }
+      ]
+    })
+    sections.push({
+      label: 'MEDICATIONS',
+      items: [
+        {
+          icon: 'mdi-pill', label: 'Medications', path: '/homecare/medications',
+          children: [
+            { icon: 'mdi-pill', label: 'Schedules', path: '/homecare/medications' },
+            { icon: 'mdi-pill-multiple', label: "Today's Doses", path: '/homecare/doses' }
+          ]
+        },
+        { icon: 'mdi-prescription', label: 'Prescriptions', path: '/homecare/prescriptions' }
+      ]
+    })
+    sections.push({
+      label: 'TELEHEALTH & ALERTS',
+      items: [
+        { icon: 'mdi-video', label: 'Teleconsult', path: '/homecare/teleconsult' },
+        { icon: 'mdi-alert-octagram', label: 'Escalations', path: '/homecare/escalations' },
+        { icon: 'mdi-inbox', label: 'Inbox', path: '/homecare/inbox' }
+      ]
+    })
+    sections.push({
+      label: 'FAMILY & ADMIN',
+      items: [
+        { icon: 'mdi-account-multiple-plus', label: 'Family Portal', path: '/homecare/family' },
+        { icon: 'mdi-shield-account', label: 'Insurance', path: '/homecare/insurance' },
+        { icon: 'mdi-cash-register', label: 'Billing', path: '/homecare/billing' },
+        { icon: 'mdi-cash-multiple', label: 'API Billing', path: '/billing/usage' },
+        {
+          icon: 'mdi-cash-minus', label: 'Expenses', path: '/expenses',
+          children: [
+            { icon: 'mdi-format-list-bulleted', label: 'View Expenses', path: '/expenses' },
+            { icon: 'mdi-plus-circle', label: 'New Expense', path: '/expenses/new' },
+            { icon: 'mdi-shape', label: 'Categories', path: '/expenses/categories' }
+          ]
+        },
+        { icon: 'mdi-medical-bag', label: 'Equipment', path: '/homecare/equipment' },
+        { icon: 'mdi-file-document-check', label: 'Consents', path: '/homecare/consents' }
+      ]
+    })
+    sections.push({
+      label: 'ANALYTICS',
+      items: [
+        { icon: 'mdi-chart-box', label: 'Reports', path: '/homecare/reports' },
+        { icon: 'mdi-history', label: 'Audit Log', path: '/homecare/audit' },
+        { icon: 'mdi-domain', label: 'Company Profile', path: '/homecare/company-profile' }
+      ]
+    })
+  }
+
+  if (tenantType === 'homecare' && role === 'caregiver') {
+    sections.push({
+      label: 'MY WORK',
+      items: [
+        { icon: 'mdi-calendar-today', label: 'My Day', path: '/homecare/my-day' },
+        { icon: 'mdi-account-group', label: 'My Patients', path: '/homecare/patients' },
+        { icon: 'mdi-pill-multiple', label: "Today's Doses", path: '/homecare/doses' },
+        { icon: 'mdi-note-edit', label: 'Notes', path: '/homecare/notes' }
+      ]
+    })
+  }
+
+  if (tenantType === 'homecare' && role === 'patient') {
+    sections.push({
+      label: 'MY HOMECARE',
+      items: [
+        { icon: 'mdi-home-heart', label: 'My Care', path: '/my-homecare' },
+        { icon: 'mdi-pill', label: 'My Doses', path: '/my-homecare?tab=doses' },
+        { icon: 'mdi-video', label: 'Teleconsult', path: '/my-homecare?tab=teleconsult' },
+        { icon: 'mdi-shield-account', label: 'Insurance', path: '/my-homecare?tab=insurance' }
+      ]
+    })
+  }
+
   if (['patient', 'admin'].includes(role)) {
     sections.push({
       label: 'MY HEALTH',

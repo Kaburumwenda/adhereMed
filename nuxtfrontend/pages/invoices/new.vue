@@ -1,1 +1,1 @@
-<template><FormsInvoiceForm /></template>
+<template><InvoiceForm /></template>

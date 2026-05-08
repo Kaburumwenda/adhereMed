@@ -1,1 +1,1 @@
-<template><FormsStockForm /></template>
+<template><StockForm /></template>

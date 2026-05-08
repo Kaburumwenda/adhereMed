@@ -1,1 +1,1 @@
-<template><FormsPurchaseOrderForm /></template>
+<template><PurchaseOrderForm /></template>

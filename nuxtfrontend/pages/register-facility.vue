@@ -112,7 +112,8 @@ const req = [v => !!v || 'Required']
 const tenantTypes = [
   { label: 'Hospital', value: 'hospital' },
   { label: 'Pharmacy', value: 'pharmacy' },
-  { label: 'Laboratory', value: 'lab' }
+  { label: 'Laboratory', value: 'lab' },
+  { label: 'Homecare', value: 'homecare' }
 ]
 
 const form = reactive({

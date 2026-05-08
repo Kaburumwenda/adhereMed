@@ -1,14 +1,14 @@
 server {
     listen 80;
-    server_name 3.133.146.67;
+    server_name ec2-3-120-129-138.eu-central-1.compute.amazonaws.com;
 
     location = /favicon.ico { access_log off; log_not_found off; }
     location /static/ {
-        root /home/ubuntu/gecssv3;
+        root /home/ubuntu/adheremed;
     }
 
     location / {
         include proxy_params;
-        proxy_pass http://unix:/home/ubuntu/gecssv3/config.sock;
+        proxy_pass http://unix:/home/ubuntu/adheremed/config.sock;
     }
 }

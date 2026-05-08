@@ -18,6 +18,8 @@ class User(AbstractBaseUser, PermissionsMixin):
         PHARMACY_TECH = 'pharmacy_tech', 'Pharmacy Technician'
         CASHIER = 'cashier', 'Cashier'
         RECEPTIONIST = 'receptionist', 'Receptionist'
+        HOMECARE_ADMIN = 'homecare_admin', 'Homecare Admin'
+        CAREGIVER = 'caregiver', 'Caregiver'
         PATIENT = 'patient', 'Patient'
 
     email = models.EmailField(unique=True)
