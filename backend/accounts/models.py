@@ -1,6 +1,17 @@
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.db import models
+import secrets
 from .managers import UserManager
+
+
+def _generate_unique_pin(length: int = 6) -> str:
+    """Generate a numeric PIN that doesn't collide with any existing user."""
+    for _ in range(50):
+        candidate = ''.join(str(secrets.randbelow(10)) for _ in range(length))
+        if not User.objects.filter(pin=candidate).exists():
+            return candidate
+    # extreme fallback: longer pin
+    return ''.join(str(secrets.randbelow(10)) for _ in range(length + 2))
 
 
 class User(AbstractBaseUser, PermissionsMixin):
@@ -36,6 +47,13 @@ class User(AbstractBaseUser, PermissionsMixin):
     )
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
+    pin = models.CharField(
+        max_length=12,
+        unique=True,
+        null=True,
+        blank=True,
+        help_text='Unique 6-digit PIN used to acknowledge sensitive actions.',
+    )
     date_joined = models.DateTimeField(auto_now_add=True)
 
     objects = UserManager()
@@ -52,3 +70,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     @property
     def full_name(self):
         return f'{self.first_name} {self.last_name}'
+
+    def save(self, *args, **kwargs):
+        if not self.pin:
+            self.pin = _generate_unique_pin()
+        super().save(*args, **kwargs)

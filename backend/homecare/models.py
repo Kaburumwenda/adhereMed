@@ -49,9 +49,18 @@ class Caregiver(models.Model):
         TERMINATED = 'terminated', 'Terminated'
         ON_LEAVE = 'on_leave', 'On Leave'
 
+    class Category(models.TextChoices):
+        NURSE = 'nurse', 'Nurse'
+        HCA = 'hca', 'Health Care Assistant'
+
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
         related_name='caregiver_profile',
+    )
+    category = models.CharField(
+        max_length=10, choices=Category.choices, default=Category.NURSE,
+        db_index=True,
+        help_text='Caregiver tier: registered Nurse or Health Care Assistant.',
     )
     license_number = models.CharField(max_length=100, blank=True)
     certifications = models.JSONField(default=list, blank=True,
@@ -66,6 +75,10 @@ class Caregiver(models.Model):
     is_available = models.BooleanField(default=True)
     rating = models.DecimalField(max_digits=3, decimal_places=2, default=0)
     total_visits = models.PositiveIntegerField(default=0)
+    visit_pin = models.CharField(
+        max_length=10, blank=True, default='',
+        help_text='Numeric PIN entered by caregiver to confirm check-in / check-out.',
+    )
     hire_date = models.DateField(null=True, blank=True)
     employment_status = models.CharField(
         max_length=20, choices=EmploymentStatus.choices, default=EmploymentStatus.ACTIVE,
@@ -99,6 +112,17 @@ class HomecarePatient(models.Model):
     date_of_birth = models.DateField(null=True, blank=True)
     gender = models.CharField(max_length=20, blank=True)
     address = models.TextField(blank=True)
+    address_lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    address_lng = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    id_type = models.CharField(
+        max_length=30, blank=True,
+        help_text='national_id | alien_id | passport | driving_license | birth_cert | military_id | other',
+    )
+    id_number = models.CharField(max_length=80, blank=True)
+    nationality = models.CharField(
+        max_length=10, blank=True, default='KE',
+        help_text='ISO-3166-1 alpha-2 country code (e.g. KE, UG, US).',
+    )
     primary_diagnosis = models.CharField(max_length=255, blank=True)
     medical_history = models.TextField(blank=True)
     allergies = models.TextField(blank=True)
@@ -108,9 +132,18 @@ class HomecarePatient(models.Model):
         Caregiver, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='patients',
     )
+    additional_caregivers = models.ManyToManyField(
+        Caregiver, blank=True, related_name='secondary_patients',
+        help_text='Additional caregivers / nurses assigned to this patient.',
+    )
     assigned_doctor_user_id = models.IntegerField(
         null=True, blank=True,
         help_text='ID of the responsible doctor User (shared schema).',
+    )
+    assigned_doctor_info = models.JSONField(
+        default=dict, blank=True,
+        help_text='Free-form doctor info when no system user exists '
+                  '(name, specialization, qualification, phone, email, hospital, …).',
     )
     risk_level = models.CharField(
         max_length=10, choices=RiskLevel.choices, default=RiskLevel.LOW,
@@ -160,6 +193,17 @@ class CaregiverSchedule(models.Model):
     gps_check_in = models.JSONField(default=dict, blank=True, help_text='{lat, lng, accuracy}')
     gps_check_out = models.JSONField(default=dict, blank=True)
     notes = models.TextField(blank=True)
+    acknowledged_at = models.DateTimeField(null=True, blank=True,
+                                           help_text='When caregiver acknowledged the shift at check-in.')
+    reassignment_requested = models.BooleanField(default=False)
+    reassignment_reason = models.CharField(max_length=255, blank=True, default='')
+    reassigned_to = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='reassigned_from',
+        help_text='New schedule that replaced this missed shift, if any.',
+    )
+    auto_missed_at = models.DateTimeField(null=True, blank=True,
+                                          help_text='Set when system auto-marked this shift as Missed.')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -264,6 +308,15 @@ class MedicationSchedule(models.Model):
     prescribed_by_doctor_id = models.IntegerField(null=True, blank=True)
     source_prescription_id = models.IntegerField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
+    last_generation_at = models.DateTimeField(null=True, blank=True)
+    last_generation_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+    last_generation_by_name = models.CharField(max_length=255, blank=True)
+    last_generation_by_role = models.CharField(max_length=64, blank=True)
+    last_generation_count = models.PositiveIntegerField(default=0)
+    last_generation_days = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -277,10 +330,11 @@ class MedicationSchedule(models.Model):
 class DoseEvent(models.Model):
     class Status(models.TextChoices):
         PENDING = 'pending', 'Pending'
-        TAKEN = 'taken', 'Taken'
+        TAKEN = 'taken', 'Documented'
         MISSED = 'missed', 'Missed'
         SKIPPED = 'skipped', 'Skipped'
         REFUSED = 'refused', 'Refused'
+        NOT_GIVEN = 'not_given', 'Not given'
 
     schedule = models.ForeignKey(MedicationSchedule, on_delete=models.CASCADE,
                                  related_name='doses')
@@ -291,13 +345,26 @@ class DoseEvent(models.Model):
         Caregiver, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='administered_doses',
     )
+    administered_by_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+    administered_by_name = models.CharField(max_length=255, blank=True)
+    administered_by_role = models.CharField(max_length=64, blank=True)
+    reason = models.TextField(blank=True,
+                              help_text='Reason for skip / not given / edit.')
     notes = models.TextField(blank=True)
     vitals_pre = models.JSONField(default=dict, blank=True)
     vitals_post = models.JSONField(default=dict, blank=True)
     patient_confirmation = models.TextField(blank=True,
                                             help_text='Patient confirmation note or photo URL.')
     reminded_at = models.DateTimeField(null=True, blank=True)
+    auto_missed = models.BooleanField(default=False,
+                                      help_text='Set when system auto-marks as missed.')
+    audit_log = models.JSONField(default=list, blank=True,
+                                 help_text='History of status changes with actor & reason.')
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ['scheduled_at']
@@ -602,6 +669,22 @@ class Consent(models.Model):
     granted_at = models.DateTimeField(default=timezone.now)
     expires_at = models.DateTimeField(null=True, blank=True)
     signed_document_url = models.URLField(blank=True)
+    signature_data_url = models.TextField(
+        blank=True,
+        help_text='Base64 data-URL of the captured signature image (PNG).',
+    )
+    signed_by_name = models.CharField(max_length=255, blank=True)
+    signed_by_relationship = models.CharField(
+        max_length=80, blank=True,
+        help_text='self / parent / guardian / next-of-kin etc.',
+    )
+    signed_at = models.DateTimeField(null=True, blank=True)
+    signed_ip = models.GenericIPAddressField(null=True, blank=True)
+    signed_user_agent = models.CharField(max_length=512, blank=True)
+    signature_hash = models.CharField(
+        max_length=128, blank=True,
+        help_text='SHA-256 of (scope|patient|signature_data_url|signed_at) for tamper detection.',
+    )
     revoked_at = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True)
 
@@ -618,3 +701,446 @@ class Consent(models.Model):
         if self.expires_at and self.expires_at < timezone.now():
             return False
         return True
+
+
+# ─────────────────────────────────────────────────────────
+# Tenant-scoped clinical catalog (Diagnoses & Allergies)
+# ─────────────────────────────────────────────────────────
+class HomecareDiagnosis(models.Model):
+    """Per-tenant diagnosis catalog. Seeded from the global clinical_catalog
+    by superadmin and editable by the tenant's homecare admin."""
+
+    class Source(models.TextChoices):
+        SEED = 'seed', 'Seeded'
+        CUSTOM = 'custom', 'Custom'
+
+    name = models.CharField(max_length=255, db_index=True)
+    category = models.CharField(max_length=40, blank=True, db_index=True)
+    icd_code = models.CharField(max_length=20, blank=True, db_index=True)
+    description = models.TextField(blank=True)
+    source = models.CharField(max_length=10, choices=Source.choices,
+                              default=Source.CUSTOM, db_index=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['category', 'name']
+        verbose_name = 'Homecare diagnosis'
+        verbose_name_plural = 'Homecare diagnoses'
+        constraints = [
+            models.UniqueConstraint(fields=['name'], name='uniq_homecare_diagnosis_name'),
+        ]
+
+    def __str__(self):
+        return f'{self.name}{" [" + self.icd_code + "]" if self.icd_code else ""}'
+
+
+class HomecareAllergy(models.Model):
+    """Per-tenant allergy catalog. Seeded from clinical_catalog and editable
+    by the tenant's homecare admin."""
+
+    class Source(models.TextChoices):
+        SEED = 'seed', 'Seeded'
+        CUSTOM = 'custom', 'Custom'
+
+    name = models.CharField(max_length=255, db_index=True)
+    category = models.CharField(max_length=40, blank=True, db_index=True)
+    description = models.TextField(blank=True)
+    common_symptoms = models.TextField(blank=True)
+    source = models.CharField(max_length=10, choices=Source.choices,
+                              default=Source.CUSTOM, db_index=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['category', 'name']
+        verbose_name = 'Homecare allergy'
+        verbose_name_plural = 'Homecare allergies'
+        constraints = [
+            models.UniqueConstraint(fields=['name'], name='uniq_homecare_allergy_name'),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+# ─────────────────────────────────────────────────────────
+# Equipment / Devices
+# ─────────────────────────────────────────────────────────
+class Device(models.Model):
+    """Medical devices and equipment (oximeters, BP monitors, oxygen
+    concentrators, hospital beds, etc.) managed by the homecare provider
+    and assigned to patients."""
+
+    class DeviceType(models.TextChoices):
+        OXIMETER = 'oximeter', 'Pulse Oximeter'
+        BP_MONITOR = 'bp_monitor', 'Blood Pressure Monitor'
+        GLUCOMETER = 'glucometer', 'Glucometer'
+        THERMOMETER = 'thermometer', 'Thermometer'
+        OXYGEN_CONCENTRATOR = 'oxygen', 'Oxygen Concentrator'
+        NEBULIZER = 'nebulizer', 'Nebulizer'
+        BED = 'bed', 'Hospital Bed'
+        WHEELCHAIR = 'wheelchair', 'Wheelchair'
+        WALKER = 'walker', 'Walker / Crutches'
+        SUCTION = 'suction', 'Suction Machine'
+        VENTILATOR = 'ventilator', 'Ventilator'
+        INFUSION_PUMP = 'infusion_pump', 'Infusion Pump'
+        ECG = 'ecg', 'ECG Monitor'
+        OTHER = 'other', 'Other'
+
+    class Status(models.TextChoices):
+        AVAILABLE = 'available', 'Available'
+        ASSIGNED = 'assigned', 'Assigned to Patient'
+        MAINTENANCE = 'maintenance', 'In Maintenance'
+        REPAIR = 'repair', 'Needs Repair'
+        RETIRED = 'retired', 'Retired'
+        LOST = 'lost', 'Lost / Missing'
+
+    name = models.CharField(max_length=255)
+    device_type = models.CharField(max_length=24, choices=DeviceType.choices,
+                                   default=DeviceType.OTHER, db_index=True)
+    serial_number = models.CharField(max_length=100, blank=True, db_index=True)
+    asset_tag = models.CharField(max_length=64, blank=True, db_index=True,
+                                 help_text='Internal asset tag / barcode.')
+    qr_code = models.CharField(max_length=255, blank=True,
+                               help_text='QR payload for scanning.')
+    manufacturer = models.CharField(max_length=255, blank=True)
+    model_number = models.CharField(max_length=100, blank=True)
+    status = models.CharField(max_length=16, choices=Status.choices,
+                              default=Status.AVAILABLE, db_index=True)
+    assigned_to = models.ForeignKey(HomecarePatient, on_delete=models.SET_NULL,
+                                    null=True, blank=True,
+                                    related_name='assigned_devices')
+    location = models.CharField(max_length=255, blank=True,
+                                help_text='Storage location when not assigned.')
+    purchase_date = models.DateField(null=True, blank=True)
+    purchase_cost = models.DecimalField(max_digits=12, decimal_places=2,
+                                        null=True, blank=True)
+    warranty_expiry = models.DateField(null=True, blank=True)
+    last_maintenance_at = models.DateTimeField(null=True, blank=True)
+    next_maintenance_due = models.DateField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+    photo = models.ImageField(upload_to='homecare/devices/', blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = 'Device'
+        verbose_name_plural = 'Devices'
+
+    def __str__(self):
+        tag = self.serial_number or self.asset_tag or ''
+        return f'{self.name}{" (" + tag + ")" if tag else ""}'
+
+
+class DeviceAssignment(models.Model):
+    """History of device assignments to patients."""
+
+    device = models.ForeignKey(Device, on_delete=models.CASCADE,
+                               related_name='assignments')
+    patient = models.ForeignKey(HomecarePatient, on_delete=models.CASCADE,
+                                related_name='device_assignments')
+    assigned_at = models.DateTimeField(default=timezone.now)
+    assigned_by = models.ForeignKey(settings.AUTH_USER_MODEL,
+                                    on_delete=models.SET_NULL, null=True, blank=True,
+                                    related_name='homecare_device_assignments')
+    expected_return_at = models.DateTimeField(null=True, blank=True)
+    returned_at = models.DateTimeField(null=True, blank=True)
+    return_condition = models.CharField(max_length=80, blank=True)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['-assigned_at']
+
+    def __str__(self):
+        return f'{self.device} → {self.patient.user.full_name}'
+
+
+class DeviceMaintenance(models.Model):
+    """Scheduled and completed maintenance events for devices."""
+
+    class Kind(models.TextChoices):
+        ROUTINE = 'routine', 'Routine Service'
+        CALIBRATION = 'calibration', 'Calibration'
+        REPAIR = 'repair', 'Repair'
+        INSPECTION = 'inspection', 'Safety Inspection'
+
+    class Status(models.TextChoices):
+        SCHEDULED = 'scheduled', 'Scheduled'
+        IN_PROGRESS = 'in_progress', 'In Progress'
+        COMPLETED = 'completed', 'Completed'
+        CANCELLED = 'cancelled', 'Cancelled'
+
+    device = models.ForeignKey(Device, on_delete=models.CASCADE,
+                               related_name='maintenance_events')
+    kind = models.CharField(max_length=16, choices=Kind.choices,
+                            default=Kind.ROUTINE)
+    status = models.CharField(max_length=16, choices=Status.choices,
+                              default=Status.SCHEDULED, db_index=True)
+    scheduled_at = models.DateTimeField()
+    performed_at = models.DateTimeField(null=True, blank=True)
+    performed_by_name = models.CharField(max_length=255, blank=True)
+    performed_by_user = models.ForeignKey(settings.AUTH_USER_MODEL,
+                                          on_delete=models.SET_NULL, null=True, blank=True,
+                                          related_name='homecare_maintenance_events')
+    cost = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    notes = models.TextField(blank=True)
+    next_due_at = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-scheduled_at']
+
+    def __str__(self):
+        return f'{self.get_kind_display()} – {self.device}'
+
+
+# ─────────────────────────────────────────────────────────
+# Drug-drug interactions (tenant-curated)
+# ─────────────────────────────────────────────────────────
+class DrugInteraction(models.Model):
+    """Pairwise drug-drug interaction rules. Names are stored lower-case
+    and order-independent (drug_a <= drug_b) to make lookups deterministic."""
+
+    class Severity(models.TextChoices):
+        MINOR = 'minor', 'Minor'
+        MODERATE = 'moderate', 'Moderate'
+        MAJOR = 'major', 'Major'
+        CONTRAINDICATED = 'contraindicated', 'Contraindicated'
+
+    drug_a = models.CharField(max_length=120, db_index=True)
+    drug_b = models.CharField(max_length=120, db_index=True)
+    severity = models.CharField(max_length=20, choices=Severity.choices,
+                                default=Severity.MODERATE, db_index=True)
+    summary = models.CharField(max_length=255)
+    detail = models.TextField(blank=True)
+    references = models.JSONField(default=list, blank=True,
+                                  help_text='[{label, url}]')
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['drug_a', 'drug_b']
+        constraints = [
+            models.UniqueConstraint(fields=['drug_a', 'drug_b'],
+                                    name='uniq_drug_interaction_pair'),
+        ]
+        indexes = [
+            models.Index(fields=['drug_a', 'drug_b']),
+        ]
+
+    def save(self, *args, **kwargs):
+        a = (self.drug_a or '').strip().lower()
+        b = (self.drug_b or '').strip().lower()
+        if a > b:
+            a, b = b, a
+        self.drug_a = a
+        self.drug_b = b
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'{self.drug_a} ⇄ {self.drug_b} ({self.severity})'
+
+
+# ─────────────────────────────────────────────────────────
+# Prescription safety alerts (audit of clinical warnings)
+# ─────────────────────────────────────────────────────────
+class PrescriptionSafetyAlert(models.Model):
+    class Kind(models.TextChoices):
+        ALLERGY = 'allergy', 'Allergy Conflict'
+        INTERACTION = 'interaction', 'Drug Interaction'
+        DUPLICATE = 'duplicate', 'Duplicate Therapy'
+
+    class Severity(models.TextChoices):
+        INFO = 'info', 'Info'
+        MINOR = 'minor', 'Minor'
+        MODERATE = 'moderate', 'Moderate'
+        MAJOR = 'major', 'Major'
+        CONTRAINDICATED = 'contraindicated', 'Contraindicated'
+
+    prescription = models.ForeignKey(HomecarePrescription, on_delete=models.CASCADE,
+                                     related_name='safety_alerts')
+    kind = models.CharField(max_length=20, choices=Kind.choices, db_index=True)
+    severity = models.CharField(max_length=20, choices=Severity.choices,
+                                default=Severity.MODERATE, db_index=True)
+    message = models.CharField(max_length=255)
+    detail = models.TextField(blank=True)
+    drugs = models.JSONField(default=list, blank=True,
+                             help_text='Drug names involved.')
+    overridden = models.BooleanField(default=False)
+    overridden_by = models.ForeignKey(settings.AUTH_USER_MODEL,
+                                      on_delete=models.SET_NULL, null=True, blank=True,
+                                      related_name='homecare_overridden_alerts')
+    overridden_at = models.DateTimeField(null=True, blank=True)
+    override_reason = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.kind}/{self.severity} on Rx#{self.prescription_id}'
+
+
+# ─────────────────────────────────────────────────────────
+# Care pathways (protocol bundles)
+# ─────────────────────────────────────────────────────────
+class CarePathway(models.Model):
+    """A reusable care-protocol bundle (e.g. Sepsis, Post-op hip, Palliative)."""
+    name = models.CharField(max_length=255, unique=True)
+    code = models.CharField(
+        max_length=64, blank=True,
+        help_text='SNOMED CT or local code identifying the condition / pathway.',
+    )
+    code_system = models.CharField(
+        max_length=64, default='http://snomed.info/sct', blank=True,
+    )
+    condition_label = models.CharField(max_length=255, blank=True)
+    description = models.TextField(blank=True)
+    default_duration_days = models.PositiveIntegerField(default=14)
+    goals = models.JSONField(
+        default=list, blank=True,
+        help_text='List of plain-text goals.',
+    )
+    medication_orders = models.JSONField(
+        default=list, blank=True,
+        help_text='[{medication_name, dose, route, times_of_day, '
+                  'frequency_cron, duration_days, instructions, requires_caregiver}]',
+    )
+    vital_targets = models.JSONField(
+        default=dict, blank=True,
+        help_text='{spo2_min: 94, hr_max: 110, ...} for monitoring/alerting.',
+    )
+    tasks = models.JSONField(
+        default=list, blank=True,
+        help_text='[{title, day_offset, category}] standing tasks.',
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class CarePathwayEnrollment(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE = 'active', 'Active'
+        COMPLETED = 'completed', 'Completed'
+        WITHDRAWN = 'withdrawn', 'Withdrawn'
+
+    pathway = models.ForeignKey(CarePathway, on_delete=models.PROTECT,
+                                related_name='enrollments')
+    patient = models.ForeignKey(HomecarePatient, on_delete=models.CASCADE,
+                                related_name='pathway_enrollments')
+    treatment_plan = models.ForeignKey(TreatmentPlan, on_delete=models.SET_NULL,
+                                       null=True, blank=True,
+                                       related_name='pathway_enrollments')
+    status = models.CharField(max_length=16, choices=Status.choices,
+                              default=Status.ACTIVE)
+    started_at = models.DateTimeField(default=timezone.now)
+    started_by_user_id = models.IntegerField(null=True, blank=True)
+    target_end_date = models.DateField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    outcome_notes = models.TextField(blank=True)
+    meta = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ['-started_at']
+        indexes = [models.Index(fields=['patient', 'status'])]
+
+    def __str__(self):
+        return f'{self.pathway.name} → {self.patient.user.full_name}'
+
+
+# ─────────────────────────────────────────────────────────
+# Audit log (PHI-safe, append-only)
+# ─────────────────────────────────────────────────────────
+class AuditEvent(models.Model):
+    """Append-only audit trail for PHI-touching operations.
+
+    Captures *who* did *what* to *which object* and *when*, plus a small
+    payload diff. Designed for compliance review (HIPAA / Kenya DPA)."""
+
+    class Action(models.TextChoices):
+        CREATE = 'create', 'Create'
+        UPDATE = 'update', 'Update'
+        DELETE = 'delete', 'Delete'
+        VIEW = 'view', 'View'
+        LOGIN = 'login', 'Login'
+        LOGOUT = 'logout', 'Logout'
+        EXPORT = 'export', 'Export'
+        ACTION = 'action', 'Custom Action'
+
+    actor_user_id = models.IntegerField(null=True, blank=True, db_index=True)
+    actor_email = models.CharField(max_length=255, blank=True, db_index=True)
+    actor_role = models.CharField(max_length=64, blank=True)
+    action = models.CharField(max_length=16, choices=Action.choices, db_index=True)
+    object_type = models.CharField(max_length=120, db_index=True)
+    object_id = models.CharField(max_length=64, blank=True, db_index=True)
+    object_repr = models.CharField(max_length=255, blank=True)
+    method = models.CharField(max_length=10, blank=True)
+    path = models.CharField(max_length=512, blank=True)
+    ip = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=512, blank=True)
+    payload_diff = models.JSONField(default=dict, blank=True)
+    extra = models.JSONField(default=dict, blank=True)
+    status_code = models.PositiveSmallIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Audit event'
+        verbose_name_plural = 'Audit events'
+        indexes = [
+            models.Index(fields=['object_type', 'object_id']),
+            models.Index(fields=['actor_user_id', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f'{self.action} {self.object_type}#{self.object_id} by {self.actor_email or self.actor_user_id}'
+
+
+# ---------------------------------------------------------
+# Mail account (per-tenant SMTP/IMAP override) � singleton
+# ---------------------------------------------------------
+class MailAccount(models.Model):
+    """Per-tenant mailbox configuration. When marked active, the homecare
+    mail endpoints use these credentials instead of the global defaults.
+    Singleton: there should be at most one row per tenant schema.
+    """
+    display_name = models.CharField(max_length=120, blank=True,
+        help_text='Optional friendly From name. Defaults to the tenant name.')
+    email = models.EmailField(help_text='Mailbox address used as From / login.')
+    imap_host = models.CharField(max_length=255)
+    imap_port = models.PositiveIntegerField(default=993)
+    imap_use_ssl = models.BooleanField(default=True)
+    smtp_host = models.CharField(max_length=255)
+    smtp_port = models.PositiveIntegerField(default=465)
+    smtp_use_ssl = models.BooleanField(default=True)
+    username = models.CharField(max_length=255, help_text='IMAP/SMTP username.')
+    password = models.CharField(max_length=512, blank=True,
+        help_text='Plain-text mailbox password. Stored at rest in the tenant DB.')
+    is_active = models.BooleanField(default=True,
+        help_text='If false, the global default mail config is used.')
+    last_verified_at = models.DateTimeField(null=True, blank=True)
+    last_verified_ok = models.BooleanField(default=False)
+    last_error = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Mail account'
+        verbose_name_plural = 'Mail account'
+
+    def __str__(self):
+        return self.email or 'Mail account'
+

@@ -86,8 +86,16 @@ function exportCsv() {
 
 async function load() {
   try {
-    const { data } = await $api.get('/homecare/audit-log/')
-    events.value = data?.results || data || []
+    const { data } = await $api.get('/homecare/audit-events/', { params: { ordering: '-created_at' } })
+    const raw = data?.results || data || []
+    events.value = raw.map(e => ({
+      id: e.id,
+      action: e.action,
+      resource_type: e.object_type,
+      actor_name: e.actor_email || (e.actor_user_id ? `user#${e.actor_user_id}` : 'system'),
+      summary: `${(e.method || '').toUpperCase()} ${e.path || ''}${e.object_id ? ' → #' + e.object_id : ''}`,
+      created_at: e.created_at,
+    }))
   } catch { events.value = [] }
 }
 onMounted(load)

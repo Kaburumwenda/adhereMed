@@ -95,6 +95,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'usage_billing.middleware.RequestUsageMiddleware',
+    'homecare.audit.HomecareAuditMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -214,6 +215,14 @@ DEFAULT_FROM_EMAIL = 'AfyaOne <afyaone@tiktek-ex.com>'
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:3000')
 
 # ──────────────────────────────────────────────
+# Homecare tenant mailbox (IMAP + SMTP)
+# Per-tenant configuration is stored in the tenant DB via the MailAccount
+# model and managed at /homecare/mail/settings. No global defaults are
+# provided — each homecare tenant must configure their own mailbox.
+# ──────────────────────────────────────────────
+HOMECARE_MAIL = {}
+
+# ──────────────────────────────────────────────
 # Internationalization
 # ──────────────────────────────────────────────
 LANGUAGE_CODE = 'en-us'
@@ -232,34 +241,53 @@ if USE_S3:
     AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY')
     AWS_STORAGE_BUCKET_NAME = config('AWS_STORAGE_BUCKET_NAME')
     AWS_S3_REGION_NAME      = config('AWS_S3_REGION_NAME', default='us-east-1')
+    AWS_S3_SIGNATURE_VERSION = 's3v4'
+    AWS_S3_ADDRESSING_STYLE  = 'virtual'
 
-    # Use path-style or virtual-hosted-style URL
-    AWS_S3_CUSTOM_DOMAIN = (
-        config('AWS_CLOUDFRONT_DOMAIN', default='')
-        or f'{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com'
-    )
+    # Optional CloudFront domain — only used for *public* assets (static files).
+    # Private media MUST be served via signed URLs from the real S3 endpoint
+    # (mixing custom domain + querystring auth causes 403 SignatureDoesNotMatch).
+    AWS_CLOUDFRONT_DOMAIN = config('AWS_CLOUDFRONT_DOMAIN', default='')
+
+    # Real S3 host used for signing media URLs.
+    AWS_S3_ENDPOINT_HOST = f'{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com'
+
+    # Public/static gets the CloudFront domain when configured, else S3.
+    AWS_S3_CUSTOM_DOMAIN = AWS_CLOUDFRONT_DOMAIN or AWS_S3_ENDPOINT_HOST
 
     # ── Bucket behaviour ──
-    AWS_S3_FILE_OVERWRITE     = False   # keep originals; append suffix on collision
+    # NOTE: django-storages uses HeadObject to test for filename collisions when
+    # AWS_S3_FILE_OVERWRITE=False. If the IAM user lacks `s3:ListBucket`, S3
+    # returns 403 instead of 404 for missing keys and uploads fail. We avoid
+    # the probe entirely by enabling overwrite and pinning each upload to a
+    # unique key via `UniqueKeyS3Storage.get_available_name` (see below).
+    AWS_S3_FILE_OVERWRITE     = True
     AWS_DEFAULT_ACL           = None    # rely on bucket policy; don't set object ACLs
     AWS_S3_OBJECT_PARAMETERS  = {'CacheControl': 'max-age=86400'}
+    AWS_QUERYSTRING_EXPIRE    = config('AWS_QUERYSTRING_EXPIRE', default=3600, cast=int)
 
     # ── Static files (public, no signed URLs) ──
     STATIC_LOCATION = 'static'
     STATIC_URL      = f'https://{AWS_S3_CUSTOM_DOMAIN}/{STATIC_LOCATION}/'
 
     # ── Media files (signed URLs for privacy) ──
+    # Build the URL with the *real* S3 endpoint so signature host matches.
     MEDIA_LOCATION = 'media'
-    MEDIA_URL      = f'https://{AWS_S3_CUSTOM_DOMAIN}/{MEDIA_LOCATION}/'
+    MEDIA_URL      = f'https://{AWS_S3_ENDPOINT_HOST}/{MEDIA_LOCATION}/'
 
     STORAGES = {
-        # media/upload files — private, signed URLs
+        # media/upload files — private, signed URLs (NO custom_domain so
+        # the URL host matches the signing host).
         'default': {
-            'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage',
+            'BACKEND': 'config.storage_backends.UniqueKeyS3Storage',
             'OPTIONS': {
                 'location': MEDIA_LOCATION,
                 'querystring_auth': True,
                 'default_acl': None,
+                'file_overwrite': True,
+                'custom_domain': False,
+                'signature_version': 's3v4',
+                'addressing_style': 'virtual',
             },
         },
         # static files — public, no auth needed
@@ -269,6 +297,8 @@ if USE_S3:
                 'location': STATIC_LOCATION,
                 'querystring_auth': False,
                 'default_acl': None,
+                'file_overwrite': True,
+                'custom_domain': AWS_S3_CUSTOM_DOMAIN,
             },
         },
     }

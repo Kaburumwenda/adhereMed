@@ -13,9 +13,9 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'email', 'phone', 'first_name', 'last_name',
             'role', 'tenant', 'tenant_name', 'tenant_type', 'tenant_schema',
-            'is_active', 'date_joined',
+            'is_active', 'date_joined', 'pin',
         ]
-        read_only_fields = ['date_joined']
+        read_only_fields = ['date_joined', 'pin']
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):

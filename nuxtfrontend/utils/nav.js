@@ -195,8 +195,23 @@ export function getNavSections(role, tenantType) {
     sections.push({
       label: 'CARE OPERATIONS',
       items: [
-        { icon: 'mdi-account-group', label: 'Patients', path: '/homecare/patients' },
+        {
+          icon: 'mdi-account-group', label: 'Patients', path: '/homecare/patients',
+          children: [
+            { icon: 'mdi-account-multiple',        label: 'All Patients',    path: '/homecare/patients' },
+            { icon: 'mdi-account-plus',            label: 'Enrol Patient',   path: '/homecare/patients/new' },
+            { icon: 'mdi-account-tie',             label: 'Care Team',       path: '/homecare/caregivers' },
+            { icon: 'mdi-clipboard-text',          label: 'Treatment Plans', path: '/homecare/treatment-plans' },
+            { icon: 'mdi-pill',                    label: 'Medications',     path: '/homecare/medications' },
+            { icon: 'mdi-pill-multiple',           label: 'Doses',           path: '/homecare/doses' },
+            { icon: 'mdi-heart-pulse',             label: 'Vitals',          path: '/homecare/vitals' },
+            { icon: 'mdi-note-edit',               label: 'Care Notes',      path: '/homecare/notes' },
+            { icon: 'mdi-file-document-check',     label: 'Consents',        path: '/homecare/consents' },
+            { icon: 'mdi-shield-account',          label: 'Insurance',       path: '/homecare/insurance' }
+          ]
+        },
         { icon: 'mdi-account-heart', label: 'Caregivers', path: '/homecare/caregivers' },
+        { icon: 'mdi-account-switch', label: 'Assignments', path: '/homecare/assignments' },
         {
           icon: 'mdi-calendar-clock', label: 'Schedules', path: '/homecare/schedules',
           children: [
@@ -216,7 +231,7 @@ export function getNavSections(role, tenantType) {
           icon: 'mdi-pill', label: 'Medications', path: '/homecare/medications',
           children: [
             { icon: 'mdi-pill', label: 'Schedules', path: '/homecare/medications' },
-            { icon: 'mdi-pill-multiple', label: "Today's Doses", path: '/homecare/doses' }
+            { icon: 'mdi-pill-multiple', label: 'Doses', path: '/homecare/doses' }
           ]
         },
         { icon: 'mdi-prescription', label: 'Prescriptions', path: '/homecare/prescriptions' }
@@ -227,7 +242,14 @@ export function getNavSections(role, tenantType) {
       items: [
         { icon: 'mdi-video', label: 'Teleconsult', path: '/homecare/teleconsult' },
         { icon: 'mdi-alert-octagram', label: 'Escalations', path: '/homecare/escalations' },
-        { icon: 'mdi-inbox', label: 'Inbox', path: '/homecare/inbox' }
+        { icon: 'mdi-inbox', label: 'Inbox', path: '/homecare/inbox' },
+        {
+          icon: 'mdi-email', label: 'Mail', path: '/homecare/mail',
+          children: [
+            { icon: 'mdi-inbox-multiple', label: 'Mailbox', path: '/homecare/mail' },
+            { icon: 'mdi-cog', label: 'Mail Settings', path: '/homecare/mail/settings' }
+          ]
+        }
       ]
     })
     sections.push({
@@ -254,7 +276,15 @@ export function getNavSections(role, tenantType) {
       items: [
         { icon: 'mdi-chart-box', label: 'Reports', path: '/homecare/reports' },
         { icon: 'mdi-history', label: 'Audit Log', path: '/homecare/audit' },
+        { icon: 'mdi-book-cog', label: 'Clinical Catalog', path: '/homecare/catalog' },
         { icon: 'mdi-domain', label: 'Company Profile', path: '/homecare/company-profile' }
+      ]
+    })
+    sections.push({
+      label: 'CLINICAL TOOLS',
+      items: [
+        { icon: 'mdi-clipboard-pulse', label: 'Clinical Protocols', path: '/homecare/protocols' },
+        { icon: 'mdi-pulse',           label: 'EWS Scoring',        path: '/homecare/ews' }
       ]
     })
   }
@@ -264,8 +294,20 @@ export function getNavSections(role, tenantType) {
       label: 'MY WORK',
       items: [
         { icon: 'mdi-calendar-today', label: 'My Day', path: '/homecare/my-day' },
-        { icon: 'mdi-account-group', label: 'My Patients', path: '/homecare/patients' },
-        { icon: 'mdi-pill-multiple', label: "Today's Doses", path: '/homecare/doses' },
+        {
+          icon: 'mdi-account-group', label: 'My Patients', path: '/homecare/patients',
+          children: [
+            { icon: 'mdi-account-multiple',    label: 'All Patients',    path: '/homecare/patients' },
+            { icon: 'mdi-clipboard-text',      label: 'Treatment Plans', path: '/homecare/treatment-plans' },
+            { icon: 'mdi-pill',                label: 'Medications',     path: '/homecare/medications' },
+            { icon: 'mdi-pill-multiple',       label: 'Doses',           path: '/homecare/doses' },
+            { icon: 'mdi-heart-pulse',         label: 'Vitals',          path: '/homecare/vitals' },
+            { icon: 'mdi-note-edit',           label: 'Care Notes',      path: '/homecare/notes' },
+            { icon: 'mdi-file-document-check', label: 'Consents',        path: '/homecare/consents' },
+            { icon: 'mdi-shield-account',      label: 'Insurance',       path: '/homecare/insurance' }
+          ]
+        },
+        { icon: 'mdi-pill-multiple', label: 'Doses', path: '/homecare/doses' },
         { icon: 'mdi-note-edit', label: 'Notes', path: '/homecare/notes' }
       ]
     })

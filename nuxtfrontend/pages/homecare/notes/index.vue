@@ -1,125 +1,144 @@
-
 <template>
   <div class="hc-bg pa-4 pa-md-6">
+    <!-- Hero -->
     <HomecareHero
       title="Care Notes"
-      subtitle="Shift notes, observations, and patient updates."
-      eyebrow="DOCUMENTATION"
+      subtitle="Shift notes, observations, incidents, and patient updates."
+      eyebrow="HOMECARE · DOCUMENTATION"
       icon="mdi-note-edit"
-      :chips="[{ icon: 'mdi-note-multiple', label: `${notes.length} notes` }]"
+      :chips="[
+        { icon: 'mdi-note-multiple', label: `${notes.length} notes` },
+        { icon: 'mdi-account-heart', label: `${caregiverCount} caregivers` },
+        { icon: 'mdi-account-injury', label: `${patientCount} patients` }
+      ]"
     >
       <template #actions>
-        <v-btn color="white" rounded="pill" prepend-icon="mdi-plus" class="text-none" @click="openDialog()">
-          <span class="text-teal-darken-2 font-weight-bold">New note</span>
+        <v-btn variant="elevated" rounded="pill" color="teal-darken-2"
+               prepend-icon="mdi-plus" class="text-none px-5 py-2" style="font-size:1.1rem;letter-spacing:0.01em;"
+               @click="openCreate">
+          <span class="font-weight-bold text-white">New Note</span>
         </v-btn>
       </template>
     </HomecareHero>
 
-    <HomecarePanel title="All notes" subtitle="Filter by patient, category, or date" icon="mdi-note-multiple" color="#6366f1">
-      <v-row dense class="mb-2">
-        <v-col cols="12" md="3">
-          <v-select v-model="filter.patient" :items="patients" item-title="patient_name" item-value="id" label="Patient" clearable density="compact" />
-        </v-col>
-        <v-col cols="12" md="3">
-          <v-select v-model="filter.category" :items="categories" label="Category" clearable density="compact" />
-        </v-col>
-        <v-col cols="12" md="3">
-          <v-text-field v-model="filter.date" label="Date" type="date" density="compact" clearable />
-        </v-col>
-        <v-col cols="12" md="3">
-          <v-text-field v-model="search" prepend-inner-icon="mdi-magnify" placeholder="Search notes…" density="compact" clearable />
-        </v-col>
-      </v-row>
-      <v-data-table :headers="headers" :items="filteredNotes" :loading="loading" item-value="id" class="elevation-0">
+    <!-- Filters -->
+    <v-card rounded="xl" elevation="0" class="mt-4 pa-3 hc-card">
+      <div class="d-flex flex-wrap align-center ga-2">
+        <v-select v-model="filters.patient" :items="patientOptions"
+                  density="comfortable" variant="outlined" rounded="lg" hide-details
+                  clearable placeholder="Patient" style="max-width:220px;" />
+        <v-select v-model="filters.caregiver" :items="caregiverOptions"
+                  density="comfortable" variant="outlined" rounded="lg" hide-details
+                  clearable placeholder="Caregiver" style="max-width:220px;" />
+        <v-select v-model="filters.category" :items="categoryOptions"
+                  density="comfortable" variant="outlined" rounded="lg" hide-details
+                  clearable placeholder="Category" style="max-width:180px;" />
+        <v-text-field v-model="filters.date" type="date" density="comfortable"
+                      variant="outlined" rounded="lg" hide-details clearable
+                      placeholder="Date" style="max-width:160px;" />
+        <v-text-field v-model="search" prepend-inner-icon="mdi-magnify"
+                      placeholder="Search notes…" density="comfortable"
+                      variant="outlined" hide-details rounded="lg"
+                      style="max-width:340px;" clearable />
+        <v-spacer />
+        <v-btn variant="text" size="small" prepend-icon="mdi-refresh"
+               class="text-none" :loading="loading" @click="load">Refresh</v-btn>
+      </div>
+    </v-card>
+
+    <!-- Notes table -->
+    <v-card rounded="xl" elevation="0" class="mt-3 hc-card">
+      <v-data-table :items="filteredNotes" :headers="tableHeaders" item-value="id"
+                    :loading="loading" class="hc-table">
+        <template #[`item.recorded_at`]="{ item }">
+          <div class="font-weight-medium">{{ formatDateTime(item.recorded_at) }}</div>
+        </template>
+        <template #[`item.patient_name`]="{ item }">
+          <div class="d-flex align-center ga-2">
+            <v-avatar size="28" color="teal" variant="flat">
+              <span class="text-caption font-weight-bold text-white">{{ initials(item.patient_name) }}</span>
+            </v-avatar>
+            <div class="font-weight-medium">{{ item.patient_name || '—' }}</div>
+          </div>
+        </template>
+        <template #[`item.caregiver_name`]="{ item }">
+          <div class="d-flex align-center ga-2">
+            <v-avatar size="28" color="indigo" variant="flat">
+              <span class="text-caption font-weight-bold text-white">{{ initials(item.caregiver_name) }}</span>
+            </v-avatar>
+            <div class="font-weight-medium">{{ item.caregiver_name || '—' }}</div>
+          </div>
+        </template>
+        <template #[`item.category`]="{ item }">
+          <v-chip size="small" :color="categoryMeta(item.category).color" variant="tonal">
+            <v-icon :icon="categoryMeta(item.category).icon" start size="14" />
+            {{ categoryMeta(item.category).label }}
+          </v-chip>
+        </template>
         <template #[`item.content`]="{ item }">
-          <div class="text-truncate" style="max-width:400px;">{{ item.content }}</div>
+          <div class="text-truncate" style="max-width:400px;">{{ contentPreview(item.content) }}</div>
         </template>
         <template #[`item.actions`]="{ item }">
-          <v-btn icon="mdi-eye-outline" size="small" variant="text" @click="view(item)" />
-          <v-btn icon="mdi-pencil-outline" size="small" variant="text" color="primary" @click="edit(item)" />
-          <v-btn icon="mdi-delete" size="small" variant="text" color="error" @click="remove(item)" />
-        </template>
-        <template #no-data>
-          <EmptyState icon="mdi-note-off" title="No notes found" />
+          <v-btn icon="mdi-eye-outline" size="small" variant="text" @click.stop="openDetail(item)" title="View" />
+          <v-btn icon="mdi-pencil-outline" size="small" variant="text" color="primary" @click.stop="openEdit(item)" title="Edit" />
+          <v-btn icon="mdi-delete" size="small" variant="text" color="error" @click.stop="remove(item)" title="Delete" />
         </template>
       </v-data-table>
-    </HomecarePanel>
+    </v-card>
 
-    <!-- Note dialog -->
-    <v-dialog v-model="dialog" max-width="600">
-      <v-card rounded="xl">
-        <v-card-title>{{ dialogMode === 'edit' ? 'Edit note' : dialogMode === 'view' ? 'Note details' : 'New note' }}</v-card-title>
-        <v-card-text>
-          <v-combobox
-            v-model="form.patient"
-            :items="patients"
-            item-title="patient_name"
-            item-value="id"
-            label="Patient"
-            :disabled="dialogMode==='view'"
-            clearable
-            allow-overflow
-            hint="Type to enter a new name or select an existing patient."
-            persistent-hint
-          />
-          <v-select v-model="form.category" :items="categories" label="Category" :disabled="dialogMode==='view'" />
-          <v-textarea v-model="form.content" label="Note" rows="4" :disabled="dialogMode==='view'" />
-          <v-file-input
-            v-model="form.attachments"
-            label="Attachments"
-            multiple
-            prepend-icon="mdi-paperclip"
-            :disabled="dialogMode==='view'"
-            accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.txt"
-            hint="Supported: PDF, JPG, PNG, DOC, TXT"
-            persistent-hint
-          />
-          <div v-if="form.attachments && form.attachments.length && dialogMode==='view'" class="mt-2">
-            <div v-for="(file, i) in form.attachments" :key="i" class="text-caption">
-              <v-icon icon="mdi-paperclip" size="14" class="mr-1" /> {{ file.name || file }}
-            </div>
-          </div>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="dialog = false">Close</v-btn>
-          <v-btn v-if="dialogMode==='edit'" color="teal" :loading="saving" @click="save">Save</v-btn>
-          <v-btn v-if="dialogMode==='create'" color="teal" :loading="saving" @click="save">Create</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <v-snackbar v-model="snack.show" :color="snack.color" location="top right" timeout="2200">
+      {{ snack.text }}
+    </v-snackbar>
   </div>
 </template>
 
 <script setup>
 const { $api } = useNuxtApp()
-const notes = ref([])
-const patients = ref([])
-const categories = [
-  'Shift', 'Vitals', 'Incident', 'Medication', 'General', 'Family', 'Other'
-]
-const loading = ref(false)
-const dialog = ref(false)
-const dialogMode = ref('create') // create | edit | view
-const form = reactive({ id: null, patient: null, category: '', content: '', attachments: [] })
-const filter = reactive({ patient: null, category: null, date: null })
-const search = ref('')
-const saving = ref(false)
 
-const headers = [
-  { title: 'Recorded', key: 'recorded_at' },
-  { title: 'Patient', key: 'patient_name' },
-  { title: 'Caregiver', key: 'caregiver_name' },
-  { title: 'Category', key: 'category' },
-  { title: 'Note', key: 'content', sortable: false },
-  { title: '', key: 'actions', sortable: false, align: 'end' }
+const notes = ref([])
+const caregivers = ref([])
+const patients = ref([])
+const loading = ref(false)
+const search = ref('')
+const filters = reactive({ patient: null, caregiver: null, category: null, date: null })
+
+const detailDialog = ref(false)
+const selected = ref(null)
+const snack = reactive({ show: false, text: '', color: 'info' })
+const categoryOptions = [
+  { value: 'diet',      label: 'Diet',        icon: 'mdi-food-apple',      color: 'green' },
+  { value: 'activity',  label: 'Activity',    icon: 'mdi-run',            color: 'blue' },
+  { value: 'observation',label: 'Observation',icon: 'mdi-eye',            color: 'teal' },
+  { value: 'vitals',    label: 'Vitals',      icon: 'mdi-heart-pulse',    color: 'pink' },
+  { value: 'incident',  label: 'Incident',    icon: 'mdi-alert-octagon',  color: 'red' },
+  { value: 'medication',label: 'Medication',  icon: 'mdi-pill',           color: 'purple' },
 ]
+function categoryMeta(v) { return categoryOptions.find(o => o.value === v) || { label: v, icon: 'mdi-note', color: 'grey' } }
+
+const tableHeaders = [
+  { title: 'Recorded',    key: 'recorded_at' },
+  { title: 'Patient',     key: 'patient_name' },
+  { title: 'Caregiver',   key: 'caregiver_name' },
+  { title: 'Category',    key: 'category' },
+  { title: 'Note',        key: 'content', sortable: false },
+  { title: '',            key: 'actions', sortable: false, align: 'end' },
+]
+
+const caregiverOptions = computed(() =>
+  caregivers.value.map(c => ({ title: c.user?.full_name || c.user?.email, value: c.id }))
+)
+const patientOptions = computed(() =>
+  patients.value.map(p => ({ title: p.user?.full_name || p.medical_record_number, value: p.id }))
+)
+const caregiverCount = computed(() => caregivers.value.length)
+const patientCount = computed(() => patients.value.length)
 
 const filteredNotes = computed(() => {
   let out = notes.value
-  if (filter.patient) out = out.filter(n => n.patient === filter.patient)
-  if (filter.category) out = out.filter(n => n.category === filter.category)
-  if (filter.date) out = out.filter(n => (n.recorded_at || '').slice(0,10) === filter.date)
+  if (filters.patient) out = out.filter(n => n.patient === filters.patient)
+  if (filters.caregiver) out = out.filter(n => n.caregiver === filters.caregiver)
+  if (filters.category) out = out.filter(n => n.category === filters.category)
+  if (filters.date) out = out.filter(n => (n.recorded_at || '').slice(0,10) === filters.date)
   if (search.value) {
     const q = search.value.toLowerCase()
     out = out.filter(n => (n.content || '').toLowerCase().includes(q))
@@ -127,52 +146,132 @@ const filteredNotes = computed(() => {
   return out
 })
 
-function openDialog(mode = 'create', item = null) {
-  dialogMode.value = mode
-  dialog.value = true
-  if (mode === 'edit' || mode === 'view') {
-    Object.assign(form, item)
-    if (!form.attachments) form.attachments = []
-  } else {
-    Object.assign(form, { id: null, patient: null, category: '', content: '', attachments: [] })
-  }
+function formatDateTime(iso) {
+  return iso ? new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : ''
 }
-function view(item) { openDialog('view', item) }
-function edit(item) { openDialog('edit', item) }
-function remove(item) {
-  if (!confirm('Delete this note?')) return
-  $api.delete(`/homecare/notes/${item.id}/`).then(load)
+function initials(name) {
+  if (!name) return '?'
+  const p = name.trim().split(/\s+/)
+  return ((p[0]?.[0] || '') + (p[1]?.[0] || '')).toUpperCase() || name[0].toUpperCase()
 }
-async function save() {
-  saving.value = true
-  try {
-    if (dialogMode.value === 'edit') {
-      await $api.put(`/homecare/notes/${form.id}/`, form)
-    } else {
-      await $api.post('/homecare/notes/', form)
-    }
-    dialog.value = false
-    load()
-  } catch (e) { alert('Failed to save note.') }
-  finally { saving.value = false }
-}
+
+// ── CRUD ───────────────────────────────────────────────────────────────
 async function load() {
   loading.value = true
   try {
-    const { data } = await $api.get('/homecare/notes/')
+    const { data } = await $api.get('/homecare/notes/', { params: { page_size: 1000 } })
     notes.value = data?.results || data || []
   } catch { notes.value = [] }
   finally { loading.value = false }
 }
-async function loadPatients() {
+async function loadOptions() {
   try {
-    const { data } = await $api.get('/homecare/patients/')
-    patients.value = data?.results || data || []
-  } catch { patients.value = [] }
+    const [c, p] = await Promise.all([
+      $api.get('/homecare/caregivers/', { params: { page_size: 500 } }),
+      $api.get('/homecare/patients/',   { params: { page_size: 500 } }),
+    ])
+    caregivers.value = c.data?.results || c.data || []
+    patients.value   = p.data?.results || p.data || []
+  } catch { caregivers.value = []; patients.value = [] }
 }
-onMounted(() => { load(); loadPatients() })
+
+function openCreate() {
+  navigateTo('/homecare/notes/new')
+}
+function openEdit(item) {
+  navigateTo(`/homecare/notes/${item.id}/edit`)
+}
+function openDetail(item) {
+  navigateTo(`/homecare/notes/${item.id}`)
+}
+function contentPreview(html) {
+  if (!html) return ''
+  const text = String(html).replace(/<[^>]*>/g, ' ').replace(/[`*_~>#\[\]()]/g, '').replace(/\s+/g, ' ').trim()
+  return text
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+}
+function inlineMd(s) {
+  let t = escapeHtml(s)
+  t = t.replace(/`([^`]+)`/g, '<code>$1</code>')
+  t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+  t = t.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>')
+  t = t.replace(/~~([^~]+)~~/g, '<del>$1</del>')
+  t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+  return t
+}
+function mdToHtml(md) {
+  if (!md) return ''
+  // If looks like HTML (legacy notes), pass through.
+  if (/<\/?(p|div|span|ul|ol|li|h[1-6]|br|strong|em|a|blockquote)\b/i.test(md)) return md
+  const lines = String(md).split('\n')
+  const out = []
+  let inUl = false, inOl = false, inQuote = false
+  const close = () => {
+    if (inUl) { out.push('</ul>'); inUl = false }
+    if (inOl) { out.push('</ol>'); inOl = false }
+    if (inQuote) { out.push('</blockquote>'); inQuote = false }
+  }
+  for (const line of lines) {
+    if (/^\s*$/.test(line)) { close(); continue }
+    let m
+    if ((m = line.match(/^###\s+(.*)$/))) { close(); out.push(`<h3>${inlineMd(m[1])}</h3>`); continue }
+    if ((m = line.match(/^##\s+(.*)$/)))  { close(); out.push(`<h2>${inlineMd(m[1])}</h2>`); continue }
+    if ((m = line.match(/^#\s+(.*)$/)))   { close(); out.push(`<h1>${inlineMd(m[1])}</h1>`); continue }
+    if (/^---+$/.test(line))              { close(); out.push('<hr />'); continue }
+    if ((m = line.match(/^>\s?(.*)$/)))   { if (!inQuote) { close(); out.push('<blockquote>'); inQuote = true } out.push(`<p>${inlineMd(m[1])}</p>`); continue }
+    if ((m = line.match(/^-\s+\[( |x|X)\]\s+(.*)$/))) {
+      if (!inUl) { close(); out.push('<ul class="hc-checks">'); inUl = true }
+      const checked = m[1].toLowerCase() === 'x'
+      out.push(`<li><input type="checkbox" disabled ${checked ? 'checked' : ''} /> ${inlineMd(m[2])}</li>`)
+      continue
+    }
+    if ((m = line.match(/^[-*]\s+(.*)$/))) { if (!inUl) { close(); out.push('<ul>'); inUl = true } out.push(`<li>${inlineMd(m[1])}</li>`); continue }
+    if ((m = line.match(/^\d+\.\s+(.*)$/))) { if (!inOl) { close(); out.push('<ol>'); inOl = true } out.push(`<li>${inlineMd(m[1])}</li>`); continue }
+    close()
+    out.push(`<p>${inlineMd(line)}</p>`)
+  }
+  close()
+  return out.join('\n')
+}
+const renderedNote = computed(() => mdToHtml(selected.value?.content || ''))
+
+async function remove(item) {
+  if (!confirm('Delete this note?')) return
+  try {
+    await $api.delete(`/homecare/notes/${item.id}/`)
+    Object.assign(snack, { show: true, text: 'Note deleted', color: 'success' })
+    await load()
+  } catch {
+    Object.assign(snack, { show: true, text: 'Failed to delete', color: 'error' })
+  }
+}
+
+onMounted(async () => { await loadOptions(); await load() })
 </script>
 
 <style scoped>
-.hc-bg { background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%); min-height: calc(100vh - 64px); }
+.hc-bg { min-height: calc(100vh - 64px); }
+.hc-card {
+  background: white;
+  border: 1px solid rgba(15,23,42,0.06);
+}
+:global(.v-theme--dark) .hc-card {
+  background: rgb(30,41,59);
+  border-color: rgba(255,255,255,0.08);
+}
+.hc-table :deep(th) { background: rgba(0,0,0,0.025); font-weight: 600; }
+.hc-note-content :deep(h1) { font-size: 1.4rem; font-weight: 700; margin: 0.4em 0; }
+.hc-note-content :deep(h2) { font-size: 1.2rem; font-weight: 700; margin: 0.4em 0; }
+.hc-note-content :deep(ul),
+.hc-note-content :deep(ol) { padding-left: 1.5em; margin: 0.4em 0; }
+.hc-note-content :deep(blockquote) {
+  border-left: 3px solid rgba(13,148,136,0.5);
+  padding-left: 10px; color: rgba(15,23,42,0.7); margin: 0.4em 0;
+}
+.hc-note-content :deep(a) { color: rgb(13,148,136); text-decoration: underline; }
 </style>

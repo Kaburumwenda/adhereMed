@@ -36,6 +36,7 @@ export const useAuthStore = defineStore('auth', {
     role: (s) => s.user?.role || '',
     tenantType: (s) => s.user?.tenant_type || null,
     tenantSchema: (s) => s.user?.tenant_schema || null,
+    tenantName: (s) => s.user?.tenant_name || '',
     fullName: (s) => {
       if (!s.user) return ''
       return `${s.user.first_name || ''} ${s.user.last_name || ''}`.trim()

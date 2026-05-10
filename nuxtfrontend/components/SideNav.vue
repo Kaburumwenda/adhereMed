@@ -12,8 +12,11 @@
     <!-- Logo / Brand -->
     <div class="d-flex align-center px-4" style="height:68px;">
       <BrandLogo :size="38" />
-      <div v-if="!rail || mobile" class="ml-3">
-        <BrandMark :size="17" />
+      <div v-if="!rail || mobile" class="ml-3 brand-tenant">
+        <div class="brand-tenant-name text-truncate" :title="tenantName || 'AdhereMed'">
+          {{ tenantName || 'AdhereMed' }}
+        </div>
+        <BrandMark v-if="!tenantName" :size="13" />
       </div>
     </div>
     <v-divider />
@@ -106,7 +109,8 @@ const props = defineProps({
   mobile: { type: Boolean, default: false },
   userName: { type: String, default: '' },
   userRole: { type: String, default: '' },
-  tenantType: { type: String, default: null }
+  tenantType: { type: String, default: null },
+  tenantName: { type: String, default: '' }
 })
 const emit = defineEmits(['update:modelValue', 'toggle-rail', 'logout'])
 
@@ -126,3 +130,17 @@ function formatRole(r) {
   return r.split('_').map(w => w[0].toUpperCase() + w.slice(1)).join(' ')
 }
 </script>
+
+<style scoped>
+.brand-tenant {
+  max-width: 180px;
+  overflow: hidden;
+}
+.brand-tenant-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0F766E;
+  line-height: 1.2;
+  letter-spacing: 0.2px;
+}
+</style>

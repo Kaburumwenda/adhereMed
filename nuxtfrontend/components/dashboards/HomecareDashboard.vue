@@ -312,6 +312,9 @@ const quickActions = [
   { icon: 'mdi-account-multiple-plus', label: 'Family portal', hint: 'Invite family', to: '/homecare/family', color: '#ec4899' },
   { icon: 'mdi-cash-register', label: 'Billing', hint: 'Invoices & payments', to: '/homecare/billing', color: '#0284c7' },
   { icon: 'mdi-medical-bag', label: 'Equipment', hint: 'Loan tracking', to: '/homecare/equipment', color: '#7c3aed' },
+  { icon: 'mdi-clipboard-pulse', label: 'Care pathways', hint: 'Protocol bundles', to: '/homecare/care-pathways', color: '#0d9488' },
+  { icon: 'mdi-pill-multiple', label: 'Drug interactions', hint: 'Safety catalog', to: '/homecare/drug-interactions', color: '#dc2626' },
+  { icon: 'mdi-email-multiple', label: 'Mail', hint: 'Team mailbox', to: '/homecare/mail', color: '#0ea5e9' },
   { icon: 'mdi-chart-box', label: 'Reports', hint: 'Analytics', to: '/homecare/reports', color: '#475569' }
 ]
 

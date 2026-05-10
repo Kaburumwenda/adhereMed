@@ -19,7 +19,7 @@ export default defineNuxtConfig({
       meta: [
         { charset: 'utf-8' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-        { name: 'description', content: 'AdhereMed - Hospital & Pharmacy Ecosystem' },
+        { name: 'description', content: 'AdhereMed - Connected Healthcare Simplified' },
         { name: 'theme-color', content: '#2DD4BF' },
         { name: 'mobile-web-app-capable', content: 'yes' },
         { name: 'apple-mobile-web-app-capable', content: 'yes' },
@@ -46,6 +46,8 @@ export default defineNuxtConfig({
   ],
 
   pwa: {
+    // Avoid Workbox "no files match" error from .nuxt/dev-sw-dist in dev
+    disable: process.env.NODE_ENV === 'development',
     registerType: 'autoUpdate',
     manifest: {
       name: 'AdhereMed',
@@ -145,6 +147,7 @@ export default defineNuxtConfig({
     public: {
       apiBase: 'http://127.0.0.1:8000/api',
       // apiBase: 'http://ec2-3-120-129-138.eu-central-1.compute.amazonaws.com/api',
+      // apiBase: 'https://adheremedapi.tiktek-ex.com/api',
       appName: 'AdhereMed'
     }
   }

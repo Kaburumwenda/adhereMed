@@ -6,7 +6,10 @@ from .models import (
     CaregiverNote, TreatmentPlan, MedicationSchedule, DoseEvent,
     EscalationRule, Escalation, TeleconsultRoom, HomecareAppointment,
     HomecarePrescription, PharmacyStockAlert, InsurancePolicy, InsuranceClaim,
-    Consent,
+    Consent, HomecareDiagnosis, HomecareAllergy,
+    Device, DeviceAssignment, DeviceMaintenance, AuditEvent,
+    DrugInteraction, PrescriptionSafetyAlert,
+    CarePathway, CarePathwayEnrollment,
 )
 
 User = get_user_model()
@@ -37,19 +40,27 @@ class CaregiverSerializer(serializers.ModelSerializer):
         source='user', queryset=User.objects.all(), write_only=True,
     )
     active_patients_count = serializers.SerializerMethodField()
+    category_label = serializers.CharField(source='get_category_display', read_only=True)
+    has_visit_pin = serializers.SerializerMethodField()
 
     class Meta:
         model = Caregiver
         fields = (
-            'id', 'user', 'user_id', 'license_number', 'certifications',
+            'id', 'user', 'user_id', 'category', 'category_label',
+            'license_number', 'certifications',
             'specialties', 'bio', 'photo', 'hourly_rate', 'is_independent',
             'is_available', 'rating', 'total_visits', 'hire_date',
             'employment_status', 'active_patients_count', 'created_at', 'updated_at',
+            'visit_pin', 'has_visit_pin',
         )
         read_only_fields = ('rating', 'total_visits', 'created_at', 'updated_at')
+        extra_kwargs = {'visit_pin': {'write_only': True, 'required': False}}
 
     def get_active_patients_count(self, obj):
         return obj.patients.filter(is_active=True).count()
+
+    def get_has_visit_pin(self, obj):
+        return bool(obj.visit_pin)
 
 
 # ─────────────────────────────────────────────
@@ -59,18 +70,22 @@ class HomecarePatientSerializer(serializers.ModelSerializer):
         source='user', queryset=User.objects.all(), write_only=True,
     )
     assigned_caregiver_name = serializers.SerializerMethodField()
+    additional_caregivers_detail = serializers.SerializerMethodField()
     active_treatment_plan_id = serializers.SerializerMethodField()
     open_escalations = serializers.SerializerMethodField()
     adherence_rate = serializers.SerializerMethodField()
+    age = serializers.SerializerMethodField()
 
     class Meta:
         model = HomecarePatient
         fields = (
             'id', 'medical_record_number', 'user', 'user_id',
-            'date_of_birth', 'gender', 'address',
+            'date_of_birth', 'age', 'gender', 'address', 'address_lat', 'address_lng',
+            'id_type', 'id_number', 'nationality',
             'primary_diagnosis', 'medical_history', 'allergies',
             'emergency_contacts', 'assigned_caregiver', 'assigned_caregiver_name',
-            'assigned_doctor_user_id', 'risk_level', 'is_active',
+            'additional_caregivers', 'additional_caregivers_detail',
+            'assigned_doctor_user_id', 'assigned_doctor_info', 'risk_level', 'is_active',
             'active_treatment_plan_id', 'open_escalations', 'adherence_rate',
             'enrolled_at', 'discharged_at',
         )
@@ -80,6 +95,25 @@ class HomecarePatientSerializer(serializers.ModelSerializer):
         if obj.assigned_caregiver:
             return obj.assigned_caregiver.user.full_name
         return None
+
+    def get_additional_caregivers_detail(self, obj):
+        return [
+            {'id': c.id, 'full_name': c.user.full_name, 'email': c.user.email}
+            for c in obj.additional_caregivers.all()
+        ]
+
+    def get_age(self, obj):
+        d = obj.date_of_birth
+        if not d:
+            return None
+        from datetime import date, datetime
+        if isinstance(d, str):
+            try:
+                d = datetime.strptime(d[:10], '%Y-%m-%d').date()
+            except (ValueError, TypeError):
+                return None
+        today = date.today()
+        return today.year - d.year - ((today.month, today.day) < (d.month, d.day))
 
     def get_active_treatment_plan_id(self, obj):
         plan = obj.treatment_plans.filter(status='active').first()
@@ -111,9 +145,15 @@ class CaregiverScheduleSerializer(serializers.ModelSerializer):
             'id', 'caregiver', 'caregiver_name', 'patient', 'patient_name',
             'shift_type', 'start_at', 'end_at', 'recurrence', 'status',
             'check_in_at', 'check_out_at', 'gps_check_in', 'gps_check_out',
+            'acknowledged_at', 'reassignment_requested', 'reassignment_reason',
+            'reassigned_to', 'auto_missed_at',
             'notes', 'created_at',
         )
-        read_only_fields = ('check_in_at', 'check_out_at', 'created_at')
+        read_only_fields = (
+            'check_in_at', 'check_out_at', 'acknowledged_at',
+            'reassignment_requested', 'reassignment_reason',
+            'reassigned_to', 'auto_missed_at', 'created_at',
+        )
 
 
 class CaregiverNoteSerializer(serializers.ModelSerializer):
@@ -160,9 +200,16 @@ class MedicationScheduleSerializer(serializers.ModelSerializer):
             'frequency_cron', 'times_of_day', 'start_date', 'end_date',
             'instructions', 'requires_caregiver',
             'prescribed_by_doctor_id', 'source_prescription_id',
-            'is_active', 'upcoming_doses', 'created_at', 'updated_at',
+            'is_active', 'upcoming_doses',
+            'last_generation_at', 'last_generation_by', 'last_generation_by_name',
+            'last_generation_by_role', 'last_generation_count', 'last_generation_days',
+            'created_at', 'updated_at',
         )
-        read_only_fields = ('created_at', 'updated_at')
+        read_only_fields = (
+            'created_at', 'updated_at',
+            'last_generation_at', 'last_generation_by', 'last_generation_by_name',
+            'last_generation_by_role', 'last_generation_count', 'last_generation_days',
+        )
 
     def get_upcoming_doses(self, obj):
         return obj.doses.filter(status='pending').count()
@@ -174,18 +221,28 @@ class DoseEventSerializer(serializers.ModelSerializer):
     patient_name = serializers.CharField(source='schedule.patient.user.full_name', read_only=True)
     patient_id = serializers.IntegerField(source='schedule.patient_id', read_only=True)
     administered_by_name = serializers.SerializerMethodField()
+    status_label = serializers.CharField(source='get_status_display', read_only=True)
 
     class Meta:
         model = DoseEvent
         fields = (
             'id', 'schedule', 'medication_name', 'dose', 'patient_id', 'patient_name',
-            'scheduled_at', 'status', 'administered_at', 'administered_by_caregiver',
-            'administered_by_name', 'notes', 'vitals_pre', 'vitals_post',
-            'patient_confirmation', 'reminded_at', 'created_at',
+            'scheduled_at', 'status', 'status_label', 'administered_at',
+            'administered_by_caregiver', 'administered_by_user',
+            'administered_by_name', 'administered_by_role',
+            'reason', 'notes', 'vitals_pre', 'vitals_post',
+            'patient_confirmation', 'reminded_at',
+            'auto_missed', 'audit_log',
+            'created_at', 'updated_at',
         )
-        read_only_fields = ('reminded_at', 'created_at')
+        read_only_fields = (
+            'reminded_at', 'created_at', 'updated_at', 'auto_missed', 'audit_log',
+            'administered_by_user', 'administered_by_role',
+        )
 
     def get_administered_by_name(self, obj):
+        if obj.administered_by_name:
+            return obj.administered_by_name
         if obj.administered_by_caregiver:
             return obj.administered_by_caregiver.user.full_name
         return None
@@ -316,7 +373,199 @@ class ConsentSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'patient', 'patient_name', 'scope', 'granted_to',
             'granted_to_user_id', 'granted_to_tenant_id', 'granted_at',
-            'expires_at', 'signed_document_url', 'revoked_at', 'notes',
-            'is_active',
+            'expires_at', 'signed_document_url', 'signature_data_url',
+            'signed_by_name', 'signed_by_relationship', 'signed_at',
+            'signed_ip', 'signed_user_agent', 'signature_hash',
+            'revoked_at', 'notes', 'is_active',
         )
-        read_only_fields = ('revoked_at',)
+        read_only_fields = ('revoked_at', 'signed_at', 'signed_ip',
+                            'signed_user_agent', 'signature_hash')
+
+
+# ─────────────────────────────────────────────
+# Tenant catalog: diagnoses & allergies
+# ─────────────────────────────────────────────
+class HomecareDiagnosisSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = HomecareDiagnosis
+        fields = ('id', 'name', 'category', 'icd_code', 'description',
+                  'source', 'is_active', 'created_at', 'updated_at')
+        read_only_fields = ('source', 'created_at', 'updated_at')
+
+
+class HomecareAllergySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = HomecareAllergy
+        fields = ('id', 'name', 'category', 'description', 'common_symptoms',
+                  'source', 'is_active', 'created_at', 'updated_at')
+        read_only_fields = ('source', 'created_at', 'updated_at')
+
+
+# ───────────────────────────────────────────────
+# Equipment / Devices
+# ───────────────────────────────────────────────
+class DeviceSerializer(serializers.ModelSerializer):
+    assigned_to_name = serializers.CharField(
+        source='assigned_to.user.full_name', read_only=True, default=None)
+    device_type_label = serializers.CharField(
+        source='get_device_type_display', read_only=True)
+    status_label = serializers.CharField(source='get_status_display', read_only=True)
+
+    class Meta:
+        model = Device
+        fields = (
+            'id', 'name', 'device_type', 'device_type_label', 'serial_number',
+            'asset_tag', 'qr_code', 'manufacturer', 'model_number',
+            'status', 'status_label', 'assigned_to', 'assigned_to_name',
+            'location', 'purchase_date', 'purchase_cost', 'warranty_expiry',
+            'last_maintenance_at', 'next_maintenance_due', 'notes', 'photo',
+            'created_at', 'updated_at',
+        )
+        read_only_fields = ('last_maintenance_at', 'created_at', 'updated_at')
+
+
+class DeviceAssignmentSerializer(serializers.ModelSerializer):
+    device_name = serializers.CharField(source='device.name', read_only=True)
+    patient_name = serializers.CharField(
+        source='patient.user.full_name', read_only=True)
+    assigned_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DeviceAssignment
+        fields = (
+            'id', 'device', 'device_name', 'patient', 'patient_name',
+            'assigned_at', 'assigned_by', 'assigned_by_name',
+            'expected_return_at', 'returned_at', 'return_condition', 'notes',
+        )
+        read_only_fields = ('assigned_by',)
+
+    def get_assigned_by_name(self, obj):
+        return obj.assigned_by.full_name if obj.assigned_by else None
+
+
+class DeviceMaintenanceSerializer(serializers.ModelSerializer):
+    device_name = serializers.CharField(source='device.name', read_only=True)
+    kind_label = serializers.CharField(source='get_kind_display', read_only=True)
+    status_label = serializers.CharField(source='get_status_display', read_only=True)
+
+    class Meta:
+        model = DeviceMaintenance
+        fields = (
+            'id', 'device', 'device_name', 'kind', 'kind_label',
+            'status', 'status_label', 'scheduled_at', 'performed_at',
+            'performed_by_name', 'performed_by_user', 'cost', 'notes',
+            'next_due_at', 'created_at', 'updated_at',
+        )
+        read_only_fields = ('created_at', 'updated_at')
+
+
+# ───────────────────────────────────────────────
+# Audit log
+# ───────────────────────────────────────────────
+class AuditEventSerializer(serializers.ModelSerializer):
+    action_label = serializers.CharField(source='get_action_display', read_only=True)
+
+    class Meta:
+        model = AuditEvent
+        fields = (
+            'id', 'actor_user_id', 'actor_email', 'actor_role',
+            'action', 'action_label', 'object_type', 'object_id',
+            'object_repr', 'method', 'path', 'ip', 'user_agent',
+            'payload_diff', 'extra', 'status_code', 'created_at',
+        )
+        read_only_fields = fields
+
+
+# ─────────────────────────────────────────────
+# Drug interactions & prescription safety
+# ─────────────────────────────────────────────
+class DrugInteractionSerializer(serializers.ModelSerializer):
+    severity_label = serializers.CharField(source='get_severity_display', read_only=True)
+
+    class Meta:
+        model = DrugInteraction
+        fields = ('id', 'drug_a', 'drug_b', 'severity', 'severity_label',
+                  'summary', 'detail', 'references', 'is_active',
+                  'created_at', 'updated_at')
+        read_only_fields = ('created_at', 'updated_at')
+
+
+class PrescriptionSafetyAlertSerializer(serializers.ModelSerializer):
+    overridden_by_name = serializers.SerializerMethodField()
+    severity_label = serializers.CharField(source='get_severity_display', read_only=True)
+    kind_label = serializers.CharField(source='get_kind_display', read_only=True)
+
+    class Meta:
+        model = PrescriptionSafetyAlert
+        fields = ('id', 'prescription', 'kind', 'kind_label',
+                  'severity', 'severity_label', 'message', 'detail', 'drugs',
+                  'overridden', 'overridden_by', 'overridden_by_name',
+                  'overridden_at', 'override_reason', 'created_at')
+        read_only_fields = ('overridden_by', 'overridden_at', 'created_at')
+
+    def get_overridden_by_name(self, obj):
+        return obj.overridden_by.full_name if obj.overridden_by else None
+
+
+# ─────────────────────────────────────────────
+# Care pathways (protocol bundles)
+# ─────────────────────────────────────────────
+class CarePathwaySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CarePathway
+        fields = ('id', 'name', 'code', 'code_system', 'condition_label',
+                  'description', 'default_duration_days', 'goals',
+                  'medication_orders', 'vital_targets', 'tasks',
+                  'is_active', 'created_at', 'updated_at')
+        read_only_fields = ('created_at', 'updated_at')
+
+
+class CarePathwayEnrollmentSerializer(serializers.ModelSerializer):
+    pathway_name = serializers.CharField(source='pathway.name', read_only=True)
+    patient_name = serializers.CharField(source='patient.user.full_name', read_only=True)
+    status_label = serializers.CharField(source='get_status_display', read_only=True)
+
+    class Meta:
+        model = CarePathwayEnrollment
+        fields = ('id', 'pathway', 'pathway_name', 'patient', 'patient_name',
+                  'treatment_plan', 'status', 'status_label',
+                  'started_at', 'started_by_user_id', 'target_end_date',
+                  'completed_at', 'outcome_notes', 'meta')
+        read_only_fields = ('treatment_plan', 'started_at', 'started_by_user_id', 'meta')
+
+
+
+
+class MailAccountSerializer(serializers.ModelSerializer):
+    """Per-tenant mailbox configuration. Password is write-only."""
+    password = serializers.CharField(write_only=True, required=False, allow_blank=True,
+                                     style={'input_type': 'password'})
+    has_password = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import MailAccount
+        model = MailAccount
+        fields = [
+            'id', 'display_name', 'email',
+            'imap_host', 'imap_port', 'imap_use_ssl',
+            'smtp_host', 'smtp_port', 'smtp_use_ssl',
+            'username', 'password', 'has_password', 'is_active',
+            'last_verified_at', 'last_verified_ok', 'last_error',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'has_password', 'last_verified_at',
+                            'last_verified_ok', 'last_error',
+                            'created_at', 'updated_at']
+
+    def get_has_password(self, obj):
+        return bool(obj.password)
+
+    def update(self, instance, validated_data):
+        # Allow keeping the existing password by omitting / blanking it.
+        pwd = validated_data.pop('password', None)
+        for k, v in validated_data.items():
+            setattr(instance, k, v)
+        if pwd:
+            instance.password = pwd
+        instance.save()
+        return instance

@@ -147,3 +147,36 @@ class PasswordResetConfirmView(APIView):
         user.set_password(serializer.validated_data['new_password'])
         user.save()
         return Response({'detail': 'Password has been reset successfully.'})
+
+
+class VerifyPinView(APIView):
+    """Confirm a PIN belongs to the currently logged-in user."""
+
+    def post(self, request):
+        pin = str(request.data.get('pin', '')).strip()
+        if not pin:
+            return Response(
+                {'detail': 'PIN is required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not request.user.pin or request.user.pin != pin:
+            return Response(
+                {'detail': 'PIN does not match the logged-in user.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return Response({
+            'valid': True,
+            'user_id': request.user.id,
+            'role': request.user.role,
+            'full_name': request.user.full_name,
+        })
+
+
+class RegeneratePinView(APIView):
+    """Issue a fresh unique PIN for the current user."""
+
+    def post(self, request):
+        from .models import _generate_unique_pin
+        request.user.pin = _generate_unique_pin()
+        request.user.save(update_fields=['pin'])
+        return Response({'pin': request.user.pin})

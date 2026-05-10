@@ -292,6 +292,13 @@ SEED_COMMANDS = {
         "scope": "tenant",
         "command": "seed_lab_tests",
     },
+    "homecare_catalog": {
+        "label": "Homecare Catalog (Diagnoses + Allergies)",
+        "description": "Copies the global allergies & chronic conditions into a tenant's editable catalog.",
+        "scope": "tenant",
+        "command": "seed_homecare_catalog",
+        "supports_reset": True,
+    },
 }
 
 

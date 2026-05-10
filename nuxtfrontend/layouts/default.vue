@@ -6,6 +6,7 @@
     :user-name="auth.fullName"
     :user-role="auth.role"
     :tenant-type="auth.tenantType"
+    :tenant-name="auth.tenantName"
     @toggle-rail="rail = !rail"
     @logout="onLogout"
   />
