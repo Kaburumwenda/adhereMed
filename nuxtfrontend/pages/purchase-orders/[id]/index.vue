@@ -78,6 +78,7 @@
               <th class="text-end">Unit cost</th>
               <th class="text-end">Selling</th>
               <th class="text-end">Disc</th>
+              <th class="text-end">Margin</th>
               <th>Batch</th>
               <th>Expiry</th>
               <th class="text-end">Subtotal</th>
@@ -91,6 +92,9 @@
               <td class="text-end">{{ formatMoney(it.unit_cost || it.unit_price || 0) }}</td>
               <td class="text-end">{{ formatMoney(it.unit_selling_price || 0) }}</td>
               <td class="text-end">{{ it.discount_percent || 0 }}%</td>
+              <td class="text-end">
+                <v-chip size="x-small" variant="tonal" :color="marginColor(it)">{{ marginPct(it).toFixed(1) }}%</v-chip>
+              </td>
               <td><span v-if="it.batch_number">{{ it.batch_number }}</span><span v-else class="text-medium-emphasis">—</span></td>
               <td><span v-if="it.expiry_date">{{ formatDate(it.expiry_date) }}</span><span v-else class="text-medium-emphasis">—</span></td>
               <td class="text-end font-weight-bold">{{ formatMoney(it.total || (Number(it.qty || it.quantity || 0) * Number(it.unit_cost || it.unit_price || 0))) }}</td>
@@ -102,7 +106,7 @@
           </tbody>
           <tfoot>
             <tr>
-              <td colspan="7" class="text-end font-weight-bold">Total</td>
+              <td colspan="8" class="text-end font-weight-bold">Total</td>
               <td class="text-end text-h6 font-weight-bold text-primary">{{ formatMoney(item.total_cost) }}</td>
               <td></td>
             </tr>
@@ -263,6 +267,24 @@ const snack = reactive({ show: false, color: 'success', text: '' })
 
 const totalItems = computed(() => (item.value?.items || []).length)
 const totalQty = computed(() => (item.value?.items || []).reduce((s, it) => s + Number(it.qty || it.quantity || 0), 0))
+
+function effectiveSelling(it) {
+  const sell = Number(it.unit_selling_price || 0)
+  const disc = Number(it.discount_percent || 0)
+  return sell * (1 - disc / 100)
+}
+function marginPct(it) {
+  const rev = effectiveSelling(it)
+  if (!rev) return 0
+  return ((rev - Number(it.unit_cost || it.unit_price || 0)) / rev) * 100
+}
+function marginColor(it) {
+  const m = marginPct(it)
+  if (m >= 30) return 'success'
+  if (m >= 15) return 'info'
+  if (m >= 0) return 'warning'
+  return 'error'
+}
 
 const returnDialog = reactive({ show: false, loading: false, busy: false, preview: [], hasConsumed: false, force: false })
 

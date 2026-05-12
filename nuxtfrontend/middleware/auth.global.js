@@ -12,12 +12,19 @@ const AUTH_ROUTES = new Set([
   '/reset-password'
 ])
 
+// Routes accessible to everyone (logged in or not), without redirect.
+const PUBLIC_ROUTES = new Set([
+  '/docs',
+])
+
 export default defineNuxtRouteMiddleware(async (to) => {
   // Skip server-side - SPA mode means middleware only runs client-side anyway
   if (process.server) return
 
   const auth = useAuthStore()
   await auth.restore()
+
+  if (PUBLIC_ROUTES.has(to.path)) return
 
   const isAuthRoute = AUTH_ROUTES.has(to.path)
 

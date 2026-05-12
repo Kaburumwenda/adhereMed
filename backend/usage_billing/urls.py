@@ -8,6 +8,8 @@ urlpatterns = [
     # Tenant-facing
     path("dashboard/", views.tenant_dashboard, name="tenant-dashboard"),
     path("range/", views.tenant_range_usage, name="tenant-range-usage"),
+    path("lab/dashboard/", views.tenant_lab_dashboard, name="tenant-lab-dashboard"),
+    path("lab/range/", views.tenant_lab_range, name="tenant-lab-range"),
     path("doctor/dashboard/", views.doctor_dashboard, name="doctor-dashboard"),
 
     # Super admin

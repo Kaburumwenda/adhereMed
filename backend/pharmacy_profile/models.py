@@ -27,6 +27,9 @@ class PharmacyDetail(models.Model):
 class Branch(models.Model):
     name = models.CharField(max_length=255)
     address = models.TextField(blank=True)
+    place_name = models.CharField(max_length=255, blank=True)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     phone = models.CharField(max_length=20, blank=True)
     email = models.EmailField(blank=True)
     is_main = models.BooleanField(default=False, help_text='Main/head branch')
@@ -55,6 +58,8 @@ class Delivery(models.Model):
         'pos.POSTransaction', on_delete=models.CASCADE, related_name='delivery',
     )
     delivery_address = models.TextField()
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     recipient_name = models.CharField(max_length=255)
     recipient_phone = models.CharField(max_length=20)
     delivery_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
@@ -63,6 +68,7 @@ class Delivery(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='deliveries',
     )
+    assigned_driver_name = models.CharField(max_length=255, blank=True)
     notes = models.TextField(blank=True)
     scheduled_at = models.DateTimeField(null=True, blank=True)
     delivered_at = models.DateTimeField(null=True, blank=True)

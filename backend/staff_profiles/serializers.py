@@ -4,7 +4,13 @@ from rest_framework import serializers
 from accounts.models import User
 from .models import StaffProfile, Specialization
 
-PHARMACY_ROLES = ['pharmacist', 'pharmacy_tech', 'cashier']
+PHARMACY_ROLES = [
+    'pharmacist', 'pharmacy_tech', 'cashier',
+    # Lab tenant roles
+    'lab_tech', 'radiologist', 'receptionist',
+    # Clinical roles (allow tenant admins to create them via staff module)
+    'doctor', 'clinical_officer', 'nurse', 'midwife',
+]
 
 
 class SpecializationSerializer(serializers.ModelSerializer):

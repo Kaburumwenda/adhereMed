@@ -30,6 +30,7 @@
           @update:model-value="onRangeChange"
         />
         <v-btn icon="mdi-refresh" variant="text" :loading="loading" @click="load" />
+        <v-btn variant="tonal" color="info" rounded="lg" class="text-none" prepend-icon="mdi-chart-line" to="/analytics">Analytics</v-btn>
         <v-btn variant="tonal" color="primary" rounded="lg" class="text-none" prepend-icon="mdi-download" @click="exportCsv">Export</v-btn>
         <v-btn color="primary" variant="flat" rounded="lg" class="text-none" prepend-icon="mdi-point-of-sale" to="/pos">New sale</v-btn>
       </div>
@@ -103,87 +104,6 @@
       </v-col>
     </v-row>
 
-    <!-- Charts row -->
-    <v-row class="mt-1">
-      <v-col cols="12" md="8">
-        <v-card rounded="lg" class="pa-4 h-100">
-          <div class="d-flex align-center justify-space-between mb-2">
-            <div>
-              <h3 class="text-h6 font-weight-bold">Revenue over time</h3>
-              <div class="text-caption text-medium-emphasis">{{ rangeLabel }}</div>
-            </div>
-            <v-btn-toggle v-model="trendMetric" density="compact" mandatory variant="outlined" color="primary" rounded="lg">
-              <v-btn value="revenue" class="text-none" size="small">Revenue</v-btn>
-              <v-btn value="orders" class="text-none" size="small">Orders</v-btn>
-              <v-btn value="items" class="text-none" size="small">Items</v-btn>
-            </v-btn-toggle>
-          </div>
-          <SparkArea
-            v-if="trend.values.length"
-            :values="trend.values"
-            :labels="trend.labels"
-            :height="240"
-            color="#3b82f6"
-            :y-formatter="trendMetric === 'revenue' ? moneyFormat : null"
-          />
-          <EmptyState v-else icon="mdi-chart-line" title="No data" />
-        </v-card>
-      </v-col>
-      <v-col cols="12" md="4">
-        <v-card rounded="lg" class="pa-4 h-100">
-          <h3 class="text-h6 font-weight-bold mb-2">Payment methods</h3>
-          <DonutRing v-if="paymentSegments.length" :segments="paymentSegments" :size="180" class="mx-auto">
-            <div class="text-center">
-              <div class="text-caption text-medium-emphasis">Transactions</div>
-              <div class="text-h6 font-weight-bold">{{ kpis.count }}</div>
-            </div>
-          </DonutRing>
-          <EmptyState v-else icon="mdi-credit-card-outline" title="No payments" />
-          <div class="mt-3">
-            <div v-for="p in paymentBreakdown" :key="p.method" class="d-flex align-center py-1">
-              <span class="legend-dot mr-2" :style="{ background: PAYMENT_COLORS[p.method] || '#94a3b8' }"></span>
-              <span class="text-body-2 flex-grow-1">{{ p.label }}</span>
-              <span class="text-caption text-medium-emphasis mr-2">{{ p.count }}</span>
-              <span class="text-body-2 font-weight-medium">{{ formatMoney(p.total) }}</span>
-            </div>
-          </div>
-        </v-card>
-      </v-col>
-    </v-row>
-
-    <!-- Hour distribution + Top products in range -->
-    <v-row>
-      <v-col cols="12" md="6">
-        <v-card rounded="lg" class="pa-4 h-100">
-          <div class="d-flex align-center justify-space-between mb-2">
-            <div>
-              <h3 class="text-h6 font-weight-bold">Hour of day</h3>
-              <div class="text-caption text-medium-emphasis">When customers buy most</div>
-            </div>
-          </div>
-          <HourHeatmap :counts="hourCounts" unit="sales" />
-        </v-card>
-      </v-col>
-      <v-col cols="12" md="6">
-        <v-card rounded="lg" class="pa-4 h-100">
-          <div class="d-flex align-center justify-space-between mb-2">
-            <h3 class="text-h6 font-weight-bold">Top products</h3>
-            <v-btn variant="text" class="text-none" size="small" to="/analytics/products" append-icon="mdi-arrow-right">View all</v-btn>
-          </div>
-          <EmptyState v-if="!topProducts.length" icon="mdi-package-variant-closed" title="No sales" />
-          <div v-else>
-            <div v-for="p in topProducts" :key="p.name" class="d-flex align-center py-2 border-b">
-              <div class="flex-grow-1">
-                <div class="text-body-2 font-weight-medium">{{ p.name }}</div>
-                <div class="text-caption text-medium-emphasis">{{ p.qty }} sold</div>
-              </div>
-              <div class="text-body-2 font-weight-medium">{{ formatMoney(p.revenue) }}</div>
-            </div>
-          </div>
-        </v-card>
-      </v-col>
-    </v-row>
-
     <!-- Filters + transactions table -->
     <v-card rounded="lg" class="pa-4 mt-4">
       <div class="d-flex flex-wrap align-center mb-3" style="gap:8px">
@@ -244,6 +164,7 @@
           <thead>
             <tr>
               <th style="width:32px"></th>
+              <th style="width:48px" class="text-right">#</th>
               <th class="cursor-pointer" @click="setSort('created_at')">Date / Time <v-icon size="14" v-if="sortBy === 'created_at'">{{ sortDir === 'desc' ? 'mdi-arrow-down' : 'mdi-arrow-up' }}</v-icon></th>
               <th class="cursor-pointer" @click="setSort('transaction_number')">Receipt #</th>
               <th>Customer</th>
@@ -256,11 +177,12 @@
             </tr>
           </thead>
           <tbody>
-            <template v-for="t in pagedTx" :key="t.id">
+            <template v-for="(t, i) in pagedTx" :key="t.id">
               <tr class="row-main">
                 <td>
                   <v-btn :icon="expanded[t.id] ? 'mdi-chevron-up' : 'mdi-chevron-down'" variant="text" size="x-small" @click="toggleExpand(t.id)" />
                 </td>
+                <td class="text-right text-caption text-medium-emphasis">{{ ((page - 1) * pageSize) + i + 1 }}</td>
                 <td>
                   <div class="text-body-2">{{ formatDate(t.created_at) }}</div>
                   <div class="text-caption text-medium-emphasis">{{ formatTime(t.created_at) }}</div>
@@ -287,6 +209,7 @@
                 </td>
               </tr>
               <tr v-if="expanded[t.id]" class="row-detail">
+                <td></td>
                 <td></td>
                 <td colspan="9" class="pa-0">
                   <div class="pa-3 detail-panel">
@@ -352,7 +275,7 @@
         <v-divider />
         <v-card-text class="receipt-body">
           <div class="text-center mb-2">
-            <div class="text-h6 font-weight-bold">AfyaOne Pharmacy</div>
+            <div class="text-h6 font-weight-bold">{{ tenantName }}</div>
             <div class="text-caption text-medium-emphasis">{{ formatDateTime(receiptTx.created_at) }}</div>
             <div class="text-caption">Receipt #{{ receiptTx.transaction_number || receiptTx.id }}</div>
           </div>
@@ -379,6 +302,7 @@
           </div>
           <div v-if="receiptTx.payment_reference" class="text-caption text-medium-emphasis mt-2">Reference: {{ receiptTx.payment_reference }}</div>
           <div class="text-center text-caption text-medium-emphasis mt-3">Thank you for your visit!</div>
+          <div class="text-center text-caption text-medium-emphasis mt-2" style="opacity:0.7">Powered by AdhereMed</div>
         </v-card-text>
       </v-card>
     </v-dialog>
@@ -389,9 +313,6 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { formatMoney, formatDate, formatDateTime } from '~/utils/format'
 import EmptyState from '~/components/EmptyState.vue'
-import SparkArea from '~/components/SparkArea.vue'
-import DonutRing from '~/components/DonutRing.vue'
-import HourHeatmap from '~/components/HourHeatmap.vue'
 import { useAuthStore } from '~/stores/auth'
 
 const { $api } = useNuxtApp()
@@ -399,6 +320,7 @@ const { $api } = useNuxtApp()
 const auth = useAuthStore()
 const ADMIN_ROLES = ['super_admin', 'tenant_admin', 'pharmacist']
 const canViewAll = computed(() => ADMIN_ROLES.includes(auth.role))
+const tenantName = computed(() => auth.tenantName || 'Pharmacy')
 
 const loading = ref(false)
 const txAll = ref([])
@@ -412,7 +334,6 @@ const sortDir = ref('desc')
 const page = ref(1)
 const pageSize = 20
 const expanded = ref({})
-const trendMetric = ref('revenue')
 const receiptDialog = ref(false)
 const receiptTx = ref(null)
 
@@ -560,40 +481,8 @@ const kpis = computed(() => {
 })
 
 // --- trend (revenue / orders / items per bucket) ---
-function bucketLabel(d, weekly) {
-  if (weekly) return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
-  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
-}
-const trend = computed(() => {
-  const start = rangeStart.value
-  const end = rangeEnd.value
-  const dayMs = 86400000
-  const days = Math.max(1, Math.round((end - start) / dayMs))
-  const weekly = days > 90
-  const stepDays = weekly ? 7 : 1
-  const buckets = Math.max(1, Math.ceil(days / stepDays))
-  const values = new Array(buckets).fill(0)
-  const labels = []
-  for (let i = 0; i < buckets; i++) {
-    labels.push(bucketLabel(addDays(start, i * stepDays), weekly))
-  }
-  for (const t of filteredTx.value) {
-    if ((t.status || 'completed').toLowerCase() !== 'completed') continue
-    const d = new Date(t.created_at || 0)
-    const idx = Math.floor((d - start) / dayMs / stepDays)
-    if (idx < 0 || idx >= buckets) continue
-    if (trendMetric.value === 'revenue') values[idx] += Number(t.total || 0)
-    else if (trendMetric.value === 'orders') values[idx] += 1
-    else values[idx] += itemsCount(t)
-  }
-  return { values, labels }
-})
-
-function moneyFormat(v) {
-  if (v >= 1_000_000) return 'KES ' + (v / 1_000_000).toFixed(1) + 'M'
-  if (v >= 1_000) return 'KES ' + (v / 1_000).toFixed(1) + 'k'
-  return 'KES ' + Math.round(v)
-}
+// (Removed: revenue/orders/items chart, payment methods chart,
+// hour-of-day chart and top products section.)
 
 // --- payment method breakdown ---
 const PAYMENT_COLORS = {
@@ -610,50 +499,7 @@ function paymentColor(m) {
   return PAYMENT_COLORS[String(m || '').toLowerCase()] ? undefined : 'default'
 }
 
-const paymentBreakdown = computed(() => {
-  const m = new Map()
-  for (const t of filteredTx.value) {
-    if ((t.status || 'completed').toLowerCase() !== 'completed') continue
-    const k = String(t.payment_method || 'other').toLowerCase()
-    const cur = m.get(k) || { method: k, label: formatPayment(k), count: 0, total: 0 }
-    cur.count += 1
-    cur.total += Number(t.total || 0)
-    m.set(k, cur)
-  }
-  return [...m.values()].sort((a, b) => b.total - a.total)
-})
-
-const paymentSegments = computed(() => paymentBreakdown.value.map(p => ({
-  value: p.total,
-  color: PAYMENT_COLORS[p.method] || '#94a3b8',
-  label: p.label
-})))
-
-// --- hour distribution ---
-const hourCounts = computed(() => {
-  const arr = new Array(24).fill(0)
-  for (const t of filteredTx.value) {
-    const d = new Date(t.created_at || 0)
-    arr[d.getHours()] += 1
-  }
-  return arr
-})
-
-// --- top products ---
-const topProducts = computed(() => {
-  const m = new Map()
-  for (const t of filteredTx.value) {
-    if ((t.status || 'completed').toLowerCase() !== 'completed') continue
-    for (const it of (t.items || [])) {
-      const name = it.medication_name || it.stock_name || 'Item'
-      const cur = m.get(name) || { name, qty: 0, revenue: 0 }
-      cur.qty += Number(it.quantity || 0)
-      cur.revenue += Number(it.total_price || 0)
-      m.set(name, cur)
-    }
-  }
-  return [...m.values()].sort((a, b) => b.revenue - a.revenue).slice(0, 8)
-})
+// --- top products / hour distribution sections were removed from the UI ---
 
 // --- filter option lists ---
 const paymentFilterOptions = computed(() => {
@@ -710,7 +556,7 @@ function printReceipt(t) {
       .total { font-weight: bold; font-size: 14px; }
       .center { text-align:center; }
     </style></head><body>
-      <h2>AfyaOne Pharmacy</h2>
+      <h2>${escapeHtml(tenantName.value || 'Pharmacy')}</h2>
       <div class="center"><small>${formatDateTime(t.created_at)}</small><br>
       <small>Receipt #${escapeHtml(t.transaction_number || String(t.id))}</small></div>
       <hr>
@@ -727,6 +573,7 @@ function printReceipt(t) {
       ${t.payment_reference ? `<div class="row"><span>Ref</span><span>${escapeHtml(t.payment_reference)}</span></div>` : ''}
       <hr>
       <div class="center"><small>Thank you for your visit!</small></div>
+      <div class="center" style="margin-top:6px;opacity:0.7"><small>Powered by AdhereMed</small></div>
       <script>window.onload = () => { window.print(); }</` + `script>
     </body></html>`)
   w.document.close()
@@ -781,7 +628,7 @@ onMounted(load)
 .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.06); }
 
 .cursor-pointer { cursor: pointer; user-select: none; }
-.legend-dot { display:inline-block; width:10px; height:10px; border-radius:50%; }
+.legend-dot { display:none; }
 
 .sales-table thead th {
   font-weight: 700 !important;

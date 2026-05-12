@@ -148,7 +148,11 @@ export default defineNuxtConfig({
       apiBase: 'http://127.0.0.1:8000/api',
       // apiBase: 'http://ec2-3-120-129-138.eu-central-1.compute.amazonaws.com/api',
       // apiBase: 'https://adheremedapi.tiktek-ex.com/api',
-      appName: 'AdhereMed'
+      appName: 'AdhereMed',
+      googleMapsApiKey: 'AIzaSyAhiNO62geg58-WaLGeq235Lo8gySLvs_I'
     }
   }
 })
+
+// GOOGLE KEYS
+// MAP API KEY: AIzaSyAhiNO62geg58-WaLGeq235Lo8gySLvs_I

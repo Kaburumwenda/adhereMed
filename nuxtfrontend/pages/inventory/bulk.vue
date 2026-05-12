@@ -912,8 +912,19 @@ onMounted(load)
 .cell-input:hover { border-color: rgba(0, 0, 0, 0.12); }
 .cell-input:focus {
   border-color: rgb(var(--v-theme-primary));
-  background: white;
+  background: rgb(var(--v-theme-surface));
   box-shadow: 0 0 0 3px rgba(var(--v-theme-primary), 0.18);
+}
+/* Native <select> needs explicit theming so the popup isn't white in dark mode */
+select.cell-input {
+  background-color: rgb(var(--v-theme-surface));
+  color: rgb(var(--v-theme-on-surface));
+  color-scheme: light dark;
+  appearance: auto;
+}
+select.cell-input option {
+  background-color: rgb(var(--v-theme-surface));
+  color: rgb(var(--v-theme-on-surface));
 }
 .cell-input.num { text-align: right; font-variant-numeric: tabular-nums; }
 .cell-input.cell-name { font-weight: 500; }

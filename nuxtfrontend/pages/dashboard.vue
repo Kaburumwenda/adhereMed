@@ -15,6 +15,11 @@ import GenericDashboard from '~/components/dashboards/GenericDashboard.vue'
 
 const auth = useAuthStore()
 
+// Lab tenants use the full /lab dashboard.
+if (process.client && auth.tenantType === 'lab' && !['patient'].includes(auth.role)) {
+  navigateTo('/lab', { replace: true })
+}
+
 const component = computed(() => {
   if (auth.role === 'super_admin') {
     navigateTo('/superadmin')

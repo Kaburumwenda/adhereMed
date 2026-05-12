@@ -7,7 +7,8 @@ class BranchSerializer(serializers.ModelSerializer):
     class Meta:
         model = Branch
         fields = [
-            'id', 'name', 'address', 'phone', 'email',
+            'id', 'name', 'address', 'place_name', 'latitude', 'longitude',
+            'phone', 'email',
             'is_main', 'is_active', 'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -39,14 +40,23 @@ class PharmacyDetailSerializer(serializers.ModelSerializer):
 class DeliverySerializer(serializers.ModelSerializer):
     transaction_number = serializers.CharField(source='transaction.transaction_number', read_only=True)
     assigned_to_name = serializers.CharField(source='assigned_to.full_name', read_only=True, default=None)
+    driver_display = serializers.SerializerMethodField()
 
     class Meta:
         model = Delivery
         fields = [
             'id', 'transaction', 'transaction_number',
-            'delivery_address', 'recipient_name', 'recipient_phone',
-            'delivery_fee', 'status', 'assigned_to', 'assigned_to_name',
+            'delivery_address', 'latitude', 'longitude',
+            'recipient_name', 'recipient_phone',
+            'delivery_fee', 'status',
+            'assigned_to', 'assigned_to_name',
+            'assigned_driver_name', 'driver_display',
             'notes', 'scheduled_at', 'delivered_at',
             'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_driver_display(self, obj):
+        if obj.assigned_to_id and getattr(obj.assigned_to, 'full_name', None):
+            return obj.assigned_to.full_name
+        return obj.assigned_driver_name or None

@@ -142,6 +142,10 @@ async function onSubmit() {
         last_name: form.lastName,
         phone: form.phone
       }
+    }, {
+      // Tenant creation provisions a new Postgres schema and runs all
+      // migrations synchronously — can take 30–90s on a cold DB.
+      timeout: 180000
     })
     success.value = true
     setTimeout(() => router.push('/login'), 1500)

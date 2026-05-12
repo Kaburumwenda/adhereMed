@@ -525,6 +525,279 @@ def _doctor_consultation_stats(doctor_user, start, end, fee):
     return count, fees_total
 
 
+def _aggregate_lab(tenant, start, end):
+    qs = DailyUsage.objects.filter(tenant=tenant, date__gte=start, date__lte=end)
+    total = qs.aggregate(total=Sum("lab_request_count"))["total"] or 0
+    daily = list(
+        qs.order_by("date").values("date", "lab_request_count")
+    )
+    # Normalize key so frontend can reuse same chart code
+    daily = [{"date": d["date"], "request_count": d["lab_request_count"]} for d in daily]
+    return total, daily
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def tenant_lab_dashboard(request):
+    """Lab-only API usage stats for the current authenticated tenant.
+
+    Counts only requests that hit /api/lab/* endpoints, separate from total
+    tenant usage. Useful for lab managers to see how heavily their lab
+    module is being used independent of other apps.
+    """
+    tenant = getattr(request, "tenant", None)
+    if tenant is None or getattr(tenant, "schema_name", "public") == "public":
+        return Response(
+            {"detail": "No tenant context for this request."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    today = timezone.localdate()
+    month_start, month_end = _month_bounds(today.year, today.month)
+    lab_total, lab_daily = _aggregate_lab(tenant, month_start, month_end)
+    all_total, _ = _aggregate(tenant, month_start, month_end)
+
+    rate = BillingRate.current()
+    cost_so_far = rate.cost_for(lab_total)
+    projected_requests = _project_month_total(lab_total, today)
+    projected_cost = rate.cost_for(projected_requests)
+
+    last_30_start = today - timedelta(days=29)
+    _, lab_last_30 = _aggregate_lab(tenant, last_30_start, today)
+
+    # Previous month comparison
+    if today.month == 1:
+        prev_year, prev_month = today.year - 1, 12
+    else:
+        prev_year, prev_month = today.year, today.month - 1
+    prev_start, prev_end = _month_bounds(prev_year, prev_month)
+    prev_total, _ = _aggregate_lab(tenant, prev_start, prev_end)
+    cmp_end = min(
+        prev_start.replace(day=today.day)
+        if today.day <= calendar.monthrange(prev_year, prev_month)[1]
+        else prev_end,
+        prev_end,
+    )
+    prev_same, _ = _aggregate_lab(tenant, prev_start, cmp_end)
+    if prev_same > 0:
+        mom_change_pct = round(((lab_total - prev_same) / prev_same) * 100, 2)
+    else:
+        mom_change_pct = None
+
+    week_start = today - timedelta(days=6)
+    week_total, week_daily = _aggregate_lab(tenant, week_start, today)
+    avg_7d = round(week_total / 7, 2) if week_total else 0
+    today_count = next(
+        (d["request_count"] for d in week_daily if d["date"] == today), 0
+    )
+    yesterday = today - timedelta(days=1)
+    yesterday_count = next(
+        (d["request_count"] for d in week_daily if d["date"] == yesterday), 0
+    )
+    peak_day = max(lab_daily, key=lambda d: d["request_count"], default=None)
+
+    days_in_month = calendar.monthrange(today.year, today.month)[1]
+    days_remaining = days_in_month - today.day
+    daily_avg_so_far = round(lab_total / max(today.day, 1), 2)
+
+    weekday_counts = [0] * 7
+    weekday_days = [0] * 7
+    for d in lab_last_30:
+        wd = d["date"].weekday() if hasattr(d["date"], "weekday") else date.fromisoformat(str(d["date"])).weekday()
+        weekday_counts[wd] += d["request_count"]
+        weekday_days[wd] += 1
+    weekday_breakdown = [
+        {
+            "weekday": i,
+            "label": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][i],
+            "total": weekday_counts[i],
+            "average": round(weekday_counts[i] / weekday_days[i], 2) if weekday_days[i] else 0,
+        }
+        for i in range(7)
+    ]
+
+    monthly_history = []
+    cursor_y, cursor_m = today.year, today.month
+    for _ in range(6):
+        ms, me = _month_bounds(cursor_y, cursor_m)
+        m_total, _ = _aggregate_lab(tenant, ms, me)
+        monthly_history.append(
+            {
+                "year": cursor_y,
+                "month": cursor_m,
+                "label": f"{cursor_y}-{cursor_m:02d}",
+                "total_requests": m_total,
+                "cost": str(rate.cost_for(m_total)),
+            }
+        )
+        if cursor_m == 1:
+            cursor_y, cursor_m = cursor_y - 1, 12
+        else:
+            cursor_m -= 1
+    monthly_history.reverse()
+
+    share_pct = round((lab_total / all_total) * 100, 2) if all_total else 0
+
+    return Response({
+        "tenant": {
+            "id": tenant.id,
+            "name": tenant.name,
+            "schema": tenant.schema_name,
+            "type": tenant.type,
+        },
+        "scope": "lab",
+        "current_month": {
+            "year": today.year,
+            "month": today.month,
+            "start": month_start,
+            "end": month_end,
+            "total_requests": lab_total,
+            "all_requests": all_total,
+            "share_pct": share_pct,
+            "cost_so_far": str(cost_so_far),
+            "projected_requests": projected_requests,
+            "projected_cost": str(projected_cost),
+            "days_elapsed": today.day,
+            "days_remaining": days_remaining,
+            "daily_average_so_far": daily_avg_so_far,
+            "peak_day": peak_day,
+        },
+        "comparison": {
+            "previous_month": {
+                "year": prev_year,
+                "month": prev_month,
+                "total_requests": prev_total,
+                "cost": str(rate.cost_for(prev_total)),
+            },
+            "previous_same_period_total": prev_same,
+            "mom_change_pct": mom_change_pct,
+            "today_requests": today_count,
+            "yesterday_requests": yesterday_count,
+            "trailing_7d_total": week_total,
+            "trailing_7d_average": avg_7d,
+        },
+        "rate": BillingRateSerializer(rate).data,
+        "daily_current_month": lab_daily,
+        "daily_last_30_days": lab_last_30,
+        "weekday_breakdown": weekday_breakdown,
+        "monthly_history": monthly_history,
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def tenant_lab_range(request):
+    """Lab-only usage for an arbitrary date range.
+
+    Same preset semantics as `tenant_range_usage` but reports only the
+    `lab_request_count` slice of each day.
+
+    Query params:
+      preset = today | yesterday | last_7_days | last_14_days | last_30_days |
+               this_month | last_month | this_year | custom
+      start  = YYYY-MM-DD (used when preset=custom or omitted)
+      end    = YYYY-MM-DD (used when preset=custom or omitted)
+    """
+    tenant = getattr(request, "tenant", None)
+    if tenant is None or getattr(tenant, "schema_name", "public") == "public":
+        return Response(
+            {"detail": "No tenant context for this request."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    today = timezone.localdate()
+    preset = (request.GET.get("preset") or "").strip().lower()
+    start_param = request.GET.get("start")
+    end_param = request.GET.get("end")
+
+    def parse(d):
+        try:
+            return date.fromisoformat(d)
+        except (TypeError, ValueError):
+            return None
+
+    start = end = None
+    if preset == "today":
+        start = end = today
+    elif preset == "yesterday":
+        start = end = today - timedelta(days=1)
+    elif preset == "last_7_days":
+        start, end = today - timedelta(days=6), today
+    elif preset == "last_14_days":
+        start, end = today - timedelta(days=13), today
+    elif preset == "last_30_days":
+        start, end = today - timedelta(days=29), today
+    elif preset == "this_month":
+        start, end = _month_bounds(today.year, today.month)
+        end = today
+    elif preset == "last_month":
+        if today.month == 1:
+            ly, lm = today.year - 1, 12
+        else:
+            ly, lm = today.year, today.month - 1
+        start, end = _month_bounds(ly, lm)
+    elif preset == "this_year":
+        start, end = date(today.year, 1, 1), today
+    else:
+        start = parse(start_param)
+        end = parse(end_param)
+
+    if not start or not end:
+        return Response(
+            {"detail": "Provide a valid preset or start/end (YYYY-MM-DD)."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if start > end:
+        start, end = end, start
+
+    lab_total, lab_daily = _aggregate_lab(tenant, start, end)
+    all_total, _ = _aggregate(tenant, start, end)
+    rate = BillingRate.current()
+    span_days = (end - start).days + 1
+    avg = round(lab_total / span_days, 2) if span_days else 0
+    counts = [d["request_count"] for d in lab_daily]
+    peak = max(lab_daily, key=lambda d: d["request_count"], default=None)
+    low = min(lab_daily, key=lambda d: d["request_count"], default=None)
+    busy_days = sum(1 for c in counts if c > 0)
+    share_pct = round((lab_total / all_total) * 100, 2) if all_total else 0
+
+    weekday_counts = [0] * 7
+    weekday_days = [0] * 7
+    for d in lab_daily:
+        dt = d["date"] if hasattr(d["date"], "weekday") else date.fromisoformat(str(d["date"]))
+        wd = dt.weekday()
+        weekday_counts[wd] += d["request_count"]
+        weekday_days[wd] += 1
+    weekday_breakdown = [
+        {
+            "weekday": i,
+            "label": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][i],
+            "total": weekday_counts[i],
+            "average": round(weekday_counts[i] / weekday_days[i], 2) if weekday_days[i] else 0,
+        }
+        for i in range(7)
+    ]
+
+    return Response({
+        "preset": preset or "custom",
+        "start": start,
+        "end": end,
+        "days": span_days,
+        "active_days": busy_days,
+        "total_requests": lab_total,
+        "all_requests": all_total,
+        "share_pct": share_pct,
+        "average_per_day": avg,
+        "average_per_active_day": round(lab_total / busy_days, 2) if busy_days else 0,
+        "peak_day": peak,
+        "low_day": low,
+        "cost": str(rate.cost_for(lab_total)),
+        "rate": BillingRateSerializer(rate).data,
+        "daily": lab_daily,
+        "weekday_breakdown": weekday_breakdown,
+    })
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def doctor_dashboard(request):

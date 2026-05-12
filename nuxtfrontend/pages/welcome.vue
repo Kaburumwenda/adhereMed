@@ -17,6 +17,16 @@
         <BrandMark :size="16" bold-color="white" light-color="white" />
         <v-spacer />
         <v-btn
+          variant="text"
+          class="text-none mr-2"
+          rounded="lg"
+          prepend-icon="mdi-book-open-variant"
+          style="color:#fff !important;"
+          @click="$router.push('/docs')"
+        >
+          Documentation
+        </v-btn>
+        <v-btn
           variant="outlined"
           color="white"
           class="text-none mr-2"
@@ -99,7 +109,8 @@ const features = [
   { icon: 'mdi-hospital-building', title: 'Hospitals', desc: 'Patients, consultations, billing & more', color: '#5EEAD4' },
   { icon: 'mdi-pharmacy', title: 'Pharmacies', desc: 'POS, inventory, dispensing & analytics', color: '#7DD3FC' },
   { icon: 'mdi-flask', title: 'Laboratories', desc: 'Lab orders, results & exchange', color: '#F9A8D4' },
-  { icon: 'mdi-account-heart', title: 'Patients', desc: 'Records, prescriptions & online orders', color: '#FBBF24' }
+  { icon: 'mdi-account-heart', title: 'Patients', desc: 'Records, prescriptions & online orders', color: '#FBBF24' },
+  { icon: 'mdi-home-heart', title: 'Homecare', desc: 'In-home visits, care plans & monitoring', color: '#A7F3D0' }
 ]
 </script>
 

@@ -64,20 +64,27 @@ class RequestUsageMiddleware:
         from usage_billing.models import DailyUsage
 
         today = timezone.localdate()
+        is_lab = path.startswith("/api/lab/")
         # Use the public schema connection for the write so the row lands
         # in the shared table regardless of which tenant schema is active.
         with transaction.atomic():
+            update_fields = {"request_count": F("request_count") + 1}
+            if is_lab:
+                update_fields["lab_request_count"] = F("lab_request_count") + 1
             updated = DailyUsage.objects.filter(
                 tenant_id=tenant.id, date=today
-            ).update(request_count=F("request_count") + 1)
+            ).update(**update_fields)
             if not updated:
-                DailyUsage.objects.get_or_create(
+                _, created = DailyUsage.objects.get_or_create(
                     tenant_id=tenant.id,
                     date=today,
-                    defaults={"request_count": 1},
+                    defaults={
+                        "request_count": 1,
+                        "lab_request_count": 1 if is_lab else 0,
+                    },
                 )
-                # If a parallel request created the row first, ensure the
-                # increment still happens.
-                DailyUsage.objects.filter(
-                    tenant_id=tenant.id, date=today, request_count=0
-                ).update(request_count=1)
+                if not created:
+                    # A parallel request created the row; apply our increment.
+                    DailyUsage.objects.filter(
+                        tenant_id=tenant.id, date=today
+                    ).update(**update_fields)

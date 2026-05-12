@@ -31,7 +31,11 @@ export function getNavSections(role, tenantType) {
 
   sections.push({
     label: '',
-    items: [{ icon: 'mdi-view-dashboard', label: 'Dashboard', path: '/dashboard' }]
+    items: [{
+      icon: 'mdi-view-dashboard',
+      label: 'Dashboard',
+      path: tenantType === 'lab' ? '/lab' : '/dashboard'
+    }]
   })
 
   const hospitalRoles = ['tenant_admin', 'hospital_admin', 'doctor', 'clinical_officer', 'dentist', 'nurse', 'midwife', 'receptionist', 'lab_tech', 'radiologist', 'pharmacist', 'cashier', 'admin']
@@ -185,8 +189,59 @@ export function getNavSections(role, tenantType) {
 
   if (tenantType === 'lab' && ['tenant_admin', 'lab_admin', 'lab_tech', 'admin'].includes(role)) {
     sections.push({
-      label: 'LABORATORY',
-      items: [{ icon: 'mdi-clock-alert', label: 'Lab Requests', path: '/lab-exchange' }]
+      label: 'LAB OPERATIONS',
+      items: [
+        { icon: 'mdi-account-multiple', label: 'Patients', path: '/patients' },
+        {
+          icon: 'mdi-clipboard-text-clock', label: 'Requisitions', path: '/lab/requisitions',
+          children: [
+            { icon: 'mdi-format-list-bulleted', label: 'All Requisitions', path: '/lab/requisitions' },
+            { icon: 'mdi-plus-circle', label: 'New Requisition', path: '/lab/requisitions/new' },
+            { icon: 'mdi-clock-alert', label: 'External (Exchange)', path: '/lab-exchange' }
+          ]
+        },
+        { icon: 'mdi-barcode-scan', label: 'Accessioning', path: '/lab/accessioning' },
+        { icon: 'mdi-test-tube', label: 'Worklist', path: '/lab/worklist' },
+        { icon: 'mdi-file-chart', label: 'Results & Reports', path: '/lab/results' },
+        { icon: 'mdi-home-import-outline', label: 'Home Visits', path: '/lab/home-visits' }
+      ]
+    })
+    sections.push({
+      label: 'CATALOG & REFERRING',
+      items: [
+        { icon: 'mdi-flask-outline', label: 'Tests', path: '/lab/catalog' },
+        { icon: 'mdi-package-variant', label: 'Test Panels', path: '/lab/panels' },
+        { icon: 'mdi-stethoscope', label: 'Referring Doctors', path: '/lab/referring/doctors' },
+        { icon: 'mdi-hospital-building', label: 'Referring Facilities', path: '/lab/referring/facilities' }
+      ]
+    })
+    sections.push({
+      label: 'QUALITY & EQUIPMENT',
+      items: [
+        { icon: 'mdi-chart-bell-curve-cumulative', label: 'Quality Control', path: '/lab/qc' },
+        { icon: 'mdi-cog-transfer', label: 'Instruments', path: '/lab/instruments' },
+        { icon: 'mdi-test-tube', label: 'Reagents', path: '/lab/reagents' }
+      ]
+    })
+    sections.push({
+      label: 'BILLING & FINANCE',
+      items: [
+        { icon: 'mdi-receipt-text', label: 'Invoices', path: '/lab/billing' },
+        { icon: 'mdi-bank', label: 'Accounts', path: '/lab/accounts' },
+        { icon: 'mdi-cash-minus', label: 'Expenses', path: '/lab/expenses' },
+        { icon: 'mdi-shield-account', label: 'Insurance', path: '/lab/insurance' },
+        { icon: 'mdi-cash-multiple', label: 'API Billing', path: '/lab/api/billing' }
+      ]
+    })
+    sections.push({
+      label: 'ADMIN & ANALYTICS',
+      items: [
+        { icon: 'mdi-account-group', label: 'Staff', path: '/lab/staff' },
+        { icon: 'mdi-bank', label: 'Branches', path: '/lab/branches' },
+        { icon: 'mdi-printer-pos', label: 'Report Templates', path: '/lab/report-templates' },
+        { icon: 'mdi-bell', label: 'Notifications', path: '/lab/notifications' },
+        { icon: 'mdi-cog', label: 'Settings', path: '/lab/settings' }
+      ]
     })
   }
 

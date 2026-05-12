@@ -204,7 +204,19 @@
                         hide-details="auto"
                       />
                     </v-col>
-                    <v-col cols="12" md="6" class="d-flex align-center justify-end">
+                    <v-col cols="12" md="6" class="d-flex align-center justify-end flex-wrap ga-2">
+                      <v-chip
+                        size="small"
+                        variant="tonal"
+                        :color="marginColor(it)"
+                        prepend-icon="mdi-trending-up"
+                      >Margin {{ marginPct(it).toFixed(1) }}%</v-chip>
+                      <v-chip
+                        size="small"
+                        variant="tonal"
+                        color="success"
+                        prepend-icon="mdi-cash-plus"
+                      >Profit {{ formatMoney(lineProfit(it)) }}</v-chip>
                       <div class="po-line-total">
                         <span class="text-caption text-medium-emphasis mr-2">Line total</span>
                         <span class="text-h6 font-weight-bold text-primary">{{ formatMoney(lineTotal(it)) }}</span>
@@ -274,6 +286,26 @@
                 <div class="po-summary-stat is-total">
                   <div class="text-caption" style="opacity:0.85">Total cost</div>
                   <div class="text-h5 font-weight-bold">{{ formatMoney(grandTotal) }}</div>
+                </div>
+              </v-col>
+            </v-row>
+            <v-row dense class="mt-1">
+              <v-col cols="6" md="4">
+                <div class="po-summary-stat">
+                  <div class="text-caption text-medium-emphasis">Projected revenue</div>
+                  <div class="text-h6 font-weight-bold">{{ formatMoney(grandRevenue) }}</div>
+                </div>
+              </v-col>
+              <v-col cols="6" md="4">
+                <div class="po-summary-stat">
+                  <div class="text-caption text-medium-emphasis">Projected profit</div>
+                  <div class="text-h6 font-weight-bold" :class="grandProfit >= 0 ? 'text-success' : 'text-error'">{{ formatMoney(grandProfit) }}</div>
+                </div>
+              </v-col>
+              <v-col cols="12" md="4">
+                <div class="po-summary-stat">
+                  <div class="text-caption text-medium-emphasis">Profit margin</div>
+                  <div class="text-h6 font-weight-bold" :class="grandMarginPct >= 0 ? 'text-success' : 'text-error'">{{ grandMarginPct.toFixed(1) }}%</div>
                 </div>
               </v-col>
             </v-row>
@@ -396,7 +428,33 @@ function onPickItem(it, value) {
 function lineTotal(it) {
   return Number(it.qty || 0) * Number(it.unit_cost || 0)
 }
+function effectiveSelling(it) {
+  const sell = Number(it.unit_selling_price || 0)
+  const disc = Number(it.discount_percent || 0)
+  return sell * (1 - disc / 100)
+}
+function lineRevenue(it) {
+  return Number(it.qty || 0) * effectiveSelling(it)
+}
+function lineProfit(it) {
+  return lineRevenue(it) - lineTotal(it)
+}
+function marginPct(it) {
+  const rev = effectiveSelling(it)
+  if (!rev) return 0
+  return ((rev - Number(it.unit_cost || 0)) / rev) * 100
+}
+function marginColor(it) {
+  const m = marginPct(it)
+  if (m >= 30) return 'success'
+  if (m >= 15) return 'info'
+  if (m >= 0) return 'warning'
+  return 'error'
+}
 const grandTotal = computed(() => form.items.reduce((s, it) => s + lineTotal(it), 0))
+const grandRevenue = computed(() => form.items.reduce((s, it) => s + lineRevenue(it), 0))
+const grandProfit = computed(() => grandRevenue.value - grandTotal.value)
+const grandMarginPct = computed(() => grandRevenue.value ? (grandProfit.value / grandRevenue.value) * 100 : 0)
 const totalQty = computed(() => form.items.reduce((s, it) => s + Number(it.qty || 0), 0))
 const avgUnitCost = computed(() => totalQty.value ? grandTotal.value / totalQty.value : 0)
 const canSave = computed(() => {

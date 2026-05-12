@@ -85,6 +85,10 @@ class DailyUsage(models.Model):
     )
     date = models.DateField()
     request_count = models.PositiveIntegerField(default=0)
+    lab_request_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Subset of request_count that hit /api/lab/* endpoints.",
+    )
     last_updated = models.DateTimeField(auto_now=True)
 
     class Meta:

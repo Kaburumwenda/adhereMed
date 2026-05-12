@@ -107,8 +107,60 @@
                             variant="outlined" density="comfortable" :error-messages="errors.name" />
             </v-col>
             <v-col cols="12">
-              <v-textarea v-model="form.address" label="Address" rows="2" auto-grow
-                          variant="outlined" density="comfortable" />
+              <v-autocomplete
+                v-model="addressSelection"
+                v-model:search="addressQuery"
+                :items="addressPredictions"
+                :loading="loadingPlaces"
+                item-title="description"
+                item-value="place_id"
+                label="Search address (Google Places)"
+                placeholder="Start typing an address…"
+                variant="outlined" density="comfortable"
+                prepend-inner-icon="mdi-map-marker"
+                return-object hide-no-data hide-details="auto"
+                no-filter clearable
+                @update:search="onAddressSearch"
+                @update:model-value="onAddressPicked"
+              >
+                <template #append-inner>
+                  <v-tooltip text="Pick on map" location="top">
+                    <template #activator="{ props }">
+                      <v-btn v-bind="props" icon="mdi-map-search" variant="text" size="small" color="primary"
+                             @click.stop="openMapPicker" />
+                    </template>
+                  </v-tooltip>
+                  <v-tooltip text="Use my current location" location="top">
+                    <template #activator="{ props }">
+                      <v-btn
+                        v-bind="props" icon="mdi-crosshairs-gps"
+                        variant="text" size="small" color="indigo"
+                        :loading="locating" @click.stop="useMyLocation"
+                      />
+                    </template>
+                  </v-tooltip>
+                </template>
+                <template #item="{ props: ip, item }">
+                  <v-list-item v-bind="ip" prepend-icon="mdi-map-marker-outline">
+                    <v-list-item-subtitle v-if="item.raw.structured_formatting?.secondary_text">
+                      {{ item.raw.structured_formatting.secondary_text }}
+                    </v-list-item-subtitle>
+                  </v-list-item>
+                </template>
+              </v-autocomplete>
+              <v-textarea v-model="form.address" label="Address (editable)" rows="2" auto-grow
+                          variant="outlined" density="comfortable" class="mt-2"
+                          prepend-inner-icon="mdi-pencil" hide-details="auto"
+                          hint="Pick from suggestions, the map, or type manually" persistent-hint />
+              <div v-if="form.latitude != null && form.longitude != null" class="d-flex flex-wrap ga-2 mt-2">
+                <v-chip size="small" variant="tonal" color="primary" prepend-icon="mdi-map-marker">
+                  {{ Number(form.latitude).toFixed(6) }}, {{ Number(form.longitude).toFixed(6) }}
+                </v-chip>
+                <v-chip v-if="form.place_name" size="small" variant="tonal" color="success" prepend-icon="mdi-tag">
+                  {{ form.place_name }}
+                </v-chip>
+                <v-btn size="x-small" variant="text" color="error" prepend-icon="mdi-close" @click="clearGeo">Clear</v-btn>
+              </div>
             </v-col>
             <v-col cols="12" md="6">
               <v-text-field v-model="form.phone" label="Phone" prepend-inner-icon="mdi-phone"
@@ -159,6 +211,8 @@
     <v-snackbar v-model="snack.show" :color="snack.color" location="top right" timeout="3000">
       {{ snack.message }}
     </v-snackbar>
+
+    <MapPicker v-model="mapPickerOpen" :initial="mapPickerInitial" @picked="onMapPicked" />
   </v-container>
 </template>
 
@@ -222,10 +276,88 @@ const headers = [
 const formDialog = ref(false)
 const form = reactive(blankForm())
 const errors = reactive({})
-function blankForm() { return { id: null, name: '', address: '', phone: '', email: '', is_main: false, is_active: true } }
-function openCreate() { Object.assign(form, blankForm()); clearErrors(); formDialog.value = true }
-function openEdit(b) { Object.assign(form, blankForm(), b); clearErrors(); formDialog.value = true }
+function blankForm() { return { id: null, name: '', address: '', place_name: '', latitude: null, longitude: null, phone: '', email: '', is_main: false, is_active: true } }
+function openCreate() { Object.assign(form, blankForm()); clearErrors(); resetAddressPicker(); formDialog.value = true }
+function openEdit(b) { Object.assign(form, blankForm(), b); clearErrors(); resetAddressPicker(b?.address || ''); formDialog.value = true }
 function clearErrors() { Object.keys(errors).forEach(k => delete errors[k]) }
+function clearGeo() { form.latitude = null; form.longitude = null; form.place_name = '' }
+
+function round6(n) { if (n == null || n === '' || isNaN(Number(n))) return null; return Math.round(Number(n) * 1e6) / 1e6 }
+
+// ── Map picker dialog ──
+const mapPickerOpen = ref(false)
+const mapPickerInitial = ref({})
+function openMapPicker() {
+  mapPickerInitial.value = {
+    lat: form.latitude, lng: form.longitude,
+    address: form.address, place_name: form.place_name,
+  }
+  mapPickerOpen.value = true
+}
+function onMapPicked(p) {
+  form.latitude = round6(p.lat)
+  form.longitude = round6(p.lng)
+  if (p.address) { form.address = p.address; addressQuery.value = p.address }
+  if (p.place_name) form.place_name = p.place_name
+}
+
+// ── Google Places autocomplete (with manual fallback) ──
+const { getPredictions, getPlaceDetails, reverseGeocode } = useGoogleMaps()
+const addressQuery = ref('')
+const addressSelection = ref(null)
+const addressPredictions = ref([])
+const loadingPlaces = ref(false)
+const locating = ref(false)
+let _addrTimer = null
+
+function resetAddressPicker(initial = '') {
+  addressQuery.value = initial
+  addressSelection.value = null
+  addressPredictions.value = []
+}
+function onAddressSearch(q) {
+  if (_addrTimer) clearTimeout(_addrTimer)
+  if (!q || q.length < 3) { addressPredictions.value = []; return }
+  loadingPlaces.value = true
+  _addrTimer = setTimeout(async () => {
+    try { addressPredictions.value = await getPredictions(q, { country: 'ke' }) }
+    catch (e) { addressPredictions.value = []; notify(e?.message || 'Places lookup failed', 'error') }
+    finally { loadingPlaces.value = false }
+  }, 280)
+}
+async function onAddressPicked(pred) {
+  if (!pred?.place_id) return
+  try {
+    const details = await getPlaceDetails(pred.place_id)
+    form.address = details.address || pred.description
+    form.latitude = round6(details.lat)
+    form.longitude = round6(details.lng)
+    form.place_name = details.name || (pred.structured_formatting?.main_text || '')
+    addressQuery.value = form.address
+  } catch (e) {
+    form.address = pred.description
+    notify(e?.message || 'Could not resolve place', 'error')
+  }
+}
+async function useMyLocation() {
+  if (!navigator.geolocation) { notify('Geolocation not supported', 'error'); return }
+  locating.value = true
+  navigator.geolocation.getCurrentPosition(
+    async ({ coords }) => {
+      try {
+        const addr = await reverseGeocode(coords.latitude, coords.longitude)
+        form.address = addr
+        form.latitude = round6(coords.latitude)
+        form.longitude = round6(coords.longitude)
+        addressQuery.value = addr
+        notify('Address detected from your location')
+      } catch (e) { notify(e?.message || 'Reverse geocoding failed', 'error') }
+      finally { locating.value = false }
+    },
+    (err) => { locating.value = false; notify(err.message || 'Could not get location', 'error') },
+    { enableHighAccuracy: true, timeout: 10000 },
+  )
+}
 
 const hasOtherMain = computed(() =>
   branches.value.some(b => b.is_main && b.id !== form.id),
