@@ -1,6 +1,6 @@
 SECRET_KEY=django-insecure-6^jhj$d@8=c5xt(g5_3$lelo3wcdrr)-+&27!wpzrl&h!((mc0
 DEBUG=True
-ALLOWED_HOSTS=localhost,127.0.0.1, ec2-3-120-129-138.eu-central-1.compute.amazonaws.com, adheremedapi.tiktek-ex.com
+ALLOWED_HOSTS=localhost,127.0.0.1, adheremedapi.tiktek-ex.com
 
 # Database
 DB_NAME=adheremeddb

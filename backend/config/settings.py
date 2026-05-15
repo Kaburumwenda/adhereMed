@@ -123,8 +123,8 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django_tenants.postgresql_backend',
-        'NAME': config('DB_NAME', default='afyaone'),
-        'USER': config('DB_USER', default='postgres'),
+        'NAME': config('DB_NAME', default='adheremeddb'),
+        'USER': config('DB_USER', default='adheremeduser'),
         'PASSWORD': config('DB_PASSWORD'),
         'HOST': config('DB_HOST', default='localhost'),
         'PORT': config('DB_PORT', default='5432'),
