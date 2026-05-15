@@ -113,6 +113,10 @@ class TenantListView(generics.ListCreateAPIView):
             phone=data.get("phone", ""),
             email=data.get("email", ""),
             website=data.get("website", ""),
+            country=data.get("country", "Kenya"),
+            latitude=data.get("latitude"),
+            longitude=data.get("longitude"),
+            place_name=data.get("place_name", ""),
         )
         Domain.objects.create(
             domain=data["domain"],
@@ -297,6 +301,20 @@ SEED_COMMANDS = {
         "description": "Copies the global allergies & chronic conditions into a tenant's editable catalog.",
         "scope": "tenant",
         "command": "seed_homecare_catalog",
+        "supports_reset": True,
+    },
+    "radiology_exams": {
+        "label": "Radiology Exam Catalog",
+        "description": "143 standard imaging exams (X-Ray, CT, MRI, Ultrasound, Mammography, Fluoroscopy, PET-CT, DEXA, Interventional) with protocols & prep instructions.",
+        "scope": "tenant",
+        "command": "seed_exam_catalog",
+        "supports_reset": True,
+    },
+    "radiology_panels": {
+        "label": "Radiology Exam Panels",
+        "description": "32 common exam bundles (Trauma, Cardiac, Neuro, Spine, MSK, Breast, Oncology, Paediatric, Pre-Op, Interventional) with discounted pricing.",
+        "scope": "tenant",
+        "command": "seed_exam_panels",
         "supports_reset": True,
     },
 }

@@ -73,6 +73,21 @@
                   @click:append-inner="show = !show"
                 />
 
+                <v-divider class="my-4" />
+                <p class="text-overline text-medium-emphasis mb-2">Referral (optional)</p>
+                <v-text-field
+                  v-model="form.referralCode"
+                  label="Referral Code"
+                  placeholder="Enter a referral code if you have one"
+                  persistent-placeholder
+                  :loading="validatingCode"
+                  :messages="referralMsg"
+                  :color="referralValid ? 'success' : undefined"
+                  :error-messages="referralError"
+                  prepend-inner-icon="mdi-gift"
+                  @update:model-value="debouncedValidateCode"
+                />
+
                 <v-btn
                   type="submit"
                   color="primary"
@@ -101,6 +116,7 @@ definePageMeta({ layout: false })
 
 const { $api } = useNuxtApp()
 const router = useRouter()
+const route = useRoute()
 
 const formRef = ref(null)
 const loading = ref(false)
@@ -123,7 +139,51 @@ const form = reactive({
   lastName: '',
   email: '',
   phone: '',
-  password: ''
+  password: '',
+  referralCode: ''
+})
+
+const validatingCode = ref(false)
+const referralValid = ref(false)
+const referralMsg = ref('')
+const referralError = ref('')
+let validateTimer = null
+
+function debouncedValidateCode() {
+  referralValid.value = false
+  referralMsg.value = ''
+  referralError.value = ''
+  clearTimeout(validateTimer)
+  const code = (form.referralCode || '').trim()
+  if (!code) return
+  if (code.length < 4) return
+  validateTimer = setTimeout(() => validateReferralCode(code), 500)
+}
+
+async function validateReferralCode(code) {
+  validatingCode.value = true
+  try {
+    const { data } = await $api.get(`/usage-billing/referral/validate/${code.toUpperCase()}/`)
+    if (data.valid) {
+      referralValid.value = true
+      referralMsg.value = `Referred by: ${data.referrer_name}`
+    } else {
+      referralError.value = 'Invalid referral code'
+    }
+  } catch {
+    referralError.value = 'Could not validate code'
+  } finally {
+    validatingCode.value = false
+  }
+}
+
+// Pre-fill referral code from URL query param (?ref=CODE)
+onMounted(() => {
+  const refCode = route.query.ref
+  if (refCode) {
+    form.referralCode = String(refCode).toUpperCase()
+    validateReferralCode(form.referralCode)
+  }
 })
 
 async function onSubmit() {
@@ -135,6 +195,7 @@ async function onSubmit() {
     await $api.post('/tenants/register/', {
       name: form.tenantName,
       tenant_type: form.tenantType,
+      referral_code: (form.referralCode || '').trim().toUpperCase(),
       admin: {
         email: form.email,
         password: form.password,

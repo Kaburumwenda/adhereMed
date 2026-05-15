@@ -2,7 +2,7 @@
   <v-container fluid class="pa-4 pa-md-6">
     <PageHeader :title="pharmacy?.name || 'Pharmacy'" icon="mdi-pharmacy" :subtitle="pharmacy?.address">
       <template #actions>
-        <v-btn variant="text" prepend-icon="mdi-arrow-left" to="/pharmacy-store" class="text-none">Back</v-btn>
+        <v-btn variant="text" prepend-icon="mdi-arrow-left" to="/pharmacy-store" class="text-none">{{ $t('common.back') }}</v-btn>
         <v-badge :content="cart.count" :model-value="cart.count > 0" color="primary" class="ml-2">
           <v-btn color="primary" rounded="lg" class="text-none" prepend-icon="mdi-cart" to="/pharmacy-store/cart">Cart</v-btn>
         </v-badge>
@@ -29,6 +29,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { useCartStore } from '~/stores/cart'
 import { formatMoney } from '~/utils/format'
 const route = useRoute()

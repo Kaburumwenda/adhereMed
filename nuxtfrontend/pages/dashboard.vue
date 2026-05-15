@@ -20,6 +20,11 @@ if (process.client && auth.tenantType === 'lab' && !['patient'].includes(auth.ro
   navigateTo('/lab', { replace: true })
 }
 
+// Pharmacy tenants use the /pharmacy dashboard.
+if (process.client && auth.tenantType === 'pharmacy' && !['patient'].includes(auth.role)) {
+  navigateTo('/pharmacy', { replace: true })
+}
+
 const component = computed(() => {
   if (auth.role === 'super_admin') {
     navigateTo('/superadmin')

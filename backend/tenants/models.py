@@ -8,6 +8,7 @@ class Tenant(TenantMixin):
         PHARMACY = 'pharmacy', 'Pharmacy'
         LAB = 'lab', 'Laboratory'
         HOMECARE = 'homecare', 'Homecare'
+        RADIOLOGY = 'radiology_center', 'Radiology Center'
 
     name = models.CharField(max_length=255)
     type = models.CharField(max_length=20, choices=TenantType.choices)
@@ -16,6 +17,9 @@ class Tenant(TenantMixin):
     address = models.TextField(blank=True)
     city = models.CharField(max_length=100, blank=True)
     country = models.CharField(max_length=100, default='Kenya')
+    latitude = models.DecimalField(max_digits=10, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=10, decimal_places=6, null=True, blank=True)
+    place_name = models.CharField(max_length=255, blank=True)
     phone = models.CharField(max_length=20, blank=True)
     email = models.EmailField(blank=True)
     website = models.URLField(blank=True)

@@ -14,19 +14,39 @@
   <v-main>
     <slot />
   </v-main>
+
+  <!-- Branch auto-assign notification -->
+  <v-snackbar
+    v-model="branchSnack"
+    color="info"
+    timeout="5000"
+    location="top"
+    rounded="lg"
+  >
+    <div class="d-flex align-center">
+      <v-icon class="mr-2">mdi-map-marker-check</v-icon>
+      <span>You have been directed to <strong>{{ branchStore.autoAssignedBranch }}</strong></span>
+    </div>
+    <template #actions>
+      <v-btn variant="text" @click="branchSnack = false">OK</v-btn>
+    </template>
+  </v-snackbar>
 </template>
 
 <script setup>
 import { useDisplay } from 'vuetify'
 import { useAuthStore } from '~/stores/auth'
+import { useBranchStore } from '~/stores/branch'
 
 const auth = useAuthStore()
+const branchStore = useBranchStore()
 const router = useRouter()
 const route = useRoute()
 const { mobile, width } = useDisplay()
 
 const drawer = ref(true)
 const rail = ref(false)
+const branchSnack = ref(false)
 
 watch(width, (w) => {
   rail.value = w < 1100 && !mobile.value
@@ -50,4 +70,16 @@ async function onLogout() {
   await auth.logout()
   router.push('/welcome')
 }
+
+// Init branch store and auto-assign nearest branch for non-admin staff
+onMounted(async () => {
+  if (auth.isLoggedIn) {
+    await branchStore.load()
+    await branchStore.autoAssignNearest(auth.role)
+  }
+})
+
+watch(() => branchStore.autoAssignedBranch, (v) => {
+  if (v) branchSnack.value = true
+})
 </script>

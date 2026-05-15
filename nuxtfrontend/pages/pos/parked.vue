@@ -3,7 +3,7 @@
     <div class="d-flex align-center mb-4">
       <v-icon size="32" color="warning" class="mr-2">mdi-tray-arrow-up</v-icon>
       <div>
-        <h2 class="text-h5 font-weight-bold mb-0">Parked Sales</h2>
+        <h2 class="text-h5 font-weight-bold mb-0">{{ $t('posParked.title') }}</h2>
         <div class="text-caption text-medium-emphasis">On-hold sales waiting to be resumed</div>
       </div>
       <v-spacer />
@@ -11,10 +11,8 @@
         <v-btn value="all" class="text-none">All</v-btn>
         <v-btn value="mine" class="text-none">Mine</v-btn>
       </v-btn-toggle>
-      <v-btn variant="tonal" prepend-icon="mdi-refresh" class="text-none" @click="load">Refresh</v-btn>
-      <v-btn color="primary" variant="flat" prepend-icon="mdi-cart-variant" class="text-none ml-2" to="/pos/supermarket">
-        Smart POS
-      </v-btn>
+      <v-btn variant="tonal" prepend-icon="mdi-refresh" class="text-none" @click="load">{{ $t('common.refresh') }}</v-btn>
+      <v-btn color="primary" variant="flat" prepend-icon="mdi-cart-variant" class="text-none ml-2" to="/pos/supermarket">{{ $t('posSupermarket.title') }}</v-btn>
       <v-btn color="primary" variant="tonal" prepend-icon="mdi-point-of-sale" class="text-none ml-1" to="/pos">
         Pharmacy POS
       </v-btn>
@@ -75,7 +73,7 @@
             <v-divider class="my-2" />
 
             <div class="d-flex justify-space-between">
-              <span class="text-body-2 text-medium-emphasis">Total</span>
+              <span class="text-body-2 text-medium-emphasis">{{ $t('common.total') }}</span>
               <span class="text-h6 font-weight-bold text-primary">{{ formatMoney(p.total) }}</span>
             </div>
           </v-card-text>
@@ -97,8 +95,8 @@
           {{ formatMoney(del.target?.total || 0) }}. This cannot be undone.
         </p>
         <div class="d-flex justify-end" style="gap:8px">
-          <v-btn variant="text" class="text-none" @click="del.show = false">Cancel</v-btn>
-          <v-btn color="error" variant="flat" class="text-none" :loading="del.loading" @click="doDelete">Delete</v-btn>
+          <v-btn variant="text" class="text-none" @click="del.show = false">{{ $t('common.cancel') }}</v-btn>
+          <v-btn color="error" variant="flat" class="text-none" :loading="del.loading" @click="doDelete">{{ $t('common.delete') }}</v-btn>
         </div>
       </v-card>
     </v-dialog>
@@ -108,6 +106,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { ref, reactive, computed, onMounted } from 'vue'
 import { formatMoney } from '~/utils/format'
 

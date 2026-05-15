@@ -13,7 +13,7 @@ class MedicationSearchSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Medication
-        fields = ['id', 'generic_name', 'brand_names', 'strength', 'dosage_form', 'category', 'label']
+        fields = ['id', 'generic_name', 'brand_names', 'strength', 'dosage_form', 'category', 'unit', 'label']
 
     def get_label(self, obj):
         strength = f' {obj.strength}' if obj.strength else ''

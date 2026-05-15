@@ -8,7 +8,7 @@
           class="text-none"
           prepend-icon="mdi-arrow-left"
           :to="backPath"
-        >Back</v-btn>
+        >{{ $t('common.back') }}</v-btn>
       </template>
     </PageHeader>
 
@@ -21,7 +21,7 @@
         </v-alert>
 
         <div class="d-flex justify-end ga-2 mt-6">
-          <v-btn variant="text" rounded="lg" class="text-none" :to="backPath">Cancel</v-btn>
+          <v-btn variant="text" rounded="lg" class="text-none" :to="backPath">{{ $t('common.cancel') }}</v-btn>
           <v-btn
             type="submit"
             color="primary"
@@ -29,7 +29,7 @@
             class="text-none"
             :loading="saving"
             prepend-icon="mdi-content-save"
-          >{{ saveLabel }}</v-btn>
+          >{{ saveLabel || $t('common.save') }}</v-btn>
         </div>
       </v-form>
     </v-card>
@@ -41,6 +41,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 const props = defineProps({
   title: { type: String, required: true },
   subtitle: { type: String, default: '' },
@@ -49,7 +52,7 @@ const props = defineProps({
   resource: { type: Object, required: true },
   initial: { type: Object, default: () => ({}) },
   loadId: { type: [String, Number, null], default: null },
-  saveLabel: { type: String, default: 'Save' },
+  saveLabel: { type: String, default: '' },
   transform: { type: Function, default: (v) => v }
 })
 const emit = defineEmits(['saved'])
@@ -86,14 +89,14 @@ async function onSubmit() {
     const result = props.loadId
       ? await props.resource.update(props.loadId, payload)
       : await props.resource.create(payload)
-    snack.text = 'Saved'
+    snack.text = t('common.saved')
     snack.color = 'success'
     snack.show = true
     emit('saved', result)
   } catch (e) {
     const data = e?.response?.data
     if (data && typeof data === 'object' && !data.detail) errors.value = data
-    topError.value = props.resource.error.value || 'Save failed.'
+    topError.value = props.resource.error.value || t('common.saveFailed')
   }
 }
 </script>

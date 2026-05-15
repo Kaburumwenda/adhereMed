@@ -16,6 +16,7 @@ class TenantSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'type', 'slug', 'schema_name',
             'logo', 'address', 'city', 'country',
+            'latitude', 'longitude', 'place_name',
             'phone', 'email', 'website',
             'is_active', 'created_at', 'domains',
         ]
@@ -36,6 +37,8 @@ class TenantRegistrationSerializer(serializers.Serializer):
     admin_first_name = serializers.CharField(max_length=150)
     admin_last_name = serializers.CharField(max_length=150)
     admin_password = serializers.CharField(min_length=8, write_only=True)
+    # Optional referral code
+    referral_code = serializers.CharField(max_length=12, required=False, allow_blank=True)
 
     def validate_slug(self, value):
         if Tenant.objects.filter(slug=value).exists():

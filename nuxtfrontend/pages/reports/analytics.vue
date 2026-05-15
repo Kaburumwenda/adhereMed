@@ -1,48 +1,40 @@
 <template>
   <v-container fluid class="pa-3 pa-md-5 analytics-page">
-    <!-- HERO -->
-    <v-card flat rounded="xl" class="hero text-white pa-5 pa-md-6 mb-4 position-relative overflow-hidden">
-      <div class="hero-glow"></div>
-      <v-row align="center" no-gutters style="position:relative;z-index:1">
-        <v-col cols="12" md="7">
-          <div class="d-flex align-center">
-            <v-avatar color="white" size="60" class="mr-4 elevation-4">
-              <v-icon color="indigo-darken-3" size="34">mdi-chart-box-multiple</v-icon>
-            </v-avatar>
-            <div>
-              <div class="text-overline" style="opacity:0.85; letter-spacing:2px">ANALYTICS</div>
-              <div class="text-h5 text-md-h4 font-weight-bold">Reports Dashboard</div>
-              <div class="text-body-2 mt-1" style="opacity:0.9">
-                {{ rangeLabel }} · Sales · Inventory · Cashiers · P&amp;L
-              </div>
-            </div>
-          </div>
-        </v-col>
-        <v-col cols="12" md="5" class="d-flex justify-md-end mt-3 mt-md-0" style="gap:8px">
-          <v-btn color="white" variant="outlined" prepend-icon="mdi-printer" @click="printPage">Print</v-btn>
-          <v-btn color="white" variant="elevated" class="text-indigo-darken-3"
-                 prepend-icon="mdi-refresh" :loading="loading" @click="reload">Refresh</v-btn>
-        </v-col>
-      </v-row>
+        <!-- Header -->
+    <div class="d-flex flex-wrap align-center justify-space-between mb-4">
+      <div class="d-flex align-center">
+        <v-avatar color="indigo-lighten-5" size="48" class="mr-3">
+          <v-icon color="indigo-darken-2" size="28">mdi-chart-box-multiple</v-icon>
+        </v-avatar>
+        <div>
+          <h1 class="text-h5 font-weight-bold mb-1">Reports Dashboard</h1>
+          <div class="text-body-2 text-medium-emphasis">Sales · Inventory · Cashiers · P&amp;L analytics</div>
+        </div>
+      </div>
+      <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
+        <v-btn rounded="lg" color="primary" variant="tonal" prepend-icon="mdi-printer" @click="printPage">{{ $t('common.print') }}</v-btn>
+      <v-btn rounded="lg" color="primary" variant="flat" class="text-none"
+                 prepend-icon="mdi-refresh" :loading="loading" @click="reload">{{ $t('common.refresh') }}</v-btn>
+      </div>
+    </div>
 
-      <!-- Hero KPI strip -->
-      <v-row class="mt-5" dense style="position:relative;z-index:1">
-        <v-col v-for="k in heroKpis" :key="k.label" cols="6" md="3">
-          <v-card flat rounded="lg" class="kpi pa-3">
-            <div class="d-flex align-start">
-              <v-avatar :color="k.color" size="40" class="mr-3 elevation-2">
-                <v-icon color="white" size="22">{{ k.icon }}</v-icon>
-              </v-avatar>
-              <div class="flex-grow-1">
-                <div class="text-caption" style="opacity:0.85">{{ k.label }}</div>
-                <div class="text-h6 font-weight-bold mt-1">{{ k.value }}</div>
-                <div v-if="k.sub" class="text-caption mt-1" style="opacity:0.75">{{ k.sub }}</div>
-              </div>
+    <!-- KPIs -->
+    <v-row dense class="mb-4">
+      <v-col v-for="k in heroKpis" :key="k.label" cols="6" md="3">
+        <v-card rounded="lg" class="pa-4 h-100 kpi-card">
+          <div class="d-flex align-start justify-space-between">
+            <div>
+              <div class="text-caption text-medium-emphasis">{{ k.label }}</div>
+              <div class="text-h6 font-weight-bold mt-1">{{ k.value }}</div>
+              <div v-if="k.sub" class="text-caption text-medium-emphasis mt-1">{{ k.sub }}</div>
             </div>
-          </v-card>
-        </v-col>
-      </v-row>
-    </v-card>
+            <v-avatar :color="k.color" variant="tonal" rounded="lg" size="40">
+              <v-icon size="20">{{ k.icon }}</v-icon>
+            </v-avatar>
+          </div>
+        </v-card>
+      </v-col>
+    </v-row>
 
     <!-- PERIOD SELECTOR -->
     <v-card flat rounded="xl" border class="mb-4 pa-3">
@@ -327,7 +319,7 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" @click="cancelCustom">Cancel</v-btn>
+          <v-btn variant="text" @click="cancelCustom">{{ $t('common.cancel') }}</v-btn>
           <v-btn color="indigo" :disabled="!customFrom || !customTo" @click="applyCustom">Apply</v-btn>
         </v-card-actions>
       </v-card>
@@ -338,6 +330,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { ref, computed, onMounted, h } from 'vue'
 const { $api } = useNuxtApp()
 
@@ -564,38 +559,9 @@ onMounted(reload)
 </script>
 
 <style scoped>
-.analytics-page {
-  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
-  min-height: 100vh;
-}
-.hero {
-  background: linear-gradient(135deg, #1e1b4b 0%, #4f46e5 50%, #7c3aed 100%);
-  box-shadow: 0 20px 40px -12px rgba(79, 70, 229, 0.35) !important;
-}
-.hero-glow {
-  position: absolute;
-  top: -50%;
-  right: -20%;
-  width: 600px;
-  height: 600px;
-  background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 70%);
-  pointer-events: none;
-}
-.kpi {
-  background: rgba(255, 255, 255, 0.12) !important;
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  transition: transform .2s, background .2s;
-}
-.kpi:hover { transform: translateY(-2px); background: rgba(255,255,255,0.18) !important; }
-.kpi :deep(.text-h6) { color: #fff; }
-.kpi :deep(.text-caption) { color: rgba(255, 255, 255, 0.9) !important; }
+.kpi-card { transition: transform 0.15s ease, box-shadow 0.15s ease; border: 1px solid rgba(var(--v-theme-on-surface), 0.06); }
+.kpi-card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.06); }
 
-.stat-card {
-  position: relative;
-  overflow: hidden;
-  transition: transform .2s, box-shadow .2s;
-}
 .stat-card:hover {
   transform: translateY(-3px);
   box-shadow: 0 8px 24px -8px rgba(0,0,0,0.15) !important;
@@ -619,6 +585,6 @@ onMounted(reload)
 
 @media print {
   .v-tabs, .v-chip-group, .v-btn { display: none !important; }
-  .hero { background: #4f46e5 !important; -webkit-print-color-adjust: exact; }
+  
 }
 </style>

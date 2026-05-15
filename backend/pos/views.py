@@ -7,8 +7,16 @@ from django.utils import timezone
 from django.db.models import Sum, Count, Avg, F
 from datetime import timedelta
 
-from .models import POSTransaction, Customer, ParkedSale
-from .serializers import POSTransactionSerializer, POSCheckoutSerializer, CustomerSerializer, ParkedSaleSerializer
+from .models import POSTransaction, Customer, ParkedSale, CreditSale, CreditPayment
+from .serializers import (
+    POSTransactionSerializer,
+    POSCheckoutSerializer,
+    CustomerSerializer,
+    ParkedSaleSerializer,
+    CreditSaleSerializer,
+    CreditPaymentSerializer,
+    RecordCreditPaymentSerializer,
+)
 
 
 # Roles that may view ALL POS records and analytics for the tenant.
@@ -326,6 +334,129 @@ class ParkedSaleViewSet(viewsets.ModelViewSet):
         elif self.request.query_params.get('mine') in ('1', 'true', 'True'):
             qs = qs.filter(cashier=self.request.user)
         return qs
+
+
+class CreditSaleViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = CreditSale.objects.select_related('transaction', 'transaction__cashier').all()
+    serializer_class = CreditSaleSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status', 'partial_payment_method', 'due_date']
+    search_fields = ['customer_name', 'customer_phone', 'transaction__transaction_number']
+    ordering_fields = ['created_at', 'due_date', 'balance_amount', 'total_amount']
+
+    def get_queryset(self):
+        from datetime import date as date_type
+        qs = super().get_queryset()
+        if not _user_is_admin(self.request.user):
+            qs = qs.filter(transaction__cashier=self.request.user)
+
+        # Date filtering
+        date_from = self.request.query_params.get('date_from')
+        date_to = self.request.query_params.get('date_to')
+        period = self.request.query_params.get('period')
+        today = timezone.now().date()
+
+        if date_from and date_to:
+            try:
+                start = date_type.fromisoformat(date_from)
+                end = date_type.fromisoformat(date_to)
+                qs = qs.filter(created_at__date__gte=start, created_at__date__lte=end)
+            except ValueError:
+                pass
+        elif period:
+            if period == 'today':
+                qs = qs.filter(created_at__date=today)
+            elif period == 'yesterday':
+                qs = qs.filter(created_at__date=today - timedelta(days=1))
+            elif period == 'week':
+                qs = qs.filter(created_at__date__gte=today - timedelta(days=7))
+            elif period == 'month':
+                qs = qs.filter(created_at__date__gte=today - timedelta(days=30))
+            elif period == 'last_month':
+                first_this_month = today.replace(day=1)
+                last_month_end = first_this_month - timedelta(days=1)
+                last_month_start = last_month_end.replace(day=1)
+                qs = qs.filter(created_at__date__gte=last_month_start, created_at__date__lte=last_month_end)
+            elif period == 'year':
+                qs = qs.filter(created_at__date__gte=today - timedelta(days=365))
+        return qs
+
+    @action(detail=False, methods=['get'])
+    def summary(self, request):
+        qs = self.get_queryset()
+        if s := request.query_params.get('status'):
+            qs = qs.filter(status=s)
+
+        totals = qs.aggregate(
+            total_credit=Sum('total_amount'),
+            total_paid=Sum('partial_paid_amount'),
+            total_balance=Sum('balance_amount'),
+            count=Count('id'),
+        )
+
+        overdue_count = qs.filter(due_date__lt=timezone.now().date(), balance_amount__gt=0).count()
+        by_status = list(
+            qs.values('status')
+            .annotate(total=Sum('balance_amount'), count=Count('id'))
+            .order_by('status')
+        )
+
+        return Response({
+            'count': totals['count'] or 0,
+            'total_credit': float(totals['total_credit'] or 0),
+            'total_paid': float(totals['total_paid'] or 0),
+            'total_balance': float(totals['total_balance'] or 0),
+            'overdue_count': overdue_count,
+            'by_status': by_status,
+        })
+
+    @action(detail=True, methods=['get'])
+    def payments(self, request, pk=None):
+        """List all payments recorded against this credit sale."""
+        credit = self.get_object()
+        payments = credit.payments.all()
+        serializer = CreditPaymentSerializer(payments, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def record_payment(self, request, pk=None):
+        """Record a payment (partial or full) against a credit sale."""
+        credit = self.get_object()
+        if credit.balance_amount <= 0:
+            return Response({'detail': 'Credit already settled.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        ser = RecordCreditPaymentSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        amount = ser.validated_data['amount']
+
+        from decimal import Decimal
+        if amount > credit.balance_amount:
+            return Response(
+                {'detail': f'Amount exceeds outstanding balance of {credit.balance_amount}.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        payment = CreditPayment.objects.create(
+            credit_sale=credit,
+            amount=amount,
+            payment_method=ser.validated_data['payment_method'],
+            reference=ser.validated_data.get('reference', ''),
+            notes=ser.validated_data.get('notes', ''),
+            recorded_by=request.user,
+        )
+
+        credit.partial_paid_amount = (credit.partial_paid_amount or Decimal('0')) + amount
+        credit.balance_amount = credit.total_amount - credit.partial_paid_amount
+        if credit.balance_amount <= 0:
+            credit.status = CreditSale.Status.SETTLED
+        else:
+            credit.status = CreditSale.Status.PARTIAL
+        credit.save(update_fields=['partial_paid_amount', 'balance_amount', 'status', 'updated_at'])
+
+        return Response({
+            'payment': CreditPaymentSerializer(payment).data,
+            'credit': CreditSaleSerializer(credit).data,
+        }, status=status.HTTP_201_CREATED)
 
 
 

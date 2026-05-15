@@ -7,13 +7,13 @@
           <v-icon size="28">mdi-swap-vertical-bold</v-icon>
         </v-avatar>
         <div>
-          <h1 class="text-h5 text-md-h4 font-weight-bold mb-0">Stock Adjustments</h1>
+          <h1 class="text-h5 text-md-h4 font-weight-bold mb-0">{{ $t('adjustments.title') }}</h1>
           <div class="text-body-2 text-medium-emphasis">Track every change to your inventory · audit trail</div>
         </div>
       </div>
       <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
-        <v-btn variant="tonal" color="primary" prepend-icon="mdi-refresh" rounded="lg" class="text-none" :loading="loading" @click="reload">Refresh</v-btn>
-        <v-btn color="primary" prepend-icon="mdi-plus" rounded="lg" class="text-none" to="/inventory/adjustments/new">New Adjustment</v-btn>
+        <v-btn variant="tonal" color="primary" prepend-icon="mdi-refresh" rounded="lg" class="text-none" :loading="loading" @click="reload">{{ $t('common.refresh') }}</v-btn>
+        <v-btn color="primary" prepend-icon="mdi-plus" rounded="lg" class="text-none" to="/inventory/adjustments/new">{{ $t('adjustments.newAdjustment') }}</v-btn>
       </div>
     </div>
 
@@ -122,7 +122,7 @@
       <v-icon size="64" color="grey">mdi-inbox-outline</v-icon>
       <div class="text-h6 mt-3">No adjustments</div>
       <div class="text-body-2 mb-4">{{ hasFilter ? 'Try adjusting your filters.' : 'Record your first stock adjustment.' }}</div>
-      <v-btn color="primary" variant="flat" rounded="lg" class="text-none" prepend-icon="mdi-plus" to="/inventory/adjustments/new">New Adjustment</v-btn>
+      <v-btn color="primary" variant="flat" rounded="lg" class="text-none" prepend-icon="mdi-plus" to="/inventory/adjustments/new">{{ $t('adjustments.newAdjustment') }}</v-btn>
     </div>
 
     <!-- Table -->
@@ -134,12 +134,12 @@
             <tr>
               <th class="row-num">#</th>
               <th>Item</th>
-              <th>Reason</th>
+              <th>{{ $t('adjustments.reason') }}</th>
               <th class="text-right">Change</th>
-              <th>Notes</th>
+              <th>{{ $t('common.notes') }}</th>
               <th>Adjusted by</th>
               <th>When</th>
-              <th class="text-right">Actions</th>
+              <th class="text-right">{{ $t('common.actions') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -193,6 +193,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { ref, computed, onMounted, watch } from 'vue'
 import { formatDateTime } from '~/utils/format'
 import { useResource } from '~/composables/useResource'

@@ -7,12 +7,12 @@
           <v-icon size="28">mdi-package-variant</v-icon>
         </v-avatar>
         <div>
-          <h1 class="text-h5 text-md-h4 font-weight-bold mb-0">Inventory</h1>
+          <h1 class="text-h5 text-md-h4 font-weight-bold mb-0">{{ $t('inventory.title') }}</h1>
           <div class="text-body-2 text-medium-emphasis">Stock items, categories, units &amp; adjustments</div>
         </div>
       </div>
       <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
-        <v-btn variant="tonal" color="primary" prepend-icon="mdi-refresh" rounded="lg" class="text-none" :loading="currentResource.loading.value" @click="reload">Refresh</v-btn>
+        <v-btn variant="tonal" color="primary" prepend-icon="mdi-refresh" rounded="lg" class="text-none" :loading="currentResource.loading.value" @click="reload">{{ $t('common.refresh') }}</v-btn>
         <v-btn v-if="tab === 'stocks'" variant="tonal" color="warning" prepend-icon="mdi-table-edit" rounded="lg" class="text-none" to="/inventory/bulk?mode=edit">Edit mode</v-btn>
         <v-btn v-if="tab === 'stocks'" variant="tonal" color="error" prepend-icon="mdi-trash-can" rounded="lg" class="text-none" to="/inventory/bulk?mode=delete">Delete mode</v-btn>
         <v-btn color="primary" prepend-icon="mdi-plus" rounded="lg" class="text-none" :to="createPaths[tab]">{{ createLabels[tab] }}</v-btn>
@@ -83,7 +83,7 @@
       <div class="d-flex flex-wrap align-center" style="gap:10px">
         <v-text-field
           v-model="search"
-          placeholder="Search…"
+          :placeholder="$t('common.searchEllipsis')"
           prepend-inner-icon="mdi-magnify"
           density="compact" variant="outlined" rounded="lg" hide-details
           clearable
@@ -134,8 +134,8 @@
               <th class="text-right">Cost</th>
               <th class="text-right">Price</th>
               <th class="text-right">Retail value</th>
-              <th>Status</th>
-              <th class="text-right">Actions</th>
+              <th>{{ $t('common.status') }}</th>
+              <th class="text-right">{{ $t('common.actions') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -177,7 +177,7 @@
 
         <!-- CATEGORIES -->
         <table v-else-if="tab === 'categories'" class="inv-table">
-          <thead><tr><th class="row-num">#</th><th>Category</th><th>Description</th><th class="text-right">SKUs</th><th class="text-right">Units on hand</th><th class="text-right">Retail value</th><th>Share</th><th class="text-right">Actions</th></tr></thead>
+          <thead><tr><th class="row-num">#</th><th>Category</th><th>Description</th><th class="text-right">SKUs</th><th class="text-right">Units on hand</th><th class="text-right">Retail value</th><th>Share</th><th class="text-right">{{ $t('common.actions') }}</th></tr></thead>
           <tbody>
             <tr v-for="(row, i) in pagedItems" :key="row.id">
               <td class="row-num text-medium-emphasis">{{ rowNumber(i) }}</td>
@@ -213,7 +213,7 @@
 
         <!-- UNITS -->
         <table v-else-if="tab === 'units'" class="inv-table">
-          <thead><tr><th class="row-num">#</th><th>Unit</th><th>Abbreviation</th><th class="text-right">SKUs</th><th class="text-right">Total on hand</th><th class="text-right">Actions</th></tr></thead>
+          <thead><tr><th class="row-num">#</th><th>Unit</th><th>Abbreviation</th><th class="text-right">SKUs</th><th class="text-right">Total on hand</th><th class="text-right">{{ $t('common.actions') }}</th></tr></thead>
           <tbody>
             <tr v-for="(row, i) in pagedItems" :key="row.id">
               <td class="row-num text-medium-emphasis">{{ rowNumber(i) }}</td>
@@ -246,10 +246,10 @@
               <th>Item</th>
               <th>Reason</th>
               <th class="text-right">Change</th>
-              <th>Notes</th>
+              <th>{{ $t('common.notes') }}</th>
               <th>Adjusted by</th>
               <th>When</th>
-              <th class="text-right">Actions</th>
+              <th class="text-right">{{ $t('common.actions') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -317,6 +317,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { ref, computed, watch, onMounted } from 'vue'
 import { useResource } from '~/composables/useResource'
 import { formatMoney, formatDateTime } from '~/utils/format'

@@ -122,7 +122,13 @@ async function onSubmit() {
   const { valid } = await formRef.value.validate()
   if (!valid) return
   const ok = await auth.login(email.value.trim(), password.value)
-  if (ok) router.push('/dashboard')
+  if (ok) {
+    const home = auth.tenantType === 'pharmacy' ? '/pharmacy'
+      : auth.tenantType === 'lab' ? '/lab'
+      : auth.tenantType === 'radiology_center' ? '/radiology'
+      : '/dashboard'
+    router.push(home)
+  }
   else errorMsg.value = auth.error || 'Login failed.'
 }
 </script>

@@ -2,7 +2,9 @@
   <ResourceListPage
     :resource="r"
     title="Specializations"
+    subtitle="Staff specializations &amp; professional certifications"
     icon="mdi-stethoscope"
+    color="deep-purple"
     :headers="headers"
     create-path="/specializations/new"
     create-label="New Specialization"

@@ -69,7 +69,7 @@
               class="mt-3"
               icon="mdi-package-variant-closed-check"
             >
-              Saving with status <b>Received</b> will create stock batches and update item quantities, cost, selling price and discount.
+              Saving with status <b>Received</b> will create stock batches and update item quantities, cost, selling price, discount and VAT tax.
             </v-alert>
           </v-card>
 
@@ -116,6 +116,7 @@
                               <div class="d-flex flex-wrap ga-1 align-center">
                                 <v-chip size="x-small" variant="tonal" color="primary">Cost {{ formatMoney(item.raw.cost_price) }}</v-chip>
                                 <v-chip size="x-small" variant="tonal" color="success">Sell {{ formatMoney(item.raw.selling_price) }}</v-chip>
+                                <v-chip v-if="Number(item.raw.tax_percent) > 0" size="x-small" variant="tonal" color="orange">VAT {{ item.raw.tax_percent }}%</v-chip>
                                 <v-chip v-if="Number(item.raw.discount_percent) > 0" size="x-small" variant="tonal" color="warning">{{ item.raw.discount_percent }}% off</v-chip>
                                 <v-chip size="x-small" variant="tonal" :color="(item.raw.total_quantity || 0) <= 0 ? 'error' : 'default'">Stock {{ item.raw.total_quantity || 0 }}</v-chip>
                               </div>
@@ -184,6 +185,20 @@
                         suffix="%"
                       />
                     </v-col>
+                    <v-col cols="6" md="1">
+                      <v-text-field
+                        v-model.number="it.tax_percent"
+                        label="VAT %"
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        variant="outlined"
+                        density="comfortable"
+                        hide-details="auto"
+                        suffix="%"
+                      />
+                    </v-col>
                     <v-col cols="6" md="3">
                       <v-text-field
                         v-model="it.batch_number"
@@ -217,9 +232,21 @@
                         color="success"
                         prepend-icon="mdi-cash-plus"
                       >Profit {{ formatMoney(lineProfit(it)) }}</v-chip>
+                      <v-chip
+                        v-if="Number(it.tax_percent) > 0"
+                        size="small"
+                        variant="tonal"
+                        color="orange"
+                        prepend-icon="mdi-percent"
+                      >VAT {{ formatMoney(lineTax(it)) }}</v-chip>
                       <div class="po-line-total">
-                        <span class="text-caption text-medium-emphasis mr-2">Line total</span>
-                        <span class="text-h6 font-weight-bold text-primary">{{ formatMoney(lineTotal(it)) }}</span>
+                        <div class="text-center">
+                          <span class="text-caption text-medium-emphasis d-block">Line total</span>
+                          <span class="text-h6 font-weight-bold text-primary">{{ formatMoney(lineTotal(it)) }}</span>
+                          <span v-if="Number(it.tax_percent) > 0" class="text-caption text-medium-emphasis d-block">
+                            incl. {{ formatMoney(lineTax(it)) }} VAT
+                          </span>
+                        </div>
                       </div>
                     </v-col>
                   </v-row>
@@ -264,27 +291,39 @@
           </div>
           <div class="pa-4 pa-md-5">
             <v-row dense>
-              <v-col cols="6" md="3">
+              <v-col cols="6" md="2">
                 <div class="po-summary-stat">
                   <div class="text-caption text-medium-emphasis">Items</div>
                   <div class="text-h6 font-weight-bold">{{ form.items.length }}</div>
                 </div>
               </v-col>
-              <v-col cols="6" md="3">
+              <v-col cols="6" md="2">
                 <div class="po-summary-stat">
                   <div class="text-caption text-medium-emphasis">Total quantity</div>
                   <div class="text-h6 font-weight-bold">{{ totalQty }}</div>
                 </div>
               </v-col>
-              <v-col cols="6" md="3">
+              <v-col cols="6" md="2">
+                <div class="po-summary-stat">
+                  <div class="text-caption text-medium-emphasis">Subtotal (excl. VAT)</div>
+                  <div class="text-h6 font-weight-bold">{{ formatMoney(grandSubtotal) }}</div>
+                </div>
+              </v-col>
+              <v-col cols="6" md="2">
+                <div class="po-summary-stat" style="background: rgba(255, 152, 0, 0.08);">
+                  <div class="text-caption text-medium-emphasis">VAT Tax</div>
+                  <div class="text-h6 font-weight-bold text-orange">{{ formatMoney(grandTax) }}</div>
+                </div>
+              </v-col>
+              <v-col cols="6" md="2">
                 <div class="po-summary-stat">
                   <div class="text-caption text-medium-emphasis">Avg. unit cost</div>
                   <div class="text-h6 font-weight-bold">{{ formatMoney(avgUnitCost) }}</div>
                 </div>
               </v-col>
-              <v-col cols="6" md="3">
+              <v-col cols="6" md="2">
                 <div class="po-summary-stat is-total">
-                  <div class="text-caption" style="opacity:0.85">Total cost</div>
+                  <div class="text-caption" style="opacity:0.85">Total cost (incl. VAT)</div>
                   <div class="text-h5 font-weight-bold">{{ formatMoney(grandTotal) }}</div>
                 </div>
               </v-col>
@@ -398,6 +437,7 @@ function newItem() {
     unit_cost: 0,
     unit_selling_price: 0,
     discount_percent: 0,
+    tax_percent: 0,
     batch_number: '',
     expiry_date: '',
     _current_stock: null,
@@ -413,6 +453,7 @@ function onPickItem(it, value) {
     it.unit_cost = Number(value.cost_price || 0)
     it.unit_selling_price = Number(value.selling_price || 0)
     it.discount_percent = Number(value.discount_percent || 0)
+    it.tax_percent = Number(value.tax_percent || 0)
     it._current_stock = value.total_quantity ?? 0
   } else if (typeof value === 'string') {
     it.stock_id = null
@@ -427,6 +468,14 @@ function onPickItem(it, value) {
 
 function lineTotal(it) {
   return Number(it.qty || 0) * Number(it.unit_cost || 0)
+}
+function lineTax(it) {
+  const total = lineTotal(it)
+  const pct = Number(it.tax_percent || 0)
+  return pct > 0 ? total * pct / 100 : 0
+}
+function lineTotalWithTax(it) {
+  return lineTotal(it) + lineTax(it)
 }
 function effectiveSelling(it) {
   const sell = Number(it.unit_selling_price || 0)
@@ -451,12 +500,14 @@ function marginColor(it) {
   if (m >= 0) return 'warning'
   return 'error'
 }
-const grandTotal = computed(() => form.items.reduce((s, it) => s + lineTotal(it), 0))
+const grandTotal = computed(() => form.items.reduce((s, it) => s + lineTotalWithTax(it), 0))
+const grandSubtotal = computed(() => form.items.reduce((s, it) => s + lineTotal(it), 0))
+const grandTax = computed(() => form.items.reduce((s, it) => s + lineTax(it), 0))
 const grandRevenue = computed(() => form.items.reduce((s, it) => s + lineRevenue(it), 0))
 const grandProfit = computed(() => grandRevenue.value - grandTotal.value)
 const grandMarginPct = computed(() => grandRevenue.value ? (grandProfit.value / grandRevenue.value) * 100 : 0)
 const totalQty = computed(() => form.items.reduce((s, it) => s + Number(it.qty || 0), 0))
-const avgUnitCost = computed(() => totalQty.value ? grandTotal.value / totalQty.value : 0)
+const avgUnitCost = computed(() => totalQty.value ? grandSubtotal.value / totalQty.value : 0)
 const canSave = computed(() => {
   const hasSupplier = (supplierPick.value && (supplierPick.value.id || (typeof supplierPick.value === 'string' && supplierPick.value.trim())))
   return !!hasSupplier && form.items.length > 0 && form.items.every(it => (it.stock_id || (it.name && it.name.trim())) && Number(it.qty) > 0)
@@ -480,6 +531,7 @@ function hydrateFromServer(data) {
       unit_cost: Number(raw.unit_cost || raw.unit_price || 0),
       unit_selling_price: Number(raw.unit_selling_price || raw.selling_price || 0),
       discount_percent: Number(raw.discount_percent || raw.discount || 0),
+      tax_percent: Number(raw.tax_percent || 0),
       batch_number: raw.batch_number || '',
       expiry_date: raw.expiry_date || '',
       _current_stock: stockObj?.total_quantity ?? null,
@@ -554,6 +606,7 @@ async function onSubmit() {
         selling_price: Number(it.unit_selling_price || it.unit_cost || 0),
         cost_price: Number(it.unit_cost || 0),
         discount_percent: Number(it.discount_percent || 0),
+        tax_percent: Number(it.tax_percent || 0),
       })
       stocks.value.push(created)
       it.stock_id = created.id
@@ -579,6 +632,7 @@ async function onSubmit() {
       unit_cost: Number(it.unit_cost || 0),
       unit_selling_price: Number(it.unit_selling_price || 0),
       discount_percent: Number(it.discount_percent || 0),
+      tax_percent: Number(it.tax_percent || 0),
       batch_number: it.batch_number || '',
       expiry_date: it.expiry_date || '',
       _synced: !!it._synced,

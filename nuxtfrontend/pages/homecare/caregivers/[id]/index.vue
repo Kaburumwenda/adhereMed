@@ -5,7 +5,7 @@
       <div class="pa-4 pa-md-6">
         <div class="d-flex align-center ga-2 mb-3">
           <v-btn variant="text" rounded="lg" prepend-icon="mdi-arrow-left"
-                 class="text-none text-white" to="/homecare/caregivers">Caregivers</v-btn>
+                 class="text-none" to="/homecare/caregivers">Caregivers</v-btn>
           <v-spacer />
           <v-btn v-if="cg" variant="flat" color="white" rounded="pill"
                  prepend-icon="mdi-pencil" class="text-none mr-2"

@@ -10,7 +10,7 @@
           <StatusChip :status="item.status" />
         </div>
         <v-table density="compact" class="mb-3">
-          <thead><tr><th>Description</th><th class="text-end">Qty</th><th class="text-end">Unit</th><th class="text-end">Subtotal</th></tr></thead>
+          <thead><tr><th>Description</th><th class="text-end">Qty</th><th class="text-end">Unit</th><th class="text-end">{{ $t('common.subtotal') }}</th></tr></thead>
           <tbody>
             <tr v-for="(it, i) in (item.items || [])" :key="i">
               <td>{{ it.description }}</td>
@@ -29,6 +29,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { useResource } from '~/composables/useResource'
 import { formatDate, formatMoney } from '~/utils/format'
 const route = useRoute()

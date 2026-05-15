@@ -7,13 +7,13 @@
           <v-icon size="28">mdi-shape</v-icon>
         </v-avatar>
         <div>
-          <h1 class="text-h5 text-md-h4 font-weight-bold mb-0">Categories</h1>
+          <h1 class="text-h5 text-md-h4 font-weight-bold mb-0">{{ $t('categoriesPage.title') }}</h1>
           <div class="text-body-2 text-medium-emphasis">Group your stock items for easier filtering &amp; reporting</div>
         </div>
       </div>
       <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
-        <v-btn variant="tonal" color="primary" prepend-icon="mdi-refresh" rounded="lg" class="text-none" :loading="loading" @click="reload">Refresh</v-btn>
-        <v-btn color="primary" prepend-icon="mdi-plus" rounded="lg" class="text-none" to="/inventory/categories/new">New Category</v-btn>
+        <v-btn variant="tonal" color="primary" prepend-icon="mdi-refresh" rounded="lg" class="text-none" :loading="loading" @click="reload">{{ $t('common.refresh') }}</v-btn>
+        <v-btn color="primary" prepend-icon="mdi-plus" rounded="lg" class="text-none" to="/inventory/categories/new">{{ $t('categoriesPage.newCategory') }}</v-btn>
       </div>
     </div>
 
@@ -24,7 +24,7 @@
           <div class="d-flex align-center" style="gap:10px">
             <v-avatar color="primary" variant="tonal" rounded="lg" size="40"><v-icon>mdi-shape</v-icon></v-avatar>
             <div>
-              <div class="text-caption text-medium-emphasis text-uppercase">Categories</div>
+              <div class="text-caption text-medium-emphasis text-uppercase">{{ $t('categoriesPage.title') }}</div>
               <div class="text-h6 font-weight-bold">{{ categories.length.toLocaleString() }}</div>
             </div>
           </div>
@@ -90,7 +90,7 @@
       <v-icon size="64" color="grey">mdi-inbox-outline</v-icon>
       <div class="text-h6 mt-3">No categories</div>
       <div class="text-body-2 mb-4">{{ search ? 'Try a different search.' : 'Get started by creating your first category.' }}</div>
-      <v-btn color="primary" variant="flat" rounded="lg" class="text-none" prepend-icon="mdi-plus" to="/inventory/categories/new">New Category</v-btn>
+      <v-btn color="primary" variant="flat" rounded="lg" class="text-none" prepend-icon="mdi-plus" to="/inventory/categories/new">{{ $t('categoriesPage.newCategory') }}</v-btn>
     </div>
 
     <!-- Grid view -->
@@ -150,7 +150,7 @@
               <th class="text-right">Units</th>
               <th class="text-right">Retail value</th>
               <th>Share</th>
-              <th class="text-right">Actions</th>
+              <th class="text-right">{{ $t('common.actions') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -200,6 +200,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { ref, computed, onMounted, watch } from 'vue'
 import { formatMoney } from '~/utils/format'
 import { useResource } from '~/composables/useResource'

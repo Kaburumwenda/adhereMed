@@ -1,44 +1,42 @@
 <template>
   <v-container fluid class="pa-3 pa-md-5">
-    <v-card flat rounded="xl" class="hero text-white pa-5 pa-md-6 mb-4">
-      <v-row align="center" no-gutters>
-        <v-col cols="12" md="8">
-          <div class="d-flex align-center">
-            <v-avatar color="white" size="56" class="mr-4 elevation-2">
-              <v-icon color="red-darken-4" size="32">mdi-shield-lock-outline</v-icon>
-            </v-avatar>
+        <!-- Header -->
+    <div class="d-flex flex-wrap align-center justify-space-between mb-4">
+      <div class="d-flex align-center">
+        <v-avatar color="red-lighten-5" size="48" class="mr-3">
+          <v-icon color="red-darken-2" size="28">mdi-shield-lock-outline</v-icon>
+        </v-avatar>
+        <div>
+          <h1 class="text-h5 font-weight-bold mb-1">Controlled Substance Register</h1>
+          <div class="text-body-2 text-medium-emphasis">Regulatory-grade audit trail for all controlled medications</div>
+        </div>
+      </div>
+      <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
+        <v-btn rounded="lg" color="primary" variant="flat" class="text-none"
+                 prepend-icon="mdi-plus" @click="openCreate">{{ $t('controlled.manualEntry') }}</v-btn>
+      <v-btn rounded="lg" color="primary" variant="tonal" prepend-icon="mdi-printer" @click="printRegister">{{ $t('common.print') }}</v-btn>
+      <v-btn rounded="lg" color="primary" variant="tonal" prepend-icon="mdi-refresh"
+                 :loading="loading" @click="load">{{ $t('common.refresh') }}</v-btn>
+      </div>
+    </div>
+
+    <!-- KPIs -->
+    <v-row dense class="mb-4">
+      <v-col v-for="k in kpis" :key="k.label" cols="6" md="3">
+        <v-card rounded="lg" class="pa-4 h-100 kpi-card">
+          <div class="d-flex align-start justify-space-between">
             <div>
-              <div class="text-h5 text-md-h4 font-weight-bold">Controlled Substance Register</div>
-              <div class="text-body-2" style="opacity:0.9">
-                Regulatory-grade audit trail for all controlled medications.
-              </div>
+              <div class="text-caption text-medium-emphasis">{{ k.label }}</div>
+              <div class="text-h6 font-weight-bold mt-1">{{ k.value }}</div>
+              <div v-if="k.sub" class="text-caption text-medium-emphasis mt-1">{{ k.sub }}</div>
             </div>
+            <v-avatar :color="k.color" variant="tonal" rounded="lg" size="40">
+              <v-icon size="20">{{ k.icon }}</v-icon>
+            </v-avatar>
           </div>
-        </v-col>
-        <v-col cols="12" md="4" class="d-flex justify-md-end mt-3 mt-md-0" style="gap:8px">
-          <v-btn color="white" variant="elevated" class="text-red-darken-4"
-                 prepend-icon="mdi-plus" @click="openCreate">Manual Entry</v-btn>
-          <v-btn color="white" variant="outlined" prepend-icon="mdi-printer" @click="printRegister">Print</v-btn>
-          <v-btn color="white" variant="outlined" prepend-icon="mdi-refresh"
-                 :loading="loading" @click="load">Refresh</v-btn>
-        </v-col>
-      </v-row>
-      <v-row class="mt-4" dense>
-        <v-col v-for="k in kpis" :key="k.label" cols="6" md="3">
-          <v-card flat rounded="lg" class="kpi pa-3">
-            <div class="d-flex align-center">
-              <v-avatar :color="k.color" size="36" class="mr-3">
-                <v-icon color="white" size="20">{{ k.icon }}</v-icon>
-              </v-avatar>
-              <div>
-                <div class="text-caption text-medium-emphasis">{{ k.label }}</div>
-                <div class="text-h6 font-weight-bold">{{ k.value }}</div>
-              </div>
-            </div>
-          </v-card>
-        </v-col>
-      </v-row>
-    </v-card>
+        </v-card>
+      </v-col>
+    </v-row>
 
     <v-card flat rounded="xl" border class="pa-3 mb-3">
       <v-row dense align="center">
@@ -168,7 +166,7 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" @click="createDialog = false">Cancel</v-btn>
+          <v-btn variant="text" @click="createDialog = false">{{ $t('common.cancel') }}</v-btn>
           <v-btn color="primary" :loading="saving" :disabled="!canSave" @click="save">Record Entry</v-btn>
         </v-card-actions>
       </v-card>
@@ -179,6 +177,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { ref, computed, onMounted } from 'vue'
 const { $api } = useNuxtApp()
 
@@ -289,9 +290,8 @@ onMounted(load)
 </script>
 
 <style scoped>
-.hero { background: linear-gradient(135deg, #7f1d1d 0%, #b91c1c 50%, #ef4444 100%); }
-.kpi { background: rgba(255, 255, 255, 0.1) !important; backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, 0.15); }
-.kpi :deep(.text-h6) { color: #fff; }
-.kpi :deep(.text-medium-emphasis) { color: rgba(255, 255, 255, 0.85) !important; }
-@media print { .hero { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+.kpi-card { transition: transform 0.15s ease, box-shadow 0.15s ease; border: 1px solid rgba(var(--v-theme-on-surface), 0.06); }
+.kpi-card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.06); }
+
+@media print {  }
 </style>

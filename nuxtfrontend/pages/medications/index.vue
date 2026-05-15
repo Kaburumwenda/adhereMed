@@ -1,45 +1,41 @@
 <template>
   <v-container fluid class="pa-3 pa-md-5">
-    <!-- Hero -->
-    <v-card flat rounded="xl" class="hero text-white pa-5 pa-md-6 mb-4">
-      <v-row align="center" no-gutters>
-        <v-col cols="12" md="7">
-          <div class="d-flex align-center">
-            <v-avatar color="white" size="56" class="mr-4 elevation-2">
-              <v-icon color="teal-darken-2" size="32">mdi-pill</v-icon>
-            </v-avatar>
-            <div>
-              <div class="text-h5 text-md-h4 font-weight-bold">Medication Catalog</div>
-              <div class="text-body-2" style="opacity:0.9">
-                Master list of medications used across the pharmacy.
-              </div>
-            </div>
-          </div>
-        </v-col>
-        <v-col cols="12" md="5" class="d-flex justify-md-end mt-3 mt-md-0" style="gap:8px">
-          <v-btn variant="flat" color="white" prepend-icon="mdi-refresh" class="text-teal-darken-3"
-                 :loading="loading" @click="loadAll">Refresh</v-btn>
-          <v-btn color="white" variant="flat" class="text-teal-darken-3"
+        <!-- Header -->
+    <div class="d-flex flex-wrap align-center justify-space-between mb-4">
+      <div class="d-flex align-center">
+        <v-avatar color="teal-lighten-5" size="48" class="mr-3">
+          <v-icon color="teal-darken-2" size="28">mdi-pill</v-icon>
+        </v-avatar>
+        <div>
+          <h1 class="text-h5 font-weight-bold mb-1">Medication Catalog</h1>
+          <div class="text-body-2 text-medium-emphasis">Master list of medications used across the pharmacy</div>
+        </div>
+      </div>
+      <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
+        <v-btn rounded="lg" variant="flat" color="primary" prepend-icon="mdi-refresh" class="text-none"
+                 :loading="loading" @click="loadAll">{{ $t('common.refresh') }}</v-btn>
+      <v-btn rounded="lg" color="primary" variant="flat" class="text-none"
                  prepend-icon="mdi-plus" @click="openCreate">New medication</v-btn>
-        </v-col>
-      </v-row>
+      </div>
+    </div>
 
-      <v-row class="mt-4" dense>
-        <v-col v-for="k in kpiTiles" :key="k.label" cols="6" md="3">
-          <v-card flat rounded="lg" class="kpi pa-3">
-            <div class="d-flex align-center">
-              <v-avatar :color="k.color" size="40" class="mr-3">
-                <v-icon color="white" size="22">{{ k.icon }}</v-icon>
-              </v-avatar>
-              <div class="min-width-0">
-                <div class="text-caption text-medium-emphasis text-uppercase">{{ k.label }}</div>
-                <div class="text-h6 font-weight-bold">{{ k.value }}</div>
-              </div>
+    <!-- KPIs -->
+    <v-row dense class="mb-4">
+      <v-col v-for="k in kpiTiles" :key="k.label" cols="6" md="3">
+        <v-card rounded="lg" class="pa-4 h-100 kpi-card">
+          <div class="d-flex align-start justify-space-between">
+            <div>
+              <div class="text-caption text-medium-emphasis">{{ k.label }}</div>
+              <div class="text-h6 font-weight-bold mt-1">{{ k.value }}</div>
+              <div v-if="k.sub" class="text-caption text-medium-emphasis mt-1">{{ k.sub }}</div>
             </div>
-          </v-card>
-        </v-col>
-      </v-row>
-    </v-card>
+            <v-avatar :color="k.color" variant="tonal" rounded="lg" size="40">
+              <v-icon size="20">{{ k.icon }}</v-icon>
+            </v-avatar>
+          </div>
+        </v-card>
+      </v-col>
+    </v-row>
 
     <!-- Filters -->
     <v-card flat rounded="xl" border class="pa-3 mb-3">
@@ -84,8 +80,8 @@
           <span class="text-capitalize">{{ item.dosage_form }}</span>
         </template>
         <template #item.requires_prescription="{ item }">
-          <v-chip v-if="item.requires_prescription" size="x-small" color="error" variant="tonal">Rx</v-chip>
-          <v-chip v-else size="x-small" color="success" variant="tonal">OTC</v-chip>
+          <v-chip v-if="item.requires_prescription" size="x-small" color="error" variant="tonal">{{ $t('medications.rx') }}</v-chip>
+          <v-chip v-else size="x-small" color="success" variant="tonal">{{ $t('medications.otc') }}</v-chip>
         </template>
         <template #item.is_active="{ item }">
           <v-icon :color="item.is_active ? 'success' : 'grey'" size="18">
@@ -176,7 +172,7 @@
         <v-divider />
         <v-card-actions class="pa-3">
           <v-spacer />
-          <v-btn variant="text" @click="formDialog = false">Cancel</v-btn>
+          <v-btn variant="text" @click="formDialog = false">{{ $t('common.cancel') }}</v-btn>
           <v-btn color="primary" variant="flat" :loading="saving" @click="save">
             {{ form.id ? 'Update' : 'Create' }}
           </v-btn>
@@ -193,8 +189,8 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" @click="deleteDialog = false">Cancel</v-btn>
-          <v-btn color="error" variant="flat" :loading="saving" @click="doDelete">Delete</v-btn>
+          <v-btn variant="text" @click="deleteDialog = false">{{ $t('common.cancel') }}</v-btn>
+          <v-btn color="error" variant="flat" :loading="saving" @click="doDelete">{{ $t('common.delete') }}</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -206,6 +202,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { ref, reactive, computed, onMounted } from 'vue'
 import EmptyState from '~/components/EmptyState.vue'
 
@@ -330,17 +329,7 @@ function notify(message, color = 'success') { Object.assign(snack, { show: true,
 </script>
 
 <style scoped>
-.hero {
-  background: linear-gradient(135deg, #0f766e 0%, #14b8a6 50%, #06b6d4 100%);
-  border-radius: 20px !important;
-  box-shadow: 0 12px 32px rgba(20, 184, 166, 0.25);
-}
-.kpi {
-  background: rgba(255, 255, 255, 0.97);
-  color: rgba(0, 0, 0, 0.87);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-.kpi:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0, 0, 0, 0.1); }
-.kpi :deep(.text-h6) { color: rgba(0, 0, 0, 0.87) !important; }
-.kpi :deep(.text-medium-emphasis) { color: rgba(0, 0, 0, 0.62) !important; }
+.kpi-card { transition: transform 0.15s ease, box-shadow 0.15s ease; border: 1px solid rgba(var(--v-theme-on-surface), 0.06); }
+.kpi-card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.06); }
+
 </style>

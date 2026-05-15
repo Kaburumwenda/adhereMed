@@ -1,183 +1,159 @@
 <template>
   <div class="bulk-page" :class="{ 'is-fullscreen': fullscreen }">
-    <!-- Hero header -->
-    <div v-if="!fullscreen" class="hero" :class="`hero-${mode}`">
-      <v-container fluid class="pa-4 pa-md-6">
-        <div class="d-flex align-center mb-3">
-          <v-btn icon="mdi-arrow-left" variant="text" color="white" to="/inventory" class="mr-2" />
-          <v-breadcrumbs density="compact" class="pa-0 text-white" :items="[
-            { title: 'Inventory', to: '/inventory' },
-            { title: mode === 'delete' ? 'Bulk Delete' : 'Bulk Edit' }
-          ]" />
+    <v-container fluid class="pa-4 pa-md-6">
+      <!-- Header -->
+      <div v-if="!fullscreen" class="d-flex align-center flex-wrap ga-3 mb-5">
+        <v-btn icon="mdi-arrow-left" variant="text" to="/inventory" size="small" class="mr-1" />
+        <v-avatar :color="mode === 'delete' ? 'red-lighten-5' : 'blue-lighten-5'" size="48">
+          <v-icon :color="mode === 'delete' ? 'red-darken-2' : 'blue-darken-2'" size="28">{{ modeIcon }}</v-icon>
+        </v-avatar>
+        <div>
+          <div class="text-h5 font-weight-bold">{{ mode === 'delete' ? 'Bulk Delete' : 'Bulk Edit' }}</div>
+          <div class="text-body-2 text-medium-emphasis">
+            {{ mode === 'delete'
+              ? 'Select items to remove permanently from inventory'
+              : 'Edit cells directly · Save all changes at once' }}
+          </div>
         </div>
+        <v-spacer />
 
-        <div class="d-flex flex-wrap align-end justify-space-between" style="gap: 16px">
-          <div class="d-flex align-center" style="gap: 18px">
-            <v-avatar size="64" class="hero-icon">
-              <v-icon size="36" color="white">{{ modeIcon }}</v-icon>
-            </v-avatar>
-            <div class="text-white">
-              <div class="text-overline opacity-80">{{ mode === 'delete' ? 'Bulk Operation' : 'Spreadsheet Editor' }}</div>
-              <h1 class="text-h4 text-md-h3 font-weight-bold mb-1" style="line-height: 1.1">
-                {{ mode === 'delete' ? 'Bulk Delete' : 'Bulk Edit' }}
-              </h1>
-              <div class="text-body-2 opacity-90" style="max-width: 560px">
-                {{ mode === 'delete'
-                  ? 'Pick the rows you want gone and remove them in one shot. Selections persist while you filter.'
-                  : 'Edit any cell directly. Changed rows are highlighted; one click saves them all.' }}
+        <!-- Mode switcher -->
+        <v-btn-toggle v-model="mode" mandatory density="comfortable" rounded="lg" color="primary" divided>
+          <v-btn value="edit" size="small" class="text-none" prepend-icon="mdi-table-edit">{{ $t('common.edit') }}</v-btn>
+          <v-btn value="delete" size="small" class="text-none" prepend-icon="mdi-trash-can">{{ $t('common.delete') }}</v-btn>
+        </v-btn-toggle>
+
+        <v-btn variant="outlined" rounded="lg" prepend-icon="mdi-refresh"
+               :loading="loading" @click="load" class="text-none">{{ $t('common.refresh') }}</v-btn>
+      </div>
+
+      <!-- KPIs -->
+      <v-row v-if="!fullscreen" dense class="mb-4">
+        <v-col cols="6" md="3">
+          <v-card flat rounded="lg" class="kpi pa-3">
+            <div class="d-flex align-center">
+              <v-avatar color="blue-lighten-5" size="36" class="mr-2">
+                <v-icon color="blue-darken-2" size="20">mdi-package-variant</v-icon>
+              </v-avatar>
+              <div>
+                <div class="text-caption text-medium-emphasis">Total Items</div>
+                <div class="text-h6 font-weight-bold">{{ rows.length.toLocaleString() }}</div>
               </div>
             </div>
-          </div>
+          </v-card>
+        </v-col>
+        <v-col cols="6" md="3">
+          <v-card flat rounded="lg" class="kpi pa-3">
+            <div class="d-flex align-center">
+              <v-avatar color="teal-lighten-5" size="36" class="mr-2">
+                <v-icon color="teal-darken-2" size="20">mdi-eye-outline</v-icon>
+              </v-avatar>
+              <div>
+                <div class="text-caption text-medium-emphasis">Visible</div>
+                <div class="text-h6 font-weight-bold">{{ filteredRows.length.toLocaleString() }}</div>
+              </div>
+            </div>
+          </v-card>
+        </v-col>
+        <v-col cols="6" md="3">
+          <v-card flat rounded="lg" class="kpi pa-3" :class="{ 'kpi-accent': selectedIds.length }">
+            <div class="d-flex align-center">
+              <v-avatar :color="selectedIds.length ? 'primary' : 'grey-lighten-4'" size="36" class="mr-2">
+                <v-icon :color="selectedIds.length ? 'white' : 'grey-darken-1'" size="20">mdi-checkbox-marked-outline</v-icon>
+              </v-avatar>
+              <div>
+                <div class="text-caption text-medium-emphasis">Selected</div>
+                <div class="text-h6 font-weight-bold">{{ selectedIds.length.toLocaleString() }}</div>
+              </div>
+            </div>
+          </v-card>
+        </v-col>
+        <v-col cols="6" md="3">
+          <v-card flat rounded="lg" class="kpi pa-3" :class="{ 'kpi-warning': mode === 'edit' && dirtyCount }">
+            <div class="d-flex align-center">
+              <v-avatar :color="mode === 'edit' && dirtyCount ? 'amber-lighten-4' : 'grey-lighten-4'" size="36" class="mr-2">
+                <v-icon :color="mode === 'edit' && dirtyCount ? 'amber-darken-3' : 'grey-darken-1'" size="20">
+                  {{ mode === 'edit' ? 'mdi-pencil-outline' : 'mdi-trash-can-outline' }}
+                </v-icon>
+              </v-avatar>
+              <div>
+                <div class="text-caption text-medium-emphasis">{{ mode === 'edit' ? 'Unsaved' : 'To Remove' }}</div>
+                <div class="text-h6 font-weight-bold">{{ mode === 'edit' ? dirtyCount.toLocaleString() : selectedIds.length.toLocaleString() }}</div>
+              </div>
+            </div>
+          </v-card>
+        </v-col>
+      </v-row>
 
-          <!-- Mode switcher -->
-          <div class="mode-switch">
-            <button
-              class="mode-pill"
-              :class="{ active: mode === 'edit' }"
-              @click="setMode('edit')"
-            >
-              <v-icon size="18">mdi-table-edit</v-icon>
-              <span>Edit mode</span>
-            </button>
-            <button
-              class="mode-pill"
-              :class="{ active: mode === 'delete' }"
-              @click="setMode('delete')"
-            >
-              <v-icon size="18">mdi-trash-can</v-icon>
-              <span>Delete mode</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Stat strip -->
-        <v-row dense class="mt-4">
-          <v-col cols="6" md="3">
-            <div class="stat">
-              <div class="stat-label">Total items</div>
-              <div class="stat-value">{{ rows.length.toLocaleString() }}</div>
-            </div>
-          </v-col>
-          <v-col cols="6" md="3">
-            <div class="stat">
-              <div class="stat-label">Visible</div>
-              <div class="stat-value">{{ filteredRows.length.toLocaleString() }}</div>
-            </div>
-          </v-col>
-          <v-col cols="6" md="3">
-            <div class="stat" :class="selectedIds.length ? 'stat-accent' : ''">
-              <div class="stat-label">Selected</div>
-              <div class="stat-value">{{ selectedIds.length.toLocaleString() }}</div>
-            </div>
-          </v-col>
-          <v-col cols="6" md="3">
-            <div v-if="mode === 'edit'" class="stat" :class="dirtyCount ? 'stat-warning' : ''">
-              <div class="stat-label">Unsaved changes</div>
-              <div class="stat-value">{{ dirtyCount.toLocaleString() }}</div>
-            </div>
-            <div v-else class="stat">
-              <div class="stat-label">Will be removed</div>
-              <div class="stat-value">{{ selectedIds.length.toLocaleString() }}</div>
-            </div>
-          </v-col>
-        </v-row>
-      </v-container>
-    </div>
-
-    <v-container fluid class="pa-4 pa-md-6 content-area">
-      <!-- Sticky action / filter bar -->
-      <v-card rounded="xl" elevation="0" class="action-bar mb-4">
-        <div class="action-bar-inner">
+      <!-- Table card -->
+      <v-card flat rounded="lg" class="table-card">
+        <!-- Filter / action bar -->
+        <div class="d-flex align-center flex-wrap ga-3 pa-3">
           <v-text-field
             v-model="search"
             placeholder="Search by name, barcode, location…"
             prepend-inner-icon="mdi-magnify"
-            density="comfortable" variant="solo-filled" rounded="lg" hide-details
-            flat clearable
-            class="search-field"
+            density="compact" variant="outlined" rounded="lg" hide-details
+            clearable style="max-width:320px; min-width:200px"
           />
           <v-select
             v-model="categoryFilter"
             :items="categoryOptions"
             item-title="label" item-value="value"
-            density="comfortable" variant="solo-filled" rounded="lg" hide-details
-            flat
+            density="compact" variant="outlined" rounded="lg" hide-details
             prepend-inner-icon="mdi-shape"
-            class="filter-select"
+            style="max-width:220px; min-width:160px"
           />
-
           <v-spacer />
 
           <template v-if="mode === 'edit'">
-            <v-btn
-              variant="text" color="warning"
-              prepend-icon="mdi-restore" rounded="lg" class="text-none"
-              :disabled="!dirtyCount"
-              @click="discardChanges"
-            >
+            <v-btn variant="text" color="warning" prepend-icon="mdi-restore" rounded="lg"
+                   class="text-none" :disabled="!dirtyCount" @click="discardChanges" size="small">
               Discard
             </v-btn>
-            <v-btn
-              color="primary" size="large"
-              prepend-icon="mdi-content-save-all" rounded="lg" class="text-none save-btn"
-              :loading="saving"
-              :disabled="!dirtyCount"
-              @click="saveAll"
-            >
+            <v-btn color="primary" prepend-icon="mdi-content-save-all" rounded="lg"
+                   class="text-none" :loading="saving" :disabled="!dirtyCount" @click="saveAll">
               Save {{ dirtyCount }} change{{ dirtyCount === 1 ? '' : 's' }}
             </v-btn>
           </template>
           <template v-else>
-            <v-btn
-              variant="text"
-              prepend-icon="mdi-checkbox-multiple-blank-outline"
-              rounded="lg" class="text-none"
-              :disabled="!selectedIds.length"
-              @click="selectedIds = []"
-            >
-              Clear selection
+            <v-btn variant="text" prepend-icon="mdi-checkbox-multiple-blank-outline"
+                   rounded="lg" class="text-none" :disabled="!selectedIds.length" @click="selectedIds = []" size="small">
+              Clear
             </v-btn>
-            <v-btn
-              color="error" size="large"
-              prepend-icon="mdi-trash-can" rounded="lg" class="text-none save-btn"
-              :disabled="!selectedIds.length"
-              @click="confirmDelete = true"
-            >
+            <v-btn color="error" prepend-icon="mdi-trash-can" rounded="lg"
+                   class="text-none" :disabled="!selectedIds.length" @click="confirmDelete = true">
               Delete {{ selectedIds.length }} item{{ selectedIds.length === 1 ? '' : 's' }}
             </v-btn>
           </template>
 
-          <v-tooltip :text="fullscreen ? 'Exit fullscreen' : 'Expand to fullscreen'" location="top">
+          <v-tooltip :text="fullscreen ? 'Exit fullscreen' : 'Fullscreen'" location="top">
             <template #activator="{ props }">
-              <v-btn
-                v-bind="props"
-                :icon="fullscreen ? 'mdi-fullscreen-exit' : 'mdi-fullscreen'"
-                variant="tonal" rounded="lg"
-                @click="toggleFullscreen"
-              />
+              <v-btn v-bind="props" :icon="fullscreen ? 'mdi-fullscreen-exit' : 'mdi-fullscreen'"
+                     variant="tonal" rounded="lg" size="small" @click="toggleFullscreen" />
             </template>
           </v-tooltip>
         </div>
 
-        <div v-if="mode === 'edit'" class="helper-strip">
-          <v-icon size="16" color="primary" class="mr-1">mdi-information-outline</v-icon>
-          Click any cell to edit. Use <kbd>Tab</kbd> to move forward and
-          <kbd>Shift</kbd>+<kbd>Tab</kbd> to move back. Changes are highlighted in
-          <span class="dot dot-warning" /> amber until you save.
+        <!-- Helper strip -->
+        <div class="helper-strip">
+          <v-icon size="14" :color="mode === 'edit' ? 'primary' : 'error'" class="mr-1">
+            {{ mode === 'edit' ? 'mdi-information-outline' : 'mdi-alert-circle-outline' }}
+          </v-icon>
+          <template v-if="mode === 'edit'">
+            Click any cell to edit · <kbd>Tab</kbd> forward · <kbd>Shift+Tab</kbd> back · Changes highlighted until saved
+          </template>
+          <template v-else>
+            Tick rows to remove · Selections persist across search/filter · Deletion is permanent
+          </template>
         </div>
-        <div v-else class="helper-strip">
-          <v-icon size="16" color="error" class="mr-1">mdi-alert-circle-outline</v-icon>
-          Tick the rows you want to remove. Selections survive search and category filters so you can pick across the whole catalog.
-        </div>
-      </v-card>
 
-      <!-- Spreadsheet -->
-      <v-card rounded="xl" elevation="0" class="sheet-card">
+        <!-- Spreadsheet -->
         <v-progress-linear v-if="loading" color="primary" indeterminate height="3" />
 
         <div v-if="!loading && !filteredRows.length" class="empty-state">
-          <v-avatar size="80" color="primary" variant="tonal" class="mb-3">
-            <v-icon size="40">mdi-table-off</v-icon>
+          <v-avatar size="72" color="primary" variant="tonal" class="mb-3">
+            <v-icon size="36">mdi-table-off</v-icon>
           </v-avatar>
           <div class="text-h6 mb-1">Nothing to show</div>
           <div class="text-body-2 text-medium-emphasis mb-4">
@@ -206,14 +182,14 @@
                 <th class="col-unit">Unit</th>
                 <th class="text-right col-num col-price">Cost</th>
                 <th class="text-right col-num col-price">Price</th>
+                <th class="text-right col-num">On hand</th>
+                <th class="col-act">Active</th>
                 <th class="text-right col-num">Disc%</th>
                 <th class="text-right col-num">Reorder Lv</th>
                 <th class="text-right col-num">Reorder Qty</th>
                 <th class="col-loc">Location</th>
                 <th class="col-bar">Barcode</th>
                 <th class="col-rx">Rx</th>
-                <th class="col-act">Active</th>
-                <th class="text-right col-num">On hand</th>
               </tr>
             </thead>
             <tbody>
@@ -304,6 +280,33 @@
                   />
                   <span v-else class="font-weight-medium">{{ formatMoney(row.selling_price) }}</span>
                 </td>
+
+                <td class="text-right">
+                  <input
+                    v-if="mode === 'edit'"
+                    :value="row.set_quantity ?? row.total_quantity ?? 0"
+                    class="cell-input num cell-qty"
+                    :class="{ 'qty-low-input': (row.set_quantity ?? row.total_quantity ?? 0) <= row.reorder_level }"
+                    type="number" min="0" step="1"
+                    @input="e => onQtyInput(row, e.target.value)"
+                  />
+                  <span v-else class="qty-pill" :class="row.total_quantity <= row.reorder_level ? 'qty-low' : ''">
+                    {{ Number(row.total_quantity ?? 0).toLocaleString() }}
+                  </span>
+                </td>
+
+                <td class="text-center">
+                  <v-switch
+                    v-if="mode === 'edit'"
+                    :model-value="row.is_active"
+                    color="success" density="compact" hide-details inset
+                    @update:model-value="(v) => { row.is_active = v; markDirty(row.id, 'is_active', v) }"
+                  />
+                  <v-icon v-else :color="row.is_active ? 'success' : 'grey'" size="20">
+                    {{ row.is_active ? 'mdi-check-circle' : 'mdi-close-circle' }}
+                  </v-icon>
+                </td>
+
                 <td class="text-right">
                   <input
                     v-if="mode === 'edit'"
@@ -372,32 +375,6 @@
                     {{ row.prescription_required }}
                   </v-chip>
                 </td>
-
-                <td class="text-center">
-                  <v-switch
-                    v-if="mode === 'edit'"
-                    :model-value="row.is_active"
-                    color="success" density="compact" hide-details inset
-                    @update:model-value="(v) => { row.is_active = v; markDirty(row.id, 'is_active', v) }"
-                  />
-                  <v-icon v-else :color="row.is_active ? 'success' : 'grey'" size="20">
-                    {{ row.is_active ? 'mdi-check-circle' : 'mdi-close-circle' }}
-                  </v-icon>
-                </td>
-
-                <td class="text-right">
-                  <input
-                    v-if="mode === 'edit'"
-                    :value="row.set_quantity ?? row.total_quantity ?? 0"
-                    class="cell-input num cell-qty"
-                    :class="{ 'qty-low-input': (row.set_quantity ?? row.total_quantity ?? 0) <= row.reorder_level }"
-                    type="number" min="0" step="1"
-                    @input="e => onQtyInput(row, e.target.value)"
-                  />
-                  <span v-else class="qty-pill" :class="row.total_quantity <= row.reorder_level ? 'qty-low' : ''">
-                    {{ Number(row.total_quantity ?? 0).toLocaleString() }}
-                  </span>
-                </td>
               </tr>
             </tbody>
           </table>
@@ -459,9 +436,7 @@
           This action cannot be undone.
         </v-card-text>
         <v-card-actions class="pa-4">
-          <v-btn variant="text" rounded="lg" class="text-none" block @click="confirmDelete = false">
-            Cancel
-          </v-btn>
+          <v-btn variant="text" rounded="lg" class="text-none" block @click="confirmDelete = false">{{ $t('common.cancel') }}</v-btn>
           <v-btn color="error" rounded="lg" class="text-none" block :loading="deleting" @click="doDelete">
             Yes, delete
           </v-btn>
@@ -477,6 +452,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { ref, computed, onMounted, watch } from 'vue'
 import { formatMoney } from '~/utils/format'
 
@@ -528,6 +506,16 @@ function setMode(m) {
   selectedIds.value = []
   router.replace({ query: { ...route.query, mode: m } })
 }
+
+watch(mode, (newMode, oldMode) => {
+  if (newMode === oldMode) return
+  if (oldMode === 'edit' && dirtyCount.value) {
+    if (!confirm('Discard unsaved changes?')) { mode.value = oldMode; return }
+    discardChanges()
+  }
+  selectedIds.value = []
+  router.replace({ query: { ...route.query, mode: newMode } })
+})
 
 const categoryOptions = computed(() => [
   { label: 'All categories', value: null },
@@ -676,136 +664,48 @@ onMounted(load)
   background: rgb(var(--v-theme-background));
 }
 
-/* ── Hero ─────────────────────────────────────────────────────────── */
-.hero {
-  background: linear-gradient(135deg, #1565c0 0%, #283593 100%);
-  color: white;
-  padding-bottom: 16px;
+/* ── KPI cards ─────────────────────────────────────────────────────── */
+.kpi {
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.06);
 }
-.hero-delete {
-  background: linear-gradient(135deg, #c62828 0%, #6a1b9a 100%);
+.kpi-accent {
+  border-color: rgba(var(--v-theme-primary), 0.25);
+  background: rgba(var(--v-theme-primary), 0.03);
 }
-.hero-icon {
-  background: rgba(255, 255, 255, 0.18);
-  backdrop-filter: blur(6px);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-}
-.hero :deep(.v-breadcrumbs-item),
-.hero :deep(.v-breadcrumbs-divider) {
-  color: rgba(255, 255, 255, 0.85) !important;
+.kpi-warning {
+  border-color: rgba(var(--v-theme-warning), 0.3);
+  background: rgba(var(--v-theme-warning), 0.04);
 }
 
-.mode-switch {
-  display: inline-flex;
-  background: rgba(255, 255, 255, 0.14);
-  padding: 4px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  backdrop-filter: blur(6px);
-}
-.mode-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 18px;
-  border-radius: 999px;
-  border: none;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.85);
-  font-weight: 500;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.18s ease;
-}
-.mode-pill:hover { color: white; }
-.mode-pill.active {
-  background: white;
-  color: rgb(var(--v-theme-primary));
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
-}
-.hero-delete .mode-pill.active { color: rgb(var(--v-theme-error)); }
-
-.stat {
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(6px);
-  border-radius: 14px;
-  padding: 12px 16px;
-  color: white;
-}
-.stat-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  opacity: 0.8;
-}
-.stat-value {
-  font-size: 22px;
-  font-weight: 700;
-  line-height: 1.1;
-  margin-top: 2px;
-}
-.stat-accent { background: rgba(255, 255, 255, 0.22); }
-.stat-warning {
-  background: rgba(255, 193, 7, 0.25);
-  border-color: rgba(255, 193, 7, 0.5);
-}
-
-/* ── Action bar ────────────────────────────────────────────────────── */
-.content-area { margin-top: -36px; position: relative; z-index: 2; }
-
-.action-bar {
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.06) !important;
+/* ── Table card ────────────────────────────────────────────────────── */
+.table-card {
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.06);
   overflow: hidden;
 }
-.action-bar-inner {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-}
-.search-field { min-width: 240px; max-width: 360px; flex: 1; }
-.filter-select { min-width: 200px; }
-.save-btn { min-width: 180px; font-weight: 600; }
 
 .helper-strip {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 8px 18px;
-  font-size: 12.5px;
-  color: rgba(0, 0, 0, 0.65);
-  background: rgba(var(--v-theme-primary), 0.04);
-  border-top: 1px solid rgba(0, 0, 0, 0.05);
+  padding: 8px 16px;
+  font-size: 12px;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+  background: rgba(var(--v-theme-primary), 0.03);
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.04);
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.04);
   flex-wrap: wrap;
 }
 .helper-strip kbd {
-  background: white;
-  border: 1px solid rgba(0, 0, 0, 0.15);
+  background: rgba(var(--v-theme-on-surface), 0.06);
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.1);
   border-radius: 4px;
-  padding: 1px 6px;
+  padding: 1px 5px;
   font-family: ui-monospace, monospace;
   font-size: 11px;
   margin: 0 3px;
 }
-.dot {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  margin: 0 4px;
-  vertical-align: middle;
-}
-.dot-warning { background: rgb(var(--v-theme-warning)); }
 
 /* ── Sheet ─────────────────────────────────────────────────────────── */
-.sheet-card {
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.06) !important;
-  overflow: hidden;
-}
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -819,10 +719,10 @@ onMounted(load)
   min-height: 360px;
 }
 .is-fullscreen .sheet-wrap {
-  height: calc(100vh - 220px);
+  height: calc(100vh - 140px);
 }
-.is-fullscreen { background: rgb(var(--v-theme-background)); }
-.is-fullscreen .content-area { margin-top: 0; padding-top: 12px !important; }
+.is-fullscreen .bulk-page > .v-container { padding-top: 12px !important; }
+
 .cell-input.cell-qty {
   font-weight: 600;
   color: rgb(var(--v-theme-success));
@@ -840,19 +740,19 @@ onMounted(load)
   position: sticky;
   top: 0;
   background: rgb(var(--v-theme-surface));
-  border-bottom: 2px solid rgba(0, 0, 0, 0.08);
+  border-bottom: 2px solid rgba(var(--v-theme-on-surface), 0.08);
   padding: 10px 12px;
   font-weight: 600;
   font-size: 11.5px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: rgba(0, 0, 0, 0.65);
+  color: rgba(var(--v-theme-on-surface), 0.6);
   text-align: left;
   white-space: nowrap;
   z-index: 2;
 }
 .sheet tbody td {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.05);
   padding: 6px 8px;
   white-space: nowrap;
   vertical-align: middle;
@@ -885,7 +785,7 @@ onMounted(load)
 .sheet tbody .sticky-col { background: inherit; }
 
 .col-check { width: 48px; text-align: center; }
-.col-id { width: 56px; color: rgba(0, 0, 0, 0.45); }
+.col-id { width: 56px; color: rgba(var(--v-theme-on-surface), 0.4); }
 .col-name { min-width: 260px; }
 .col-cat, .col-unit { min-width: 140px; }
 .col-num { width: 130px; min-width: 130px; }
@@ -894,7 +794,7 @@ onMounted(load)
 .col-rx { min-width: 130px; }
 .col-act { width: 80px; text-align: center; }
 .row-num {
-  color: rgba(0, 0, 0, 0.4);
+  color: rgba(var(--v-theme-on-surface), 0.4);
   font-variant-numeric: tabular-nums;
 }
 
@@ -909,13 +809,12 @@ onMounted(load)
   outline: none;
   transition: all 0.12s ease;
 }
-.cell-input:hover { border-color: rgba(0, 0, 0, 0.12); }
+.cell-input:hover { border-color: rgba(var(--v-theme-on-surface), 0.12); }
 .cell-input:focus {
   border-color: rgb(var(--v-theme-primary));
   background: rgb(var(--v-theme-surface));
   box-shadow: 0 0 0 3px rgba(var(--v-theme-primary), 0.18);
 }
-/* Native <select> needs explicit theming so the popup isn't white in dark mode */
 select.cell-input {
   background-color: rgb(var(--v-theme-surface));
   color: rgb(var(--v-theme-on-surface));
@@ -953,8 +852,7 @@ select.cell-input option {
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
-  background: rgba(var(--v-theme-primary), 0.02);
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.06);
 }
 
 /* ── Confirm dialog ────────────────────────────────────────────────── */
@@ -973,10 +871,4 @@ select.cell-input option {
   z-index: 100;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.25);
 }
-
-/* ── Dark theme tweaks ─────────────────────────────────────────────── */
-:deep(.v-theme--dark) .helper-strip { background: rgba(255, 255, 255, 0.04); color: rgba(255, 255, 255, 0.7); }
-:deep(.v-theme--dark) .helper-strip kbd { background: rgba(255, 255, 255, 0.08); color: white; border-color: rgba(255, 255, 255, 0.2); }
-:deep(.v-theme--dark) .cell-input:focus { background: rgba(255, 255, 255, 0.04); }
-:deep(.v-theme--dark) .sheet thead th { color: rgba(255, 255, 255, 0.75); }
 </style>

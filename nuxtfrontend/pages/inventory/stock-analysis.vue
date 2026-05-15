@@ -7,13 +7,13 @@
           <v-icon size="28">mdi-chart-line</v-icon>
         </v-avatar>
         <div>
-          <h1 class="text-h5 text-md-h4 font-weight-bold mb-0">Stock Analysis</h1>
+          <h1 class="text-h5 text-md-h4 font-weight-bold mb-0">{{ $t('stockAnalysis.title') }}</h1>
           <div class="text-body-2 text-medium-emphasis">Inventory health · valuation · expiry &amp; movement</div>
         </div>
       </div>
       <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
         <v-btn icon="mdi-refresh" variant="text" :loading="loading" @click="load" />
-        <v-btn variant="tonal" color="primary" rounded="lg" class="text-none" prepend-icon="mdi-arrow-left" to="/inventory">Inventory</v-btn>
+        <v-btn variant="tonal" color="primary" rounded="lg" class="text-none" prepend-icon="mdi-arrow-left" to="/inventory">{{ $t('inventory.title') }}</v-btn>
       </div>
     </div>
 
@@ -206,7 +206,7 @@
                 <th>Item</th>
                 <th class="text-right">On hand</th>
                 <th class="text-right">Reorder</th>
-                <th>Status</th>
+                <th>{{ $t('common.status') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -302,6 +302,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { ref, computed, onMounted } from 'vue'
 import { formatMoney, formatDate } from '~/utils/format'
 
@@ -354,15 +357,24 @@ const outCount = computed(() => stocks.value.filter(s => Number(s.total_quantity
 const expiringCount = computed(() => expiringRows.value.length)
 
 const VAT_RATE = 0.16
-const totalRetailExVat = computed(() => totalRetail.value / (1 + VAT_RATE))
-const totalVat = computed(() => totalRetail.value - totalRetailExVat.value)
+const totalVat = computed(() =>
+  stocks.value.reduce((sum, s) => {
+    const qty = Number(s.total_quantity || 0)
+    const sell = Number(s.selling_price || 0)
+    const pct = Number(s.tax_percent || 0)
+    if (pct <= 0 || qty <= 0) return sum
+    const lineTotal = qty * sell
+    return sum + (lineTotal * pct / (100 + pct))
+  }, 0)
+)
+const totalRetailExVat = computed(() => totalRetail.value - totalVat.value)
 const profitExVat = computed(() => totalRetailExVat.value - totalCost.value)
 
 const kpis = computed(() => [
   { title: 'Total SKUs', value: stocks.value.length.toLocaleString(), icon: 'mdi-cube-outline', color: 'primary', hint: `${totalUnits.value.toLocaleString()} units on hand` },
   { title: 'Inventory cost (Before Tax)', value: formatMoney(totalCost.value), icon: 'mdi-cash', color: 'info', hint: 'Cost basis' },
   { title: 'Retail value (Inc. Tax)', value: formatMoney(totalRetail.value), icon: 'mdi-cash-multiple', color: 'success', hint: `Profit potential ${formatMoney(totalRetail.value - totalCost.value)}` },
-  { title: 'Retail value (Exc. Tax)', value: formatMoney(totalRetailExVat.value), icon: 'mdi-cash-check', color: 'teal', hint: `VAT (${Math.round(VAT_RATE * 100)}%): ${formatMoney(totalVat.value)} · Expected profit: ${formatMoney(profitExVat.value)}` },
+  { title: 'Retail value (Exc. Tax)', value: formatMoney(totalRetailExVat.value), icon: 'mdi-cash-check', color: 'teal', hint: `VAT (per-item): ${formatMoney(totalVat.value)} · Expected profit: ${formatMoney(profitExVat.value)}` },
   {
     title: 'Needs attention', value: (lowCount.value + outCount.value).toLocaleString(),
     icon: 'mdi-alert-circle', color: 'warning',

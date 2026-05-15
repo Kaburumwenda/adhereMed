@@ -3,12 +3,25 @@
     <!-- Header -->
     <div class="d-flex flex-wrap align-center justify-space-between mb-4">
       <div>
-        <h1 class="text-h5 text-md-h4 font-weight-bold mb-1">Pharmacy Analytics</h1>
+        <h1 class="text-h5 text-md-h4 font-weight-bold mb-1">{{ $t('analytics.title') }}</h1>
         <div class="text-body-2 text-medium-emphasis">
           Performance insights · {{ rangeLabel }}
         </div>
       </div>
       <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
+        <v-select
+          v-if="branchStore.hasBranches"
+          v-model="branchFilter"
+          :items="branchFilterItems"
+          item-title="name"
+          item-value="id"
+          density="compact"
+          variant="outlined"
+          rounded="lg"
+          hide-details
+          prepend-inner-icon="mdi-store-marker"
+          style="min-width: 180px"
+        />
         <v-select
           v-model="rangeKey"
           :items="rangeOptions"
@@ -24,7 +37,7 @@
           @update:model-value="onRangeChange"
         />
         <v-btn icon="mdi-refresh" variant="text" :loading="loading" @click="load" />
-        <v-btn variant="tonal" color="primary" rounded="lg" class="text-none" prepend-icon="mdi-download" to="/reports">Reports</v-btn>
+        <v-btn variant="tonal" color="primary" rounded="lg" class="text-none" prepend-icon="mdi-download" to="/reports">{{ $t('reports.title') }}</v-btn>
       </div>
     </div>
 
@@ -53,7 +66,7 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" class="text-none" @click="customDialog = false">Cancel</v-btn>
+          <v-btn variant="text" class="text-none" @click="customDialog = false">{{ $t('common.cancel') }}</v-btn>
           <v-btn color="primary" variant="flat" class="text-none" :disabled="!customStart || !customEnd" @click="applyCustom">Apply</v-btn>
         </v-card-actions>
       </v-card>
@@ -92,7 +105,7 @@
               <div class="text-caption text-medium-emphasis">Daily revenue · {{ rangeLabel }}</div>
             </div>
             <div class="text-right">
-              <div class="text-caption text-medium-emphasis">Total</div>
+              <div class="text-caption text-medium-emphasis">{{ $t('common.total') }}</div>
               <div class="text-h6 font-weight-bold text-primary">{{ formatMoney(revenueTotal) }}</div>
             </div>
           </div>
@@ -119,6 +132,38 @@
               <span class="text-caption text-medium-emphasis ml-2">{{ s.pct }}%</span>
             </div>
           </div>
+        </v-card>
+      </v-col>
+    </v-row>
+
+    <!-- Sales by Branch -->
+    <v-row v-if="branchSegments.length > 1" class="mt-1">
+      <v-col cols="12" lg="5">
+        <v-card rounded="lg" class="pa-4 h-100">
+          <h3 class="text-h6 font-weight-bold mb-3">Sales by branch</h3>
+          <div class="d-flex justify-center mb-3">
+            <DonutRing :segments="branchSegments" :size="220">
+              <div class="text-center">
+                <div class="text-caption text-medium-emphasis">Revenue</div>
+                <div class="text-h6 font-weight-bold">{{ formatMoney(branchTotal) }}</div>
+              </div>
+            </DonutRing>
+          </div>
+          <div>
+            <div v-for="s in branchSegments" :key="s.label" class="d-flex align-center mb-2">
+              <span class="legend-dot" :style="{ background: s.color }"></span>
+              <span class="text-body-2 ml-2 flex-grow-1 text-truncate">{{ s.label }}</span>
+              <span class="text-body-2 font-weight-medium">{{ formatMoney(s.value) }}</span>
+              <span class="text-caption text-medium-emphasis ml-2">{{ s.pct }}%</span>
+            </div>
+          </div>
+        </v-card>
+      </v-col>
+      <v-col cols="12" lg="7">
+        <v-card rounded="lg" class="pa-4 h-100">
+          <h3 class="text-h6 font-weight-bold mb-1">Branch comparison</h3>
+          <div class="text-caption text-medium-emphasis mb-3">Revenue per branch</div>
+          <BarChart :values="branchSegments.map(s => s.value)" :labels="branchSegments.map(s => s.label)" :height="240" :colors="branchSegments.map(s => s.color)" money-axis />
         </v-card>
       </v-col>
     </v-row>
@@ -195,7 +240,7 @@
           <div v-else class="d-flex flex-column align-center">
             <DonutRing :segments="categorySegments" :size="220">
               <div class="text-center">
-                <div class="text-caption text-medium-emphasis">Total</div>
+                <div class="text-caption text-medium-emphasis">{{ $t('common.total') }}</div>
                 <div class="text-h6 font-weight-bold">{{ formatMoney(categoryTotal) }}</div>
               </div>
             </DonutRing>
@@ -337,11 +382,17 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { formatMoney, formatDate } from '~/utils/format'
+import { useBranchStore } from '~/stores/branch'
 
 const { $api } = useNuxtApp()
+const branchStore = useBranchStore()
 
 const rangeKey = ref('30d')
+const branchFilter = ref(null) // null = All Branches
 const loading = ref(false)
 const topMetric = ref('revenue')
 const customDialog = ref(false)
@@ -417,6 +468,12 @@ const rangeLabel = computed(() => activeRange.value.label)
 
 const cutoffPrev = computed(() => addDays(cutoff.value, -rangeDays.value))
 
+const branchFilterItems = computed(() => {
+  const items = branchStore.activeBranches.map(b => ({ id: b.id, name: b.name }))
+  items.unshift({ id: null, name: 'All Branches' })
+  return items
+})
+
 function onRangeChange(val) {
   if (val === 'custom') {
     if (!customStart.value) customStart.value = cutoff.value.toISOString().slice(0, 10)
@@ -436,11 +493,15 @@ function applyCustom() {
 
 const inRange = computed(() => txAll.value.filter(t => {
   const d = new Date(t.created_at || t.date || 0)
-  return d >= cutoff.value && d < cutoffEnd.value
+  if (d < cutoff.value || d >= cutoffEnd.value) return false
+  if (branchFilter.value != null && t.branch !== branchFilter.value) return false
+  return true
 }))
 const inPrevRange = computed(() => txAll.value.filter(t => {
   const d = new Date(t.created_at || t.date || 0)
-  return d >= cutoffPrev.value && d < cutoff.value
+  if (d < cutoffPrev.value || d >= cutoff.value) return false
+  if (branchFilter.value != null && t.branch !== branchFilter.value) return false
+  return true
 }))
 
 const totalRevenue = computed(() => inRange.value.reduce((s, t) => s + Number(t.total || t.total_amount || 0), 0))
@@ -560,6 +621,26 @@ const categorySegments = computed(() => {
   return arr.map(([label, value], i) => ({ label, value, color: barColors[i % barColors.length] }))
 })
 const categoryTotal = computed(() => categorySegments.value.reduce((s, x) => s + x.value, 0))
+
+// Branch breakdown (uses unfiltered-by-branch txAll, but still date-filtered)
+const branchSegments = computed(() => {
+  const filtered = txAll.value.filter(t => {
+    const d = new Date(t.created_at || t.date || 0)
+    return d >= cutoff.value && d < cutoffEnd.value
+  })
+  const map = new Map()
+  for (const t of filtered) {
+    const name = t.branch_name || 'Unassigned'
+    map.set(name, (map.get(name) || 0) + Number(t.total || t.total_amount || 0))
+  }
+  const arr = [...map.entries()].sort((a, b) => b[1] - a[1])
+  const total = arr.reduce((s, [, v]) => s + v, 0) || 1
+  return arr.map(([label, value], i) => ({
+    label, value, color: barColors[i % barColors.length],
+    pct: Math.round((value / total) * 100)
+  }))
+})
+const branchTotal = computed(() => branchSegments.value.reduce((s, x) => s + x.value, 0))
 
 // Hour heatmap
 const hourCounts = computed(() => {

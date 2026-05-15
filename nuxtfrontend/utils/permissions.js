@@ -2,7 +2,7 @@
 // Restricts low-privilege roles (e.g. cashier) from admin/management screens.
 
 // Routes that should ONLY be accessible to tenant/super admins.
-// Anyone else hitting these will be redirected to /dashboard.
+// Anyone else hitting these will be redirected to /dashboard (or /pharmacy for pharmacy tenants).
 const ADMIN_ONLY_PREFIXES = [
   '/superadmin',
   '/admin',
@@ -22,6 +22,23 @@ const ADMIN_ONLY_PREFIXES = [
   '/billing/usage',
   '/billing/rates',
   '/billing/doctors',
+  '/pharmacy/billing',
+  '/pharmacy/staff',
+  '/pharmacy/staff-performance',
+  '/pharmacy/specializations',
+  '/pharmacy/accounts',
+  '/pharmacy/branches',
+  '/pharmacy/settings',
+  '/pharmacy/suppliers',
+  '/pharmacy/purchase-orders',
+  '/pharmacy/expenses',
+  '/pharmacy/reports',
+  '/pharmacy/analytics',
+  '/pharmacy/inventory/stock-analysis',
+  '/pharmacy/adjustments',
+  '/pharmacy/categories',
+  '/pharmacy/units',
+  '/pharmacy/medications',
   '/inventory/stock-analysis',
   '/adjustments',
   '/categories',
@@ -30,15 +47,22 @@ const ADMIN_ONLY_PREFIXES = [
   '/departments',
   '/wards',
   '/doctor-profile',
+  '/radiology/staff',
+  '/radiology/accounts',
+  '/radiology/settings',
+  '/radiology/branches',
+  '/radiology/analytics',
+  '/radiology/expenses',
 ]
 
 // Roles considered "admins" of their tenant.
-const ADMIN_ROLES = new Set([
+export const ADMIN_ROLES = new Set([
   'super_admin',
   'tenant_admin',
   'hospital_admin',
   'pharmacy_admin',
   'lab_admin',
+  'radiology_admin',
   'admin',
 ])
 
@@ -48,6 +72,7 @@ const ADMIN_ROLES = new Set([
 const ROLE_ALLOWLIST = {
   cashier: [
     '/dashboard',
+    '/pharmacy',
     '/pos',
     '/pharmacy-orders',
     '/pharmacy-rx',
@@ -64,14 +89,30 @@ const ROLE_ALLOWLIST = {
 }
 
 // Per-role deny-list of route prefixes. Checked BEFORE the allow-list so
-// you can grant a broad area (e.g. /billing) but block sub-pages
-// (e.g. /billing/usage = API Billing dashboard).
+// you can grant a broad area (e.g. /pharmacy) but block sub-pages.
 const ROLE_DENYLIST = {
   cashier: [
     '/billing/usage',     // API Billing — admin only
     '/billing/rates',
     '/billing/doctors',
     '/billing/commission',
+    '/pharmacy/billing',
+    '/pharmacy/staff',
+    '/pharmacy/staff-performance',
+    '/pharmacy/specializations',
+    '/pharmacy/accounts',
+    '/pharmacy/branches',
+    '/pharmacy/settings',
+    '/pharmacy/suppliers',
+    '/pharmacy/purchase-orders',
+    '/pharmacy/expenses',
+    '/pharmacy/reports',
+    '/pharmacy/analytics',
+    '/pharmacy/inventory/stock-analysis',
+    '/pharmacy/adjustments',
+    '/pharmacy/categories',
+    '/pharmacy/units',
+    '/pharmacy/medications',
   ],
 }
 
@@ -80,6 +121,12 @@ const ALWAYS_ALLOWED = [
   '/forgot-password', '/reset-password',
   '/dashboard', '/profile', '/my-profile', '/notifications', '/messages',
 ]
+
+// Exact-match always-allowed paths (not prefix-matched).
+const ALWAYS_ALLOWED_EXACT = new Set([
+  '/pharmacy',
+  '/radiology',
+])
 
 function startsWithAny(path, prefixes) {
   return prefixes.some(p => path === p || path.startsWith(p + '/'))
@@ -95,6 +142,7 @@ export function canAccessRoute(role, path) {
   const denyList = ROLE_DENYLIST[role]
   if (denyList && startsWithAny(path, denyList)) return false
 
+  if (ALWAYS_ALLOWED_EXACT.has(path)) return true
   if (startsWithAny(path, ALWAYS_ALLOWED)) return true
 
   const allowList = ROLE_ALLOWLIST[role]

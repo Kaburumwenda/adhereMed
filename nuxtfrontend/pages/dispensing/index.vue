@@ -9,23 +9,23 @@
               <v-icon color="green-darken-3" size="32">mdi-clipboard-check-multiple</v-icon>
             </v-avatar>
             <div>
-              <div class="text-h5 text-md-h4 font-weight-bold">Dispensing</div>
+              <div class="text-h5 text-md-h4 font-weight-bold">{{ $t('dispensing.title') }}</div>
               <div class="text-body-2" style="opacity:0.9">
                 Prescription-based medication issue · Auto stock deduction · Patient labels.
               </div>
               <div class="text-caption mt-1" style="opacity:0.85">
                 <v-icon size="14" class="mr-1">mdi-information-outline</v-icon>
                 For walk-in / OTC retail sales without a prescription, use
-                <NuxtLink to="/pos" class="text-white font-weight-bold" style="text-decoration:underline">Point of Sale</NuxtLink>.
+                <NuxtLink to="/pos" class="text-white font-weight-bold" style="text-decoration:underline">{{ $t('pos.title') }}</NuxtLink>.
               </div>
             </div>
           </div>
         </v-col>
         <v-col cols="12" md="4" class="d-flex justify-md-end mt-3 mt-md-0" style="gap:8px">
           <v-btn color="white" variant="elevated" class="text-green-darken-3"
-                 prepend-icon="mdi-plus" :to="'/dispensing/new'">New Dispense</v-btn>
+                 prepend-icon="mdi-plus" :to="'/dispensing/new'">{{ $t('newDispense.title') }}</v-btn>
           <v-btn color="white" variant="outlined" prepend-icon="mdi-refresh"
-                 :loading="loading" @click="loadAll">Refresh</v-btn>
+                 :loading="loading" @click="loadAll">{{ $t('common.refresh') }}</v-btn>
         </v-col>
       </v-row>
 
@@ -184,7 +184,7 @@
         </div>
         <v-card-text class="pa-5">
           <div class="d-flex justify-space-between mb-1">
-            <span class="text-medium-emphasis">Patient</span>
+            <span class="text-medium-emphasis">{{ $t('dispensing.patient') }}</span>
             <span class="font-weight-medium">{{ active.patient_name }}</span>
           </div>
           <div v-if="active.patient_phone" class="d-flex justify-space-between mb-1">
@@ -210,12 +210,12 @@
           </div>
 
           <v-divider class="my-2" />
-          <div class="d-flex justify-space-between"><span>Subtotal</span><span>KSh {{ Number(active.subtotal).toLocaleString() }}</span></div>
+          <div class="d-flex justify-space-between"><span>{{ $t('common.subtotal') }}</span><span>KSh {{ Number(active.subtotal).toLocaleString() }}</span></div>
           <div v-if="Number(active.discount) > 0" class="d-flex justify-space-between text-error">
-            <span>Discount</span><span>− KSh {{ Number(active.discount).toLocaleString() }}</span>
+            <span>{{ $t('common.discount') }}</span><span>− KSh {{ Number(active.discount).toLocaleString() }}</span>
           </div>
           <div class="d-flex justify-space-between text-h6 font-weight-bold mt-1">
-            <span>Total</span><span>KSh {{ Number(active.total).toLocaleString() }}</span>
+            <span>{{ $t('common.total') }}</span><span>KSh {{ Number(active.total).toLocaleString() }}</span>
           </div>
           <div class="d-flex justify-space-between mt-2">
             <span class="text-medium-emphasis">Payment ({{ paymentLabel(active.payment_method) }})</span>
@@ -226,14 +226,14 @@
           </div>
 
           <div v-if="active.notes" class="mt-3 pa-2 bg-grey-lighten-4 rounded">
-            <div class="text-caption text-medium-emphasis">Notes</div>
+            <div class="text-caption text-medium-emphasis">{{ $t('common.notes') }}</div>
             <div class="text-body-2">{{ active.notes }}</div>
           </div>
         </v-card-text>
         <v-card-actions class="pa-4">
           <v-spacer />
-          <v-btn variant="text" @click="receiptDialog = false">Close</v-btn>
-          <v-btn color="primary" prepend-icon="mdi-printer" @click="printReceipt(active)">Print</v-btn>
+          <v-btn variant="text" @click="receiptDialog = false">{{ $t('common.close') }}</v-btn>
+          <v-btn color="primary" prepend-icon="mdi-printer" @click="printReceipt(active)">{{ $t('common.print') }}</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -247,7 +247,7 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" @click="voidDialog = false">Cancel</v-btn>
+          <v-btn variant="text" @click="voidDialog = false">{{ $t('common.cancel') }}</v-btn>
           <v-btn color="error" :loading="voiding" @click="doVoid">Void</v-btn>
         </v-card-actions>
       </v-card>
@@ -260,6 +260,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { ref, computed, onMounted } from 'vue'
 const { $api } = useNuxtApp()
 
@@ -387,9 +390,9 @@ function printReceipt(r) {
     <div class="row"><span>Patient:</span><span>${r.patient_name}</span></div>
     ${r.patient_phone ? `<div class="row"><span>Phone:</span><span>${r.patient_phone}</span></div>` : ''}
     <hr><table>${items}</table><hr>
-    <div class="row"><span>Subtotal</span><span>KSh ${Number(r.subtotal).toLocaleString()}</span></div>
-    ${Number(r.discount) > 0 ? `<div class="row"><span>Discount</span><span>− KSh ${Number(r.discount).toLocaleString()}</span></div>` : ''}
-    <div class="row total"><span>Total</span><span>KSh ${Number(r.total).toLocaleString()}</span></div>
+    <div class="row"><span>${t('common.subtotal')}</span><span>KSh ${Number(r.subtotal).toLocaleString()}</span></div>
+    ${Number(r.discount) > 0 ? `<div class="row"><span>${t('common.discount')}</span><span>− KSh ${Number(r.discount).toLocaleString()}</span></div>` : ''}
+    <div class="row total"><span>${t('common.total')}</span><span>KSh ${Number(r.total).toLocaleString()}</span></div>
     <div class="row"><span>Paid (${r.payment_method})</span><span>KSh ${Number(r.paid_amount).toLocaleString()}</span></div>
     ${r.change_due > 0 ? `<div class="row"><span>Change</span><span>KSh ${Number(r.change_due).toLocaleString()}</span></div>` : ''}
     <hr><div style="text-align:center" class="muted">Thank you!</div>

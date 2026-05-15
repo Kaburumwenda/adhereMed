@@ -12,8 +12,8 @@
         </div>
       </div>
       <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
-        <v-btn variant="tonal" color="primary" prepend-icon="mdi-refresh" rounded="lg" class="text-none" :loading="loading" @click="reload">Refresh</v-btn>
-        <v-btn color="primary" prepend-icon="mdi-plus" rounded="lg" class="text-none" to="/inventory/units/new">New Unit</v-btn>
+        <v-btn variant="tonal" color="primary" prepend-icon="mdi-refresh" rounded="lg" class="text-none" :loading="loading" @click="reload">{{ $t('common.refresh') }}</v-btn>
+        <v-btn color="primary" prepend-icon="mdi-plus" rounded="lg" class="text-none" to="/inventory/units/new">{{ $t('unitsPage.newUnit') }}</v-btn>
       </div>
     </div>
 
@@ -85,7 +85,7 @@
       <v-icon size="64" color="grey">mdi-inbox-outline</v-icon>
       <div class="text-h6 mt-3">No units</div>
       <div class="text-body-2 mb-4">{{ search ? 'Try a different search.' : 'Create your first unit of measurement.' }}</div>
-      <v-btn color="primary" variant="flat" rounded="lg" class="text-none" prepend-icon="mdi-plus" to="/inventory/units/new">New Unit</v-btn>
+      <v-btn color="primary" variant="flat" rounded="lg" class="text-none" prepend-icon="mdi-plus" to="/inventory/units/new">{{ $t('unitsPage.newUnit') }}</v-btn>
     </div>
 
     <!-- Table -->
@@ -101,7 +101,7 @@
               <th class="text-right">SKUs</th>
               <th class="text-right">Total on hand</th>
               <th>Usage</th>
-              <th class="text-right">Actions</th>
+              <th class="text-right">{{ $t('common.actions') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -149,6 +149,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { ref, computed, onMounted, watch } from 'vue'
 import { useResource } from '~/composables/useResource'
 

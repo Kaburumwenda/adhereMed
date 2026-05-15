@@ -86,7 +86,7 @@
               <th>Medication</th>
               <th class="text-end">Qty</th>
               <th class="text-end">Unit Price</th>
-              <th class="text-end">Subtotal</th>
+              <th class="text-end">{{ $t('common.subtotal') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -103,20 +103,20 @@
 
         <v-row dense class="mt-3">
           <v-col cols="12" md="6">
-            <div v-if="order.notes" class="text-caption text-medium-emphasis">Notes</div>
+            <div v-if="order.notes" class="text-caption text-medium-emphasis">{{ $t('common.notes') }}</div>
             <div v-if="order.notes" class="text-body-2">{{ order.notes }}</div>
           </v-col>
           <v-col cols="12" md="6">
             <v-card flat rounded="lg" class="pa-3 totals-tile">
               <div class="d-flex justify-space-between text-body-2">
-                <span>Subtotal</span><span>{{ formatMoney(order.subtotal) }}</span>
+                <span>{{ $t('common.subtotal') }}</span><span>{{ formatMoney(order.subtotal) }}</span>
               </div>
               <div class="d-flex justify-space-between text-body-2 mt-1">
                 <span>Delivery Fee</span><span>{{ formatMoney(order.delivery_fee) }}</span>
               </div>
               <v-divider class="my-2" />
               <div class="d-flex justify-space-between font-weight-bold">
-                <span>Total</span>
+                <span>{{ $t('common.total') }}</span>
                 <span class="text-success text-h6">{{ formatMoney(order.total) }}</span>
               </div>
             </v-card>
@@ -147,6 +147,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { ref, reactive, onMounted } from 'vue'
 import { formatMoney, formatDateTime } from '~/utils/format'
 
@@ -246,10 +249,10 @@ function printOrder(o) {
     <div><strong>Phone:</strong> ${o.patient_phone || '—'}</div>
     <div><strong>Address:</strong> ${o.delivery_address || 'Pickup'}</div>
     <div><strong>Payment:</strong> ${o.payment_method}</div>
-    <table><thead><tr><th>Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit</th><th style="text-align:right">Total</th></tr></thead><tbody>${itemRows}</tbody></table>
-    <div class="totals"><div><span>Subtotal</span><span>${formatMoney(o.subtotal)}</span></div>
+    <table><thead><tr><th>Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit</th><th style="text-align:right">${t('common.total')}</th></tr></thead><tbody>${itemRows}</tbody></table>
+    <div class="totals"><div><span>${t('common.subtotal')}</span><span>${formatMoney(o.subtotal)}</span></div>
     <div><span>Delivery</span><span>${formatMoney(o.delivery_fee)}</span></div>
-    <div class="grand"><span>Total</span><span>${formatMoney(o.total)}</span></div></div>
+    <div class="grand"><span>${t('common.total')}</span><span>${formatMoney(o.total)}</span></div></div>
     <p style="text-align:center;margin-top:24px;font-size:12px;color:#64748b">Status: ${o.status}</p>
     </body></html>`)
   w.document.close()

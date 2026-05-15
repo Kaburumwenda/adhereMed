@@ -2,7 +2,9 @@
   <ResourceListPage
     :resource="r"
     title="Staff Performance"
+    subtitle="Track sales, revenue &amp; hours across your team"
     icon="mdi-chart-line"
+    color="indigo"
     :headers="headers"
     :detail-path="null"
     :edit-path="null"

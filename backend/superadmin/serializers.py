@@ -20,7 +20,9 @@ class TenantAdminSerializer(serializers.ModelSerializer):
         model = Tenant
         fields = [
             "id", "name", "type", "slug", "schema_name",
-            "address", "city", "country", "phone", "email", "website",
+            "address", "city", "country",
+            "latitude", "longitude", "place_name",
+            "phone", "email", "website",
             "is_active", "created_at", "updated_at",
             "domains", "user_count",
         ]
@@ -40,6 +42,10 @@ class TenantCreateSerializer(serializers.Serializer):
     phone = serializers.CharField(max_length=20, required=False, allow_blank=True, default="")
     email = serializers.EmailField(required=False, allow_blank=True, default="")
     website = serializers.URLField(required=False, allow_blank=True, default="")
+    country = serializers.CharField(max_length=100, required=False, allow_blank=True, default="Kenya")
+    latitude = serializers.DecimalField(max_digits=10, decimal_places=6, required=False, allow_null=True, default=None)
+    longitude = serializers.DecimalField(max_digits=10, decimal_places=6, required=False, allow_null=True, default=None)
+    place_name = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
     # Admin user
     admin_email = serializers.EmailField()
     admin_first_name = serializers.CharField(max_length=150)

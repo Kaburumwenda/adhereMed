@@ -1,57 +1,47 @@
 <template>
   <v-container fluid class="pa-3 pa-md-5">
-    <!-- Hero -->
-    <v-card flat rounded="xl" class="hero text-white pa-5 pa-md-6 mb-4">
-      <v-row align="center" no-gutters>
-        <v-col cols="12" md="8">
-          <div class="d-flex align-center">
-            <v-avatar color="white" size="56" class="mr-4 elevation-2">
-              <v-icon color="indigo-darken-3" size="32">mdi-truck-fast</v-icon>
-            </v-avatar>
-            <div>
-              <div class="text-h5 text-md-h4 font-weight-bold">Deliveries</div>
-              <div class="text-body-2" style="opacity:0.9">
-                Manage POS order deliveries, drivers and live status updates.
-              </div>
-            </div>
-          </div>
-        </v-col>
-        <v-col
-          cols="12" md="4"
-          class="d-flex justify-md-end mt-3 mt-md-0"
-          style="gap:8px"
-        >
-          <v-btn
-            color="white" variant="elevated" class="text-indigo-darken-3"
+        <!-- Header -->
+    <div class="d-flex flex-wrap align-center justify-space-between mb-4">
+      <div class="d-flex align-center">
+        <v-avatar color="indigo-lighten-5" size="48" class="mr-3">
+          <v-icon color="indigo-darken-2" size="28">mdi-truck-fast</v-icon>
+        </v-avatar>
+        <div>
+          <h1 class="text-h5 font-weight-bold mb-1">{{ $t('deliveries.title') }}</h1>
+          <div class="text-body-2 text-medium-emphasis">Manage POS order deliveries, drivers and live status updates</div>
+        </div>
+      </div>
+      <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
+        <v-btn
+            color="primary" variant="flat" class="text-none"
             prepend-icon="mdi-plus" @click="openCreate"
           >
             New Delivery
           </v-btn>
-          <v-btn
-            color="white" variant="outlined" prepend-icon="mdi-refresh"
+      <v-btn
+            color="primary" variant="tonal" prepend-icon="mdi-refresh"
             :loading="loading" @click="load"
-          >
-            Refresh
-          </v-btn>
-        </v-col>
-      </v-row>
+          >{{ $t('common.refresh') }}</v-btn>
+      </div>
+    </div>
 
-      <v-row class="mt-4" dense>
-        <v-col v-for="k in kpis" :key="k.label" cols="6" md="3">
-          <v-card flat rounded="lg" class="stat-card pa-3">
-            <div class="d-flex align-center">
-              <v-avatar :color="k.color" size="36" class="mr-3">
-                <v-icon color="white" size="20">{{ k.icon }}</v-icon>
-              </v-avatar>
-              <div>
-                <div class="text-caption text-medium-emphasis">{{ k.label }}</div>
-                <div class="text-h6 font-weight-bold">{{ k.value }}</div>
-              </div>
+    <!-- KPIs -->
+    <v-row dense class="mb-4">
+      <v-col v-for="k in kpis" :key="k.label" cols="6" md="3">
+        <v-card rounded="lg" class="pa-4 h-100 kpi-card">
+          <div class="d-flex align-start justify-space-between">
+            <div>
+              <div class="text-caption text-medium-emphasis">{{ k.label }}</div>
+              <div class="text-h6 font-weight-bold mt-1">{{ k.value }}</div>
+              <div v-if="k.sub" class="text-caption text-medium-emphasis mt-1">{{ k.sub }}</div>
             </div>
-          </v-card>
-        </v-col>
-      </v-row>
-    </v-card>
+            <v-avatar :color="k.color" variant="tonal" rounded="lg" size="40">
+              <v-icon size="20">{{ k.icon }}</v-icon>
+            </v-avatar>
+          </div>
+        </v-card>
+      </v-col>
+    </v-row>
 
     <!-- Filters -->
     <v-card flat rounded="xl" class="pa-3 mb-3" border>
@@ -512,7 +502,7 @@
         <v-divider />
         <v-card-actions class="pa-3">
           <v-spacer />
-          <v-btn variant="text" @click="createDialog = false">Cancel</v-btn>
+          <v-btn variant="text" @click="createDialog = false">{{ $t('common.cancel') }}</v-btn>
           <v-btn
             color="primary" variant="flat" :loading="saving" @click="saveCreate"
           >
@@ -607,7 +597,7 @@
           <v-row dense>
             <v-col cols="12" md="6">
               <div class="info-tile pa-3 rounded-lg">
-                <div class="text-overline text-medium-emphasis">Recipient</div>
+                <div class="text-overline text-medium-emphasis">{{ $t('deliveries.recipient') }}</div>
                 <div class="font-weight-medium">{{ selected.recipient_name }}</div>
                 <div class="text-body-2">
                   <v-icon size="14">mdi-phone</v-icon>
@@ -617,7 +607,7 @@
             </v-col>
             <v-col cols="12" md="6">
               <div class="info-tile pa-3 rounded-lg">
-                <div class="text-overline text-medium-emphasis">Driver</div>
+                <div class="text-overline text-medium-emphasis">{{ $t('deliveries.driver') }}</div>
                 <div v-if="selected.driver_display" class="font-weight-medium">
                   <v-icon size="16" color="indigo">mdi-account-tie</v-icon>
                   {{ selected.driver_display }}
@@ -675,7 +665,7 @@
             </v-col>
             <v-col cols="6" md="4">
               <div class="info-tile pa-3 rounded-lg">
-                <div class="text-overline text-medium-emphasis">Scheduled</div>
+                <div class="text-overline text-medium-emphasis">{{ $t('deliveries.scheduled') }}</div>
                 <div class="text-body-2">{{ formatDate(selected.scheduled_at) }}</div>
               </div>
             </v-col>
@@ -695,7 +685,7 @@
             </v-col>
             <v-col v-if="selected.notes" cols="12">
               <div class="info-tile pa-3 rounded-lg">
-                <div class="text-overline text-medium-emphasis">Notes</div>
+                <div class="text-overline text-medium-emphasis">{{ $t('common.notes') }}</div>
                 <div class="text-body-2">{{ selected.notes }}</div>
               </div>
             </v-col>
@@ -759,7 +749,7 @@
         <v-divider />
         <v-card-actions class="pa-3">
           <v-spacer />
-          <v-btn variant="text" @click="assignDialog = false">Cancel</v-btn>
+          <v-btn variant="text" @click="assignDialog = false">{{ $t('common.cancel') }}</v-btn>
           <v-btn
             color="primary" variant="flat" :loading="saving"
             :disabled="!assignSelection" @click="saveAssign"
@@ -782,10 +772,8 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" @click="deleteDialog = false">Cancel</v-btn>
-          <v-btn color="error" variant="flat" :loading="saving" @click="doDelete">
-            Delete
-          </v-btn>
+          <v-btn variant="text" @click="deleteDialog = false">{{ $t('common.cancel') }}</v-btn>
+          <v-btn color="error" variant="flat" :loading="saving" @click="doDelete">{{ $t('common.delete') }}</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -799,6 +787,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { ref, reactive, computed, onMounted } from 'vue'
 import EmptyState from '~/components/EmptyState.vue'
 
@@ -1351,16 +1342,9 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.hero {
-  background: linear-gradient(135deg, #312e81 0%, #4f46e5 50%, #06b6d4 100%);
-  border-radius: 20px !important;
-  box-shadow: 0 12px 32px rgba(49, 46, 129, 0.25);
-}
-.stat-card {
-  background: rgba(255, 255, 255, 0.95);
-  color: rgba(0, 0, 0, 0.85);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
+.kpi-card { transition: transform 0.15s ease, box-shadow 0.15s ease; border: 1px solid rgba(var(--v-theme-on-surface), 0.06); }
+.kpi-card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.06); }
+
 .stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0, 0, 0, 0.12); }
 
 .delivery-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }

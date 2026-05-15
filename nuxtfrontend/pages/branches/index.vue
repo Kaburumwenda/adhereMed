@@ -1,62 +1,88 @@
 <template>
   <v-container fluid class="pa-3 pa-md-5">
-    <v-card flat rounded="xl" class="hero text-white pa-5 pa-md-6 mb-4">
-      <v-row align="center" no-gutters>
-        <v-col cols="12" md="7">
-          <div class="d-flex align-center">
-            <v-avatar color="white" size="56" class="mr-4 elevation-2">
-              <v-icon color="blue-darken-3" size="32">mdi-store</v-icon>
-            </v-avatar>
-            <div>
-              <div class="text-h5 text-md-h4 font-weight-bold">Branches</div>
-              <div class="text-body-2" style="opacity:0.9">
-                Manage your pharmacy locations &amp; contact details.
-              </div>
-            </div>
-          </div>
-        </v-col>
-        <v-col cols="12" md="5" class="d-flex justify-md-end mt-3 mt-md-0" style="gap:8px">
-          <v-btn variant="flat" color="white" prepend-icon="mdi-refresh" class="text-blue-darken-3"
+        <!-- Header -->
+    <div class="d-flex flex-wrap align-center justify-space-between mb-4">
+      <div class="d-flex align-center">
+        <v-avatar color="blue-lighten-5" size="48" class="mr-3">
+          <v-icon color="blue-darken-2" size="28">mdi-store</v-icon>
+        </v-avatar>
+        <div>
+          <h1 class="text-h5 font-weight-bold mb-1">Branches</h1>
+          <div class="text-body-2 text-medium-emphasis">Manage your pharmacy locations &amp; contact details</div>
+        </div>
+      </div>
+      <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
+        <v-btn rounded="lg" variant="flat" color="primary" prepend-icon="mdi-refresh" class="text-none"
                  :loading="loading" @click="loadAll">Refresh</v-btn>
-          <v-btn color="white" variant="flat" class="text-blue-darken-3"
+      <v-btn rounded="lg" color="primary" variant="flat" class="text-none"
                  prepend-icon="mdi-plus" @click="openCreate">New branch</v-btn>
-        </v-col>
-      </v-row>
-      <v-row class="mt-4" dense>
-        <v-col v-for="k in kpiTiles" :key="k.label" cols="6" md="3">
-          <v-card flat rounded="lg" class="kpi pa-3">
-            <div class="d-flex align-center">
-              <v-avatar :color="k.color" size="40" class="mr-3">
-                <v-icon color="white" size="22">{{ k.icon }}</v-icon>
-              </v-avatar>
-              <div class="min-width-0">
-                <div class="text-caption text-medium-emphasis text-uppercase">{{ k.label }}</div>
-                <div class="text-h6 font-weight-bold">{{ k.value }}</div>
-              </div>
+      </div>
+    </div>
+
+    <!-- KPIs -->
+    <v-row dense class="mb-4">
+      <v-col v-for="k in kpiTiles" :key="k.label" cols="6" md="3">
+        <v-card rounded="lg" class="pa-4 h-100 kpi-card">
+          <div class="d-flex align-start justify-space-between">
+            <div>
+              <div class="text-caption text-medium-emphasis">{{ k.label }}</div>
+              <div class="text-h6 font-weight-bold mt-1">{{ k.value }}</div>
+              <div v-if="k.sub" class="text-caption text-medium-emphasis mt-1">{{ k.sub }}</div>
             </div>
-          </v-card>
-        </v-col>
-      </v-row>
-    </v-card>
+            <v-avatar :color="k.color" variant="tonal" rounded="lg" size="40">
+              <v-icon size="20">{{ k.icon }}</v-icon>
+            </v-avatar>
+          </div>
+        </v-card>
+      </v-col>
+    </v-row>
 
     <v-card flat rounded="xl" border class="pa-3 mb-3">
       <v-row dense align="center">
-        <v-col cols="12" md="6">
+        <v-col cols="12" md="5">
           <v-text-field v-model="search" prepend-inner-icon="mdi-magnify"
                         placeholder="Search by name or address…"
                         density="comfortable" variant="solo-filled" flat hide-details clearable />
         </v-col>
-        <v-col cols="6" md="3">
+        <v-col cols="6" md="2">
           <v-select v-model="activeFilter" :items="activeItems" label="Status"
                     density="comfortable" variant="outlined" hide-details />
         </v-col>
-        <v-col cols="6" md="3" class="text-right">
+        <v-col cols="6" md="2" class="text-right">
           <v-chip color="primary" variant="tonal">{{ filtered.length }} shown</v-chip>
+        </v-col>
+        <v-col cols="12" md="3" class="d-flex justify-end">
+          <v-btn-toggle v-model="viewMode" mandatory density="comfortable" rounded="lg" color="primary" variant="outlined">
+            <v-btn value="table" prepend-icon="mdi-table">Table</v-btn>
+            <v-btn value="map" prepend-icon="mdi-map">Map</v-btn>
+          </v-btn-toggle>
         </v-col>
       </v-row>
     </v-card>
 
-    <v-card flat rounded="xl" border>
+    <!-- ══════ MAP VIEW ══════ -->
+    <v-card v-if="viewMode === 'map'" flat rounded="xl" border class="overflow-hidden">
+      <div v-if="geoBranches.length === 0" class="d-flex flex-column align-center justify-center pa-10">
+        <v-icon size="64" color="grey-lighten-1" class="mb-3">mdi-map-marker-off</v-icon>
+        <div class="text-h6 text-medium-emphasis">No branch locations</div>
+        <div class="text-body-2 text-medium-emphasis">Add coordinates to your branches to see them on the map.</div>
+      </div>
+      <div v-else>
+        <div ref="allBranchesMapEl" class="branches-map" />
+        <!-- Legend chips under the map -->
+        <div class="d-flex flex-wrap ga-2 pa-3 border-t">
+          <v-chip v-for="b in geoBranches" :key="b.id" size="small" variant="tonal"
+                  :color="b.is_main ? 'amber-darken-2' : b.is_active ? 'blue' : 'grey'"
+                  :prepend-icon="b.is_main ? 'mdi-star' : 'mdi-store'"
+                  @click="panToMarker(b)">
+            {{ b.name }}
+          </v-chip>
+        </div>
+      </div>
+    </v-card>
+
+    <!-- ══════ TABLE VIEW ══════ -->
+    <v-card v-else flat rounded="xl" border>
       <v-data-table :headers="headers" :items="filtered" :loading="loading"
                     density="comfortable" hover :items-per-page="25">
         <template #item.name="{ item }">
@@ -217,9 +243,12 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
 import EmptyState from '~/components/EmptyState.vue'
+import { useI18n } from 'vue-i18n'
+import pinIcon from '~/assets/images/pin.png'
 
+const { t } = useI18n()
 const { $api } = useNuxtApp()
 
 const loading = ref(false)
@@ -399,22 +428,140 @@ function extractError(e) {
   if (d.detail) return d.detail
   return Object.entries(d).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(' ') : v}`).join(' · ')
 }
+
+// ── View mode ──
+const viewMode = ref('table')
+
+// ── All-branches map ──
+const allBranchesMapEl = ref(null)
+let allMap = null
+let allMarkers = []
+let allInfoWindow = null
+const { load: loadGoogleMaps } = useGoogleMaps()
+
+const geoBranches = computed(() =>
+  filtered.value.filter(b => b.latitude != null && b.longitude != null)
+)
+
+function buildMapContent(b) {
+  return `<div style="min-width:180px;font-family:sans-serif">
+    <div style="font-weight:600;font-size:14px;margin-bottom:4px">${b.is_main ? '⭐ ' : ''}${b.name}</div>
+    ${b.address ? `<div style="font-size:12px;color:#555;margin-bottom:4px">${b.address}</div>` : ''}
+    ${b.phone ? `<div style="font-size:12px;color:#555">📞 ${b.phone}</div>` : ''}
+    ${b.email ? `<div style="font-size:12px;color:#555">✉ ${b.email}</div>` : ''}
+    <div style="margin-top:6px">
+      <span style="display:inline-block;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:500;background:${b.is_active ? '#e8f5e9' : '#fafafa'};color:${b.is_active ? '#2e7d32' : '#9e9e9e'}">
+        ${b.is_active ? '● Active' : '● Inactive'}
+      </span>
+    </div>
+  </div>`
+}
+
+async function initAllBranchesMap() {
+  try {
+    await loadGoogleMaps()
+  } catch { return }
+  await nextTick()
+  const el = allBranchesMapEl.value
+  if (!el || !window.google?.maps) return
+
+  const gbs = geoBranches.value
+  if (!gbs.length) return
+
+  // Calculate bounds
+  const bounds = new google.maps.LatLngBounds()
+  gbs.forEach(b => bounds.extend({ lat: Number(b.latitude), lng: Number(b.longitude) }))
+
+  allMap = new google.maps.Map(el, {
+    center: bounds.getCenter(),
+    zoom: 12,
+    mapTypeControl: true,
+    mapTypeControlOptions: { position: google.maps.ControlPosition.TOP_RIGHT },
+    streetViewControl: false,
+    fullscreenControl: true,
+    styles: [
+      { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+      { featureType: 'transit', stylers: [{ visibility: 'simplified' }] },
+    ],
+  })
+
+  allInfoWindow = new google.maps.InfoWindow()
+
+  // Add markers
+  allMarkers = gbs.map(b => {
+    const marker = new google.maps.Marker({
+      position: { lat: Number(b.latitude), lng: Number(b.longitude) },
+      map: allMap,
+      title: b.name,
+      icon: {
+        url: pinIcon,
+        scaledSize: new google.maps.Size(b.is_main ? 48 : 38, b.is_main ? 48 : 38),
+        anchor: new google.maps.Point(b.is_main ? 24 : 19, b.is_main ? 48 : 38),
+      },
+      animation: google.maps.Animation.DROP,
+      branchId: b.id,
+    })
+
+    marker.addListener('click', () => {
+      allInfoWindow.setContent(buildMapContent(b))
+      allInfoWindow.open(allMap, marker)
+    })
+
+    return marker
+  })
+
+  // Fit bounds with padding
+  if (gbs.length === 1) {
+    allMap.setCenter({ lat: Number(gbs[0].latitude), lng: Number(gbs[0].longitude) })
+    allMap.setZoom(15)
+  } else {
+    allMap.fitBounds(bounds, { top: 40, bottom: 40, left: 40, right: 40 })
+  }
+}
+
+function panToMarker(branch) {
+  if (!allMap) return
+  const pos = { lat: Number(branch.latitude), lng: Number(branch.longitude) }
+  allMap.panTo(pos)
+  allMap.setZoom(16)
+  const marker = allMarkers.find(m => m.branchId === branch.id)
+  if (marker && allInfoWindow) {
+    allInfoWindow.setContent(buildMapContent(branch))
+    allInfoWindow.open(allMap, marker)
+  }
+}
+
+function destroyMapMarkers() {
+  allMarkers.forEach(m => m.setMap(null))
+  allMarkers = []
+  if (allInfoWindow) { allInfoWindow.close(); allInfoWindow = null }
+  allMap = null
+}
+
+// Re-init map when switching to map view or when branches change
+watch(viewMode, async (v) => {
+  if (v === 'map') {
+    destroyMapMarkers()
+    await nextTick()
+    await initAllBranchesMap()
+  }
+})
+
+watch(geoBranches, async () => {
+  if (viewMode.value === 'map') {
+    destroyMapMarkers()
+    await nextTick()
+    await initAllBranchesMap()
+  }
+})
+
 const snack = reactive({ show: false, color: 'success', message: '' })
 function notify(message, color = 'success') { Object.assign(snack, { show: true, color, message }) }
 </script>
 
 <style scoped>
-.hero {
-  background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 50%, #38bdf8 100%);
-  border-radius: 20px !important;
-  box-shadow: 0 12px 32px rgba(37, 99, 235, 0.25);
-}
-.kpi {
-  background: rgba(255, 255, 255, 0.97);
-  color: rgba(0, 0, 0, 0.87);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-.kpi:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0, 0, 0, 0.1); }
-.kpi :deep(.text-h6) { color: rgba(0, 0, 0, 0.87) !important; }
-.kpi :deep(.text-medium-emphasis) { color: rgba(0, 0, 0, 0.62) !important; }
+.kpi-card { transition: transform 0.15s ease, box-shadow 0.15s ease; border: 1px solid rgba(var(--v-theme-on-surface), 0.06); }
+.kpi-card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.06); }
+.branches-map { width: 100%; height: 520px; min-height: 400px; background: #f5f5f5; }
+@media (min-width: 960px) { .branches-map { height: 620px; } }
 </style>

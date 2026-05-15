@@ -1,11 +1,11 @@
 <template>
   <v-container fluid class="pa-4 pa-md-6 exp-shell">
-    <PageHeader title="Expenses" icon="mdi-cash-minus" subtitle="Track, approve and pay business expenses">
+    <PageHeader :title="$t('expenses.title')" icon="mdi-cash-minus" subtitle="Track, approve and pay business expenses">
       <template #actions>
-        <v-btn variant="tonal" rounded="lg" class="text-none" prepend-icon="mdi-shape-outline" to="/expenses/categories">Categories</v-btn>
-        <v-btn variant="tonal" rounded="lg" class="text-none" prepend-icon="mdi-refresh" :loading="loading" @click="reload">Refresh</v-btn>
+        <v-btn variant="tonal" rounded="lg" class="text-none" prepend-icon="mdi-shape-outline" to="/expenses/categories">{{ $t('categoriesPage.title') }}</v-btn>
+        <v-btn variant="tonal" rounded="lg" class="text-none" prepend-icon="mdi-refresh" :loading="loading" @click="reload">{{ $t('common.refresh') }}</v-btn>
         <v-btn variant="tonal" rounded="lg" class="text-none" prepend-icon="mdi-download" @click="exportCsv">Export</v-btn>
-        <v-btn color="primary" rounded="lg" class="text-none" prepend-icon="mdi-plus" to="/expenses/new">New Expense</v-btn>
+        <v-btn color="primary" rounded="lg" class="text-none" prepend-icon="mdi-plus" to="/expenses/new">{{ $t('expenses.newExpense') }}</v-btn>
       </template>
     </PageHeader>
 
@@ -77,7 +77,7 @@
       :message="hasFilters ? 'Try a different filter or search.' : 'Record your first expense.'"
     >
       <template #actions>
-        <v-btn color="primary" rounded="lg" prepend-icon="mdi-plus" to="/expenses/new" class="text-none">New Expense</v-btn>
+        <v-btn color="primary" rounded="lg" prepend-icon="mdi-plus" to="/expenses/new" class="text-none">{{ $t('expenses.newExpense') }}</v-btn>
       </template>
     </EmptyState>
 
@@ -158,11 +158,11 @@
         <v-card-title class="text-subtitle-1 font-weight-bold d-flex align-center">
           <v-icon color="error" class="mr-2">mdi-alert-circle</v-icon>Delete Expense
         </v-card-title>
-        <v-card-text>Delete <b>{{ deleteDialog.exp?.reference }}</b>? This cannot be undone.</v-card-text>
+        <v-card-text>{{ $t('common.delete') }}<b>{{ deleteDialog.exp?.reference }}</b>? This cannot be undone.</v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" @click="deleteDialog.show = false">Cancel</v-btn>
-          <v-btn color="error" variant="flat" :loading="deleteDialog.busy" @click="doDelete">Delete</v-btn>
+          <v-btn variant="text" @click="deleteDialog.show = false">{{ $t('common.cancel') }}</v-btn>
+          <v-btn color="error" variant="flat" :loading="deleteDialog.busy" @click="doDelete">{{ $t('common.delete') }}</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -172,6 +172,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { useResource } from '~/composables/useResource'
 import { formatDate, formatMoney } from '~/utils/format'
 

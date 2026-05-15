@@ -1,1 +1,3 @@
-<template><RadiologyForm /></template>
+<script setup>
+navigateTo('/radiology/orders/new', { replace: true })
+</script>

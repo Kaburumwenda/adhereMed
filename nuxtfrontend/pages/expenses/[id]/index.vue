@@ -6,12 +6,12 @@
       :subtitle="item ? `${item.title} • ${formatDate(item.expense_date)}` : ''"
     >
       <template #actions>
-        <v-btn variant="text" rounded="lg" class="text-none" prepend-icon="mdi-arrow-left" to="/expenses">Back</v-btn>
-        <v-btn v-if="item" variant="tonal" rounded="lg" class="text-none" prepend-icon="mdi-printer" @click="doPrint">Print</v-btn>
+        <v-btn variant="text" rounded="lg" class="text-none" prepend-icon="mdi-arrow-left" to="/expenses">{{ $t('common.back') }}</v-btn>
+        <v-btn v-if="item" variant="tonal" rounded="lg" class="text-none" prepend-icon="mdi-printer" @click="doPrint">{{ $t('common.print') }}</v-btn>
         <v-btn v-if="item && item.status === 'pending'" color="success" rounded="lg" class="text-none" prepend-icon="mdi-check-circle-outline" :loading="busy" @click="approve">Approve</v-btn>
         <v-btn v-if="item && item.status === 'pending'" color="error" variant="tonal" rounded="lg" class="text-none" prepend-icon="mdi-close-circle" @click="rejectDialog.show = true">Reject</v-btn>
         <v-btn v-if="item && ['pending','approved'].includes(item.status)" color="info" rounded="lg" class="text-none" prepend-icon="mdi-cash-check" @click="payDialog.show = true">Mark Paid</v-btn>
-        <v-btn v-if="item" color="primary" rounded="lg" class="text-none" prepend-icon="mdi-pencil" :to="`/expenses/${id}/edit`">Edit</v-btn>
+        <v-btn v-if="item" color="primary" rounded="lg" class="text-none" prepend-icon="mdi-pencil" :to="`/expenses/${id}/edit`">{{ $t('common.edit') }}</v-btn>
       </template>
     </PageHeader>
 
@@ -60,9 +60,9 @@
             <tr><th>Reference</th><td class="font-weight-bold">{{ item.reference }}</td></tr>
             <tr><th>Category</th><td>{{ item.category_name || '—' }}</td></tr>
             <tr><th>Vendor</th><td>{{ item.supplier_name || item.vendor || '—' }}</td></tr>
-            <tr><th>Subtotal</th><td>{{ formatMoney(item.amount) }}</td></tr>
-            <tr><th>Tax</th><td>{{ formatMoney(item.tax_amount || 0) }}</td></tr>
-            <tr><th>Total</th><td class="font-weight-bold text-primary">{{ formatMoney(item.total_amount || item.amount) }}</td></tr>
+            <tr><th>{{ $t('common.subtotal') }}</th><td>{{ formatMoney(item.amount) }}</td></tr>
+            <tr><th>{{ $t('common.tax') }}</th><td>{{ formatMoney(item.tax_amount || 0) }}</td></tr>
+            <tr><th>{{ $t('common.total') }}</th><td class="font-weight-bold text-primary">{{ formatMoney(item.total_amount || item.amount) }}</td></tr>
             <tr><th>Payment Method</th><td>{{ methodLabel(item.payment_method) }}</td></tr>
             <tr><th>Payment Reference</th><td>{{ item.payment_reference || '—' }}</td></tr>
             <tr><th>Expense Date</th><td>{{ formatDate(item.expense_date) }}</td></tr>
@@ -121,7 +121,7 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" @click="rejectDialog.show = false">Cancel</v-btn>
+          <v-btn variant="text" @click="rejectDialog.show = false">{{ $t('common.cancel') }}</v-btn>
           <v-btn color="error" variant="flat" :loading="busy" @click="reject">Reject</v-btn>
         </v-card-actions>
       </v-card>
@@ -137,8 +137,8 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" @click="payDialog.show = false">Cancel</v-btn>
-          <v-btn color="info" variant="flat" :loading="busy" @click="markPaid">Confirm</v-btn>
+          <v-btn variant="text" @click="payDialog.show = false">{{ $t('common.cancel') }}</v-btn>
+          <v-btn color="info" variant="flat" :loading="busy" @click="markPaid">{{ $t('common.confirm') }}</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -148,6 +148,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { useResource } from '~/composables/useResource'
 import { formatDate, formatDateTime, formatMoney } from '~/utils/format'
 

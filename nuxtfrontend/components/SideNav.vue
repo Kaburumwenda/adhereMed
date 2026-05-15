@@ -76,7 +76,7 @@
           :prepend-icon="rail ? 'mdi-chevron-right' : 'mdi-chevron-left'"
           @click="$emit('toggle-rail')"
         >
-          <span v-if="!rail">Collapse</span>
+          <span v-if="!rail">{{ $t('sidenav.collapse') }}</span>
         </v-btn>
       </div>
       <v-divider />
@@ -102,6 +102,9 @@
 <script setup>
 import { getNavSections } from '~/utils/nav'
 import { filterNavSections } from '~/utils/permissions'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps({
   modelValue: { type: Boolean, default: true },
@@ -121,7 +124,7 @@ const drawer = computed({
 
 const route = useRoute()
 
-const sections = computed(() => filterNavSections(getNavSections(props.userRole, props.tenantType), props.userRole))
+const sections = computed(() => filterNavSections(getNavSections(props.userRole, props.tenantType, t), props.userRole))
 
 const initial = computed(() => (props.userName?.[0] || 'U').toUpperCase())
 

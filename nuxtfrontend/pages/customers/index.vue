@@ -1,8 +1,10 @@
 <template>
   <ResourceListPage
     :resource="r"
-    title="Customers"
+    :title="$t('customers.title')"
+    subtitle="Manage customer profiles, contact details &amp; loyalty"
     icon="mdi-account-group"
+    color="blue"
     :headers="headers"
     create-path="/customers/new"
     create-label="New Customer"
@@ -13,6 +15,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { useResource } from '~/composables/useResource'
 const r = useResource('/pos/customers/')
 const headers = [

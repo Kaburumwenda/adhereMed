@@ -5,7 +5,7 @@
       <div class="d-flex align-center" style="gap:12px">
         <v-avatar color="primary" rounded="lg" size="40"><v-icon>mdi-cart-variant</v-icon></v-avatar>
         <div>
-          <div class="smkt-brand">Smart POS</div>
+          <div class="smkt-brand">{{ $t('posSupermarket.title') }}</div>
           <div class="smkt-subbrand">Lane #{{ laneId }} · {{ today }} · {{ clock }}</div>
         </div>
       </div>
@@ -128,7 +128,7 @@
                 <th>Item</th>
                 <th class="text-right">Price</th>
                 <th class="text-center">Qty</th>
-                <th class="text-right">Total</th>
+                <th class="text-right">{{ $t('common.total') }}</th>
                 <th class="act-col"></th>
               </tr>
             </thead>
@@ -179,11 +179,11 @@
         <footer class="smkt-stage-footer">
           <div class="smkt-totals-grid">
             <div>
-              <div class="smkt-tot-label">Subtotal</div>
+              <div class="smkt-tot-label">{{ $t('common.subtotal') }}</div>
               <div class="smkt-tot-val">{{ formatMoney(subtotal) }}</div>
             </div>
             <div>
-              <div class="smkt-tot-label">Discount</div>
+              <div class="smkt-tot-label">{{ $t('common.discount') }}</div>
               <div class="smkt-tot-val text-error">- {{ formatMoney(Number(discount) || 0) }}</div>
             </div>
             <div>
@@ -319,9 +319,7 @@
             class="text-none font-weight-bold px-6"
             prepend-icon="mdi-close"
             @click="tender.show = false"
-          >
-            Cancel
-          </v-btn>
+          >{{ $t('common.cancel') }}</v-btn>
           <v-spacer />
           <v-btn
             color="success" variant="flat" rounded="lg" size="x-large"
@@ -379,6 +377,32 @@
           hide-details="auto"
           class="mb-2"
         />
+        <v-text-field
+          v-model.number="creditPrompt.partialPaidAmount"
+          label="Partial payment"
+          type="number"
+          min="0"
+          :max="total"
+          variant="outlined"
+          density="comfortable"
+          prepend-inner-icon="mdi-cash-fast"
+          suffix="KES"
+          hide-details="auto"
+          class="mb-2"
+        />
+        <v-select
+          v-model="creditPrompt.partialPaymentMethod"
+          :items="partialPaymentMethods"
+          item-title="label"
+          item-value="value"
+          label="Partial payment method"
+          variant="outlined"
+          density="comfortable"
+          prepend-inner-icon="mdi-credit-card-outline"
+          hide-details="auto"
+          class="mb-2"
+          :disabled="!(Number(creditPrompt.partialPaidAmount) > 0)"
+        />
         <v-textarea
           v-model="creditPrompt.notes"
           label="Notes (optional)"
@@ -388,13 +412,15 @@
         />
         <div class="d-flex align-center mt-4" style="gap:8px">
           <div class="text-caption text-medium-emphasis">
-            {{ itemCount }} items · {{ formatMoney(total) }}
+            {{ itemCount }} items · {{ formatMoney(total) }} ·
+            Balance: {{ formatMoney(Math.max(0, total - (Number(creditPrompt.partialPaidAmount) || 0))) }}
           </div>
           <v-spacer />
-          <v-btn variant="text" class="text-none" @click="cancelCredit">Cancel</v-btn>
+          <v-btn variant="text" class="text-none" @click="cancelCredit">{{ $t('common.cancel') }}</v-btn>
           <v-btn color="warning" variant="flat" rounded="lg" prepend-icon="mdi-check" class="text-none"
-            :disabled="!(creditPrompt.name || '').trim() || !creditPrompt.dueDate"
-            @click="confirmCredit">
+            :loading="checkingOut"
+            :disabled="!(creditPrompt.name || '').trim() || !creditPrompt.dueDate || !cart.length || (Number(creditPrompt.partialPaidAmount) > 0 && creditPrompt.partialPaymentMethod === 'none')"
+            @click="confirmCredit(true)">
             Save details
           </v-btn>
         </div>
@@ -445,7 +471,7 @@
             {{ itemCount }} items · {{ formatMoney(total) }}
           </div>
           <v-spacer />
-          <v-btn variant="text" class="text-none" :disabled="parkPrompt.saving" @click="parkPrompt.show = false">Cancel</v-btn>
+          <v-btn variant="text" class="text-none" :disabled="parkPrompt.saving" @click="parkPrompt.show = false">{{ $t('common.cancel') }}</v-btn>
           <v-btn color="warning" variant="flat" rounded="lg" prepend-icon="mdi-pause-circle" class="text-none"
             :loading="parkPrompt.saving"
             :disabled="!(parkPrompt.name || '').trim()"
@@ -494,8 +520,8 @@
           </div>
         </div>
         <v-divider class="my-2" />
-        <div class="d-flex justify-space-between text-body-2"><span>Subtotal</span><span>{{ formatMoney(receipt.subtotal) }}</span></div>
-        <div class="d-flex justify-space-between text-body-2"><span>Tax</span><span>{{ formatMoney(receipt.tax) }}</span></div>
+        <div class="d-flex justify-space-between text-body-2"><span>{{ $t('common.subtotal') }}</span><span>{{ formatMoney(receipt.subtotal) }}</span></div>
+        <div class="d-flex justify-space-between text-body-2"><span>{{ $t('common.tax') }}</span><span>{{ formatMoney(receipt.tax) }}</span></div>
         <div class="d-flex justify-space-between font-weight-bold mt-2 text-h6">
           <span>TOTAL</span>
           <span class="text-primary">{{ formatMoney(receipt.total) }}</span>
@@ -520,13 +546,18 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useAuthStore } from '~/stores/auth'
+import { useBranchStore } from '~/stores/branch'
 import { formatMoney } from '~/utils/format'
 
 definePageMeta({ layout: 'default' })
 
 const auth = useAuthStore()
+const branchStore = useBranchStore()
 const { $api } = useNuxtApp()
 
 const today = new Date().toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
@@ -558,9 +589,24 @@ const showParked = ref(false)
 const parkedSales = ref([])
 const parkPrompt = reactive({ show: false, name: '', phone: '', notes: '', saving: false })
 const parkNameInput = ref(null)
-const creditPrompt = reactive({ show: false, name: '', phone: '', dueDate: '', notes: '' })
+const creditPrompt = reactive({
+  show: false,
+  name: '',
+  phone: '',
+  dueDate: '',
+  partialPaidAmount: 0,
+  partialPaymentMethod: 'none',
+  notes: '',
+})
 const creditNameInput = ref(null)
-const creditInfo = reactive({ name: '', phone: '', dueDate: '', notes: '' })
+const creditInfo = reactive({
+  name: '',
+  phone: '',
+  dueDate: '',
+  partialPaidAmount: 0,
+  partialPaymentMethod: 'none',
+  notes: '',
+})
 const receipt = reactive({ show: false, id: '', time: '', items: [], subtotal: 0, tax: 0, total: 0, tendered: 0, change: 0, method: '' })
 
 const paymentMethods = [
@@ -569,6 +615,13 @@ const paymentMethods = [
   { value: 'card',      label: 'Card',      hint: 'Visa / Mastercard', icon: 'mdi-credit-card',    color: 'primary' },
   { value: 'insurance', label: 'Insurance', hint: 'Approved schemes',  icon: 'mdi-shield-account', color: 'purple' },
   { value: 'credit',    label: 'Credit',    hint: 'Customer account',  icon: 'mdi-account-cash',   color: 'warning' },
+]
+const partialPaymentMethods = [
+  { value: 'none', label: 'None' },
+  { value: 'cash', label: 'Cash' },
+  { value: 'mpesa', label: 'M-Pesa' },
+  { value: 'card', label: 'Card' },
+  { value: 'insurance', label: 'Insurance' },
 ]
 const paymentMethodLabel = computed(() => paymentMethods.find(m => m.value === paymentMethod.value)?.label || paymentMethod.value)
 
@@ -609,16 +662,43 @@ function catIcon(name) {
   return 'mdi-tag'
 }
 
+const serverResults = ref([])
+const searching = ref(false)
+let _searchTimer = null
+
 const searchResults = computed(() => {
   const q = search.value.toLowerCase().trim()
   if (!q) return []
-  return products.value.filter(p =>
+  const allItems = [...products.value, ...serverResults.value.filter(sr => !products.value.some(p => p.id === sr.id))]
+  return allItems.filter(p =>
     nameOf(p).toLowerCase().includes(q) ||
     (p.abbreviation || '').toLowerCase().includes(q) ||
     (p.barcode || '').toLowerCase().includes(q) ||
     (p.sku || '').toLowerCase().includes(q) ||
     (p.medication_id || '').toLowerCase().includes(q)
   ).slice(0, 8)
+})
+
+watch(() => search.value, (q) => {
+  clearTimeout(_searchTimer)
+  serverResults.value = []
+  const trimmed = q.trim()
+  if (trimmed.length < 2) return
+  _searchTimer = setTimeout(async () => {
+    const localCount = products.value.filter(p =>
+      nameOf(p).toLowerCase().includes(trimmed.toLowerCase()) ||
+      (p.abbreviation || '').toLowerCase().includes(trimmed.toLowerCase()) ||
+      (p.barcode || '').toLowerCase().includes(trimmed.toLowerCase()) ||
+      (p.sku || '').toLowerCase().includes(trimmed.toLowerCase()) ||
+      (p.medication_id || '').toLowerCase().includes(trimmed.toLowerCase())
+    ).length
+    if (localCount > 3) return
+    searching.value = true
+    const results = await $api.get(`/inventory/stocks/?search=${encodeURIComponent(trimmed)}&is_active=true&page_size=20`)
+      .then(r => r.data?.results || r.data || []).catch(() => [])
+    serverResults.value = results
+    searching.value = false
+  }, 400)
 })
 
 watch(scanCode, v => { search.value = v || ''; searchOpen.value = !!(v && v.trim()); activeIdx.value = 0 })
@@ -636,7 +716,13 @@ const changeAmount = computed(() => (Number(tender.amount) || 0) - total.value)
 const canCharge = computed(() => {
   if (!cart.value.length) return false
   if (paymentMethod.value === 'cash') return changeAmount.value >= 0
-  if (paymentMethod.value === 'credit') return !!(creditInfo.name && creditInfo.dueDate)
+  if (paymentMethod.value === 'credit') {
+    const partial = Number(creditInfo.partialPaidAmount) || 0
+    if (!(creditInfo.name && creditInfo.dueDate)) return false
+    if (partial > total.value) return false
+    if (partial > 0 && creditInfo.partialPaymentMethod === 'none') return false
+    return true
+  }
   return true
 })
 
@@ -653,6 +739,8 @@ async function selectPaymentMethod(value) {
     creditPrompt.name = creditInfo.name || customerName.value || ''
     creditPrompt.phone = creditInfo.phone || ''
     creditPrompt.dueDate = creditInfo.dueDate || ''
+    creditPrompt.partialPaidAmount = Number(creditInfo.partialPaidAmount) || 0
+    creditPrompt.partialPaymentMethod = creditInfo.partialPaymentMethod || 'none'
     creditPrompt.notes = creditInfo.notes || ''
     creditPrompt.show = true
     await nextTick()
@@ -660,16 +748,27 @@ async function selectPaymentMethod(value) {
   }
 }
 
-function confirmCredit() {
+async function confirmCredit(autoCheckout = false) {
   const name = (creditPrompt.name || '').trim()
   if (!name) { flash('Customer name is required', 'error'); return }
   if (!creditPrompt.dueDate) { flash('Due date is required', 'error'); return }
+  const partial = Math.max(0, Number(creditPrompt.partialPaidAmount) || 0)
+  if (partial > total.value) { flash('Partial payment cannot exceed total', 'error'); return }
+  if (partial > 0 && creditPrompt.partialPaymentMethod === 'none') {
+    flash('Select partial payment method', 'error'); return
+  }
   creditInfo.name = name
   creditInfo.phone = (creditPrompt.phone || '').trim()
   creditInfo.dueDate = creditPrompt.dueDate
+  creditInfo.partialPaidAmount = partial
+  creditInfo.partialPaymentMethod = partial > 0 ? creditPrompt.partialPaymentMethod : 'none'
   creditInfo.notes = (creditPrompt.notes || '').trim()
   customerName.value = name
   creditPrompt.show = false
+  if (autoCheckout) {
+    await confirmCheckout(false)
+    return
+  }
   flash(`Credit details saved for "${name}" (due ${creditInfo.dueDate})`)
 }
 
@@ -729,6 +828,8 @@ function clearCart() {
   discount.value = 0
   pendingDiscPct.value = 0
   selectedIndex.value = -1
+  creditInfo.partialPaidAmount = 0
+  creditInfo.partialPaymentMethod = 'none'
   orderNumber.value = _genOrderNum()
   focusScan()
 }
@@ -877,7 +978,7 @@ function _normalizeParked(srv) {
 }
 
 async function load() {
-  products.value = await $api.get('/inventory/stocks/?page_size=500')
+  products.value = await $api.get('/inventory/stocks/?page_size=5000&is_active=true&ordering=-created_at')
     .then(r => r.data?.results || r.data || []).catch(() => [])
   const tx = await $api.get('/pos/transactions/?page_size=200')
     .then(r => r.data?.results || r.data || []).catch(() => [])
@@ -946,12 +1047,21 @@ async function confirmCheckout(autoPrint = false) {
       customer_name: customerName.value || 'Walk-in',
       discount: Number(discount.value) || 0,
       items,
+      branch_id: branchStore.currentBranchId,
     }
     if (tender.reference) payload.payment_reference = tender.reference
     if (paymentMethod.value === 'credit') {
       payload.customer_name = creditInfo.name || customerName.value || 'Walk-in'
       payload.customer_phone = creditInfo.phone || ''
-      const ref = `Due: ${creditInfo.dueDate}` + (creditInfo.notes ? ` - ${creditInfo.notes}` : '')
+      payload.credit_due_date = creditInfo.dueDate || null
+      payload.credit_notes = creditInfo.notes || ''
+      payload.partial_paid_amount = Number(creditInfo.partialPaidAmount) || 0
+      payload.partial_payment_method = (Number(creditInfo.partialPaidAmount) || 0) > 0
+        ? creditInfo.partialPaymentMethod
+        : 'none'
+      const ref = `Due: ${creditInfo.dueDate}`
+        + ((Number(creditInfo.partialPaidAmount) || 0) > 0 ? ` | Partial: ${Number(creditInfo.partialPaidAmount)} via ${creditInfo.partialPaymentMethod}` : '')
+        + (creditInfo.notes ? ` - ${creditInfo.notes}` : '')
       payload.payment_reference = ref
     }
     const res = await $api.post('/pos/transactions/', payload)

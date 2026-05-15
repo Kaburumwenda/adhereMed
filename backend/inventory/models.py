@@ -38,6 +38,10 @@ class MedicationStock(models.Model):
     unit = models.ForeignKey(Unit, on_delete=models.SET_NULL, null=True, blank=True, related_name='stocks')
     selling_price = models.DecimalField(max_digits=10, decimal_places=2)
     cost_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    tax_percent = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        help_text='VAT / tax percentage applied on cost price (0–100)',
+    )
     discount_percent = models.DecimalField(
         max_digits=5, decimal_places=2, default=0,
         help_text='Default discount applied at POS, as a percentage (0–100)',
@@ -111,7 +115,7 @@ class StockBatch(models.Model):
     quantity_received = models.PositiveIntegerField()
     quantity_remaining = models.PositiveIntegerField()
     cost_price_per_unit = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    expiry_date = models.DateField()
+    expiry_date = models.DateField(null=True, blank=True)
     received_date = models.DateField(auto_now_add=True)
     supplier = models.ForeignKey(
         'suppliers.Supplier', on_delete=models.SET_NULL,
@@ -132,6 +136,8 @@ class StockBatch(models.Model):
     @property
     def is_expired(self):
         from django.utils import timezone
+        if not self.expiry_date:
+            return False
         return self.expiry_date < timezone.now().date()
 
 

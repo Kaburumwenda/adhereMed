@@ -3,7 +3,7 @@
     <!-- Header -->
     <div class="d-flex flex-wrap align-center justify-space-between mb-4">
       <div>
-        <h1 class="text-h5 text-md-h4 font-weight-bold mb-1">Reports</h1>
+        <h1 class="text-h5 text-md-h4 font-weight-bold mb-1">{{ $t('reports.title') }}</h1>
         <div class="text-body-2 text-medium-emphasis">{{ rangeLabel }} · select a report to open</div>
       </div>
       <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
@@ -34,7 +34,7 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" class="text-none" @click="customDialog = false">Cancel</v-btn>
+          <v-btn variant="text" class="text-none" @click="customDialog = false">{{ $t('common.cancel') }}</v-btn>
           <v-btn color="primary" variant="flat" class="text-none" :disabled="!customStart || !customEnd" @click="applyCustom">Apply</v-btn>
         </v-card-actions>
       </v-card>
@@ -70,6 +70,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { ref, computed } from 'vue'
 import { REPORT_CATALOG, RANGE_OPTIONS, resolveRange, startOfDay, addDays } from '~/utils/reportsCatalog'
 

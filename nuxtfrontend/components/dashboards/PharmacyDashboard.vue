@@ -4,10 +4,10 @@
     <div class="d-flex flex-wrap align-center justify-space-between mb-4">
       <div>
         <h1 class="text-h5 text-md-h4 font-weight-bold mb-1">
-          Welcome back, {{ auth.user?.first_name || 'there' }} 👋
+          {{ $t('pharmacy.welcomeBack', { name: auth.user?.first_name || 'there' }) }}
         </h1>
         <div class="text-body-2 text-medium-emphasis">
-          {{ today }} · Live overview of your pharmacy operations
+          {{ today }} · {{ $t('pharmacy.liveOverview') }}
         </div>
       </div>
       <div class="d-flex align-center mt-2 mt-md-0">
@@ -32,15 +32,15 @@
     <!-- Custom date range dialog -->
     <v-dialog v-model="customDialog" max-width="420">
       <v-card rounded="lg">
-        <v-card-title class="text-h6">Custom date range</v-card-title>
+        <v-card-title class="text-h6">{{ $t('pharmacy.customDateRange') }}</v-card-title>
         <v-card-text>
-          <v-text-field v-model="customStart" label="Start date" type="date" variant="outlined" density="compact" hide-details class="mb-3" />
-          <v-text-field v-model="customEnd" label="End date" type="date" variant="outlined" density="compact" hide-details />
+          <v-text-field v-model="customStart" :label="$t('pharmacy.startDate')" type="date" variant="outlined" density="compact" hide-details class="mb-3" />
+          <v-text-field v-model="customEnd" :label="$t('pharmacy.endDate')" type="date" variant="outlined" density="compact" hide-details />
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" class="text-none" @click="customDialog = false">Cancel</v-btn>
-          <v-btn color="primary" variant="flat" class="text-none" :disabled="!customStart || !customEnd" @click="applyCustom">Apply</v-btn>
+          <v-btn variant="text" class="text-none" @click="customDialog = false">{{ $t('common.cancel') }}</v-btn>
+          <v-btn color="primary" variant="flat" class="text-none" :disabled="!customStart || !customEnd" @click="applyCustom">{{ $t('common.apply') }}</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -75,11 +75,11 @@
         <v-card rounded="lg" class="pa-4 h-100">
           <div class="d-flex align-center justify-space-between mb-3">
             <div>
-              <h3 class="text-h6 font-weight-bold">Sales trend</h3>
+              <h3 class="text-h6 font-weight-bold">{{ $t('pharmacy.salesTrend') }}</h3>
               <div class="text-caption text-medium-emphasis">{{ rangeLabel }}</div>
             </div>
             <div class="text-right">
-              <div class="text-caption text-medium-emphasis">Total</div>
+              <div class="text-caption text-medium-emphasis">{{ $t('common.total') }}</div>
               <div class="text-h6 font-weight-bold text-primary">{{ formatMoney(salesSeriesTotal) }}</div>
             </div>
           </div>
@@ -89,34 +89,34 @@
 
       <v-col cols="12" lg="4">
         <v-card rounded="lg" class="pa-4 h-100">
-          <h3 class="text-h6 font-weight-bold mb-3">Stock health</h3>
+          <h3 class="text-h6 font-weight-bold mb-3">{{ $t('pharmacy.stockHealth') }}</h3>
           <div class="d-flex align-center justify-center mb-3">
             <DonutRing
               :segments="[
-                { value: stockHealth.healthy, color: '#22c55e', label: 'Healthy' },
-                { value: stockHealth.low, color: '#f59e0b', label: 'Low' },
-                { value: stockHealth.out, color: '#ef4444', label: 'Out' }
+                { value: stockHealth.healthy, color: '#22c55e', label: $t('pharmacy.healthy') },
+                { value: stockHealth.low, color: '#f59e0b', label: $t('pharmacy.low') },
+                { value: stockHealth.out, color: '#ef4444', label: $t('pharmacy.out') }
               ]"
               :size="180"
             >
               <div class="text-center">
                 <div class="text-h5 font-weight-bold">{{ counts.stocks }}</div>
-                <div class="text-caption text-medium-emphasis">SKUs</div>
+                <div class="text-caption text-medium-emphasis">{{ $t('pharmacy.skus') }}</div>
               </div>
             </DonutRing>
           </div>
           <div class="d-flex justify-space-around">
             <div class="text-center">
               <v-chip size="small" color="success" variant="tonal">{{ stockHealth.healthy }}</v-chip>
-              <div class="text-caption text-medium-emphasis mt-1">Healthy</div>
+              <div class="text-caption text-medium-emphasis mt-1">{{ $t('pharmacy.healthy') }}</div>
             </div>
             <div class="text-center">
               <v-chip size="small" color="warning" variant="tonal">{{ stockHealth.low }}</v-chip>
-              <div class="text-caption text-medium-emphasis mt-1">Low</div>
+              <div class="text-caption text-medium-emphasis mt-1">{{ $t('pharmacy.low') }}</div>
             </div>
             <div class="text-center">
               <v-chip size="small" color="error" variant="tonal">{{ stockHealth.out }}</v-chip>
-              <div class="text-caption text-medium-emphasis mt-1">Out</div>
+              <div class="text-caption text-medium-emphasis mt-1">{{ $t('pharmacy.out') }}</div>
             </div>
           </div>
         </v-card>
@@ -128,10 +128,10 @@
       <v-col cols="12" lg="6">
         <v-card rounded="lg" class="pa-4 h-100">
           <div class="d-flex align-center justify-space-between mb-3">
-            <h3 class="text-h6 font-weight-bold">Top selling products</h3>
-            <v-btn variant="text" size="small" class="text-none" to="/analytics" append-icon="mdi-arrow-right">More</v-btn>
+            <h3 class="text-h6 font-weight-bold">{{ $t('pharmacy.topSellingProducts') }}</h3>
+            <v-btn variant="text" size="small" class="text-none" to="/analytics" append-icon="mdi-arrow-right">{{ $t('common.more') }}</v-btn>
           </div>
-          <EmptyState v-if="!topProducts.length" icon="mdi-package-variant-closed" title="No sales yet" />
+          <EmptyState v-if="!topProducts.length" icon="mdi-package-variant-closed" :title="$t('pharmacy.noSalesYet')" />
           <div v-else>
             <div v-for="(p, i) in topProducts" :key="p.name" class="mb-3">
               <div class="d-flex justify-space-between text-body-2 mb-1">
@@ -139,7 +139,7 @@
                 <span class="font-weight-medium">{{ formatMoney(p.revenue) }}</span>
               </div>
               <v-progress-linear :model-value="p.pct" :color="barColors[i % barColors.length]" height="8" rounded />
-              <div class="text-caption text-medium-emphasis mt-1">{{ p.qty }} units sold</div>
+              <div class="text-caption text-medium-emphasis mt-1">{{ $t('pharmacy.unitsSold', { n: p.qty }) }}</div>
             </div>
           </div>
         </v-card>
@@ -148,23 +148,23 @@
       <v-col cols="12" lg="6">
         <v-card rounded="lg" class="pa-4 h-100">
           <div class="d-flex align-center justify-space-between mb-3">
-            <h3 class="text-h6 font-weight-bold">Recent transactions</h3>
-            <v-btn variant="text" size="small" class="text-none" to="/pos" append-icon="mdi-arrow-right">POS</v-btn>
+            <h3 class="text-h6 font-weight-bold">{{ $t('pharmacy.recentTransactions') }}</h3>
+            <v-btn variant="text" size="small" class="text-none" to="/pos" append-icon="mdi-arrow-right">{{ $t('nav.pos') }}</v-btn>
           </div>
-          <EmptyState v-if="!recentTx.length" icon="mdi-cash-register" title="No recent sales" />
+          <EmptyState v-if="!recentTx.length" icon="mdi-cash-register" :title="$t('pharmacy.noRecentSales')" />
           <v-table v-else density="compact">
             <thead>
               <tr>
-                <th>Receipt #</th>
-                <th>Customer</th>
-                <th class="text-right">Amount</th>
-                <th>Time</th>
+                <th>{{ $t('pharmacy.receiptNo') }}</th>
+                <th>{{ $t('common.customer') }}</th>
+                <th class="text-right">{{ $t('common.amount') }}</th>
+                <th>{{ $t('pharmacy.time') }}</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="t in recentTx" :key="t.id">
                 <td class="font-weight-medium">{{ t.receipt_number || `#${t.id}` }}</td>
-                <td class="text-truncate" style="max-width:140px">{{ t.customer_name || 'Walk-in' }}</td>
+                <td class="text-truncate" style="max-width:140px">{{ t.customer_name || $t('common.walkIn') }}</td>
                 <td class="text-right font-weight-medium">{{ formatMoney(t.total || t.total_amount || 0) }}</td>
                 <td class="text-caption text-medium-emphasis">{{ formatRelative(t.created_at) }}</td>
               </tr>
@@ -180,16 +180,16 @@
         <v-card rounded="lg" class="pa-4 h-100" border>
           <div class="d-flex align-center mb-3">
             <v-avatar color="warning" variant="tonal" size="32" class="mr-2"><v-icon size="20">mdi-alert</v-icon></v-avatar>
-            <h3 class="text-subtitle-1 font-weight-bold">Low stock</h3>
+            <h3 class="text-subtitle-1 font-weight-bold">{{ $t('pharmacy.lowStock') }}</h3>
             <v-spacer />
             <v-chip size="x-small" color="warning" variant="tonal">{{ lowStock.length }}</v-chip>
           </div>
-          <EmptyState v-if="!lowStock.length" icon="mdi-check-circle" title="All stocked" />
+          <EmptyState v-if="!lowStock.length" icon="mdi-check-circle" :title="$t('alerts.allStocked')" />
           <v-list v-else density="compact" class="bg-transparent pa-0">
             <v-list-item v-for="s in lowStock.slice(0, 5)" :key="s.id" :to="`/inventory/stocks/${s.id}/edit`" class="px-0">
               <v-list-item-title class="text-body-2">{{ s.medication_name || s.name }}</v-list-item-title>
               <v-list-item-subtitle class="text-caption">
-                Only {{ s.total_quantity ?? s.quantity ?? 0 }} left · Reorder at {{ s.reorder_level }}
+                {{ $t('alerts.only', { n: s.total_quantity ?? s.quantity ?? 0 }) }} · {{ $t('alerts.reorderAt', { n: s.reorder_level }) }}
               </v-list-item-subtitle>
             </v-list-item>
           </v-list>
@@ -200,16 +200,16 @@
         <v-card rounded="lg" class="pa-4 h-100" border>
           <div class="d-flex align-center mb-3">
             <v-avatar color="error" variant="tonal" size="32" class="mr-2"><v-icon size="20">mdi-clock-alert</v-icon></v-avatar>
-            <h3 class="text-subtitle-1 font-weight-bold">Expiring soon</h3>
+            <h3 class="text-subtitle-1 font-weight-bold">{{ $t('alerts.expiringSoon') }}</h3>
             <v-spacer />
             <v-chip size="x-small" color="error" variant="tonal">{{ expiring.length }}</v-chip>
           </div>
-          <EmptyState v-if="!expiring.length" icon="mdi-check-circle" title="No items expiring" />
+          <EmptyState v-if="!expiring.length" icon="mdi-check-circle" :title="$t('alerts.noItemsExpiring')" />
           <v-list v-else density="compact" class="bg-transparent pa-0">
             <v-list-item v-for="s in expiring.slice(0, 5)" :key="s.id" :to="`/inventory/stocks/${s.id}/edit`" class="px-0">
               <v-list-item-title class="text-body-2">{{ s.medication_name || s.name }}</v-list-item-title>
               <v-list-item-subtitle class="text-caption">
-                Expires {{ formatDate(s.expiry_date) }} · {{ s.total_quantity ?? s.quantity ?? 0 }} units
+                {{ $t('alerts.expires', { date: formatDate(s.expiry_date) }) }} · {{ $t('alerts.units', { n: s.total_quantity ?? s.quantity ?? 0 }) }}
               </v-list-item-subtitle>
             </v-list-item>
           </v-list>
@@ -220,16 +220,16 @@
         <v-card rounded="lg" class="pa-4 h-100" border>
           <div class="d-flex align-center mb-3">
             <v-avatar color="info" variant="tonal" size="32" class="mr-2"><v-icon size="20">mdi-receipt-text-clock</v-icon></v-avatar>
-            <h3 class="text-subtitle-1 font-weight-bold">Pending orders</h3>
+            <h3 class="text-subtitle-1 font-weight-bold">{{ $t('pharmacy.pendingOrders') }}</h3>
             <v-spacer />
             <v-chip size="x-small" color="info" variant="tonal">{{ pendingOrders.length }}</v-chip>
           </div>
-          <EmptyState v-if="!pendingOrders.length" icon="mdi-check-circle" title="No pending orders" />
+          <EmptyState v-if="!pendingOrders.length" icon="mdi-check-circle" :title="$t('alerts.noPendingOrders')" />
           <v-list v-else density="compact" class="bg-transparent pa-0">
             <v-list-item v-for="o in pendingOrders.slice(0, 5)" :key="o.id" :to="`/pharmacy-orders/${o.id}`" class="px-0">
-              <v-list-item-title class="text-body-2">Order #{{ o.id }}</v-list-item-title>
+              <v-list-item-title class="text-body-2">{{ $t('alerts.order') }} #{{ o.id }}</v-list-item-title>
               <v-list-item-subtitle class="text-caption">
-                {{ o.customer_name || 'Customer' }} · {{ formatMoney(o.total || 0) }}
+                {{ o.customer_name || $t('common.customer') }} · {{ formatMoney(o.total || 0) }}
               </v-list-item-subtitle>
             </v-list-item>
           </v-list>
@@ -239,7 +239,7 @@
 
     <!-- Quick actions -->
     <v-card rounded="lg" class="pa-4 mt-2">
-      <h3 class="text-subtitle-1 font-weight-bold mb-3">Quick actions</h3>
+      <h3 class="text-subtitle-1 font-weight-bold mb-3">{{ $t('pharmacy.quickActions') }}</h3>
       <v-row dense>
         <v-col v-for="a in actions" :key="a.label" cols="6" sm="4" md="3" lg="2">
           <v-btn block variant="tonal" rounded="lg" class="text-none justify-start" :prepend-icon="a.icon" :to="a.to" :color="a.color">
@@ -255,8 +255,11 @@
 import { useAuthStore } from '~/stores/auth'
 import { formatMoney, formatDate } from '~/utils/format'
 
+import { useI18n } from 'vue-i18n'
+
 const auth = useAuthStore()
 const { $api } = useNuxtApp()
+const { t } = useI18n()
 
 const today = new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
 const rangeKey = ref('7d')
@@ -266,39 +269,39 @@ const customEnd = ref('')
 const customRange = ref(null)
 const loading = ref(false)
 
-const rangeOptions = [
-  { key: 'today', label: 'Today' },
-  { key: 'yesterday', label: 'Yesterday' },
-  { key: '7d', label: 'Last 7 days' },
-  { key: '30d', label: 'Last 30 days' },
-  { key: '90d', label: 'Last 90 days' },
-  { key: 'thisMonth', label: 'This month' },
-  { key: 'lastMonth', label: 'Last month' },
-  { key: 'thisYear', label: 'This year' },
-  { key: 'lastYear', label: 'Last year' },
-  { key: '1y', label: 'Last 365 days' },
-  { key: 'custom', label: 'Custom range…' }
-]
+const rangeOptions = computed(() => [
+  { key: 'today', label: t('pharmacy.today') },
+  { key: 'yesterday', label: t('pharmacy.yesterday') },
+  { key: '7d', label: t('pharmacy.last7Days') },
+  { key: '30d', label: t('pharmacy.last30Days') },
+  { key: '90d', label: t('pharmacy.last90Days') },
+  { key: 'thisMonth', label: t('pharmacy.thisMonth') },
+  { key: 'lastMonth', label: t('pharmacy.lastMonth') },
+  { key: 'thisYear', label: t('pharmacy.thisYear') },
+  { key: 'lastYear', label: t('pharmacy.lastYear') },
+  { key: '1y', label: t('pharmacy.last365Days') },
+  { key: 'custom', label: t('pharmacy.customRange') }
+])
 
 function startOfDay(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x }
 function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x }
 
 function resolveRange(key) {
-  const t = startOfDay(new Date())
-  const tomorrow = addDays(t, 1)
+  const td = startOfDay(new Date())
+  const tomorrow = addDays(td, 1)
   switch (key) {
-    case 'today': return { start: t, end: tomorrow, label: 'Today' }
-    case 'yesterday': return { start: addDays(t, -1), end: t, label: 'Yesterday' }
-    case '7d': return { start: addDays(t, -6), end: tomorrow, label: 'Last 7 days' }
-    case '30d': return { start: addDays(t, -29), end: tomorrow, label: 'Last 30 days' }
-    case '90d': return { start: addDays(t, -89), end: tomorrow, label: 'Last 90 days' }
-    case '1y': return { start: addDays(t, -364), end: tomorrow, label: 'Last 365 days' }
-    case 'thisMonth': return { start: new Date(t.getFullYear(), t.getMonth(), 1), end: tomorrow, label: 'This month' }
-    case 'lastMonth': return { start: new Date(t.getFullYear(), t.getMonth() - 1, 1), end: new Date(t.getFullYear(), t.getMonth(), 1), label: 'Last month' }
-    case 'thisYear': return { start: new Date(t.getFullYear(), 0, 1), end: tomorrow, label: 'This year' }
-    case 'lastYear': return { start: new Date(t.getFullYear() - 1, 0, 1), end: new Date(t.getFullYear(), 0, 1), label: 'Last year' }
-    case 'custom': return customRange.value || { start: addDays(t, -6), end: tomorrow, label: 'Custom' }
-    default: return { start: addDays(t, -6), end: tomorrow, label: 'Last 7 days' }
+    case 'today': return { start: td, end: tomorrow, label: t('pharmacy.today') }
+    case 'yesterday': return { start: addDays(td, -1), end: td, label: t('pharmacy.yesterday') }
+    case '7d': return { start: addDays(td, -6), end: tomorrow, label: t('pharmacy.last7Days') }
+    case '30d': return { start: addDays(td, -29), end: tomorrow, label: t('pharmacy.last30Days') }
+    case '90d': return { start: addDays(td, -89), end: tomorrow, label: t('pharmacy.last90Days') }
+    case '1y': return { start: addDays(td, -364), end: tomorrow, label: t('pharmacy.last365Days') }
+    case 'thisMonth': return { start: new Date(td.getFullYear(), td.getMonth(), 1), end: tomorrow, label: t('pharmacy.thisMonth') }
+    case 'lastMonth': return { start: new Date(td.getFullYear(), td.getMonth() - 1, 1), end: new Date(td.getFullYear(), td.getMonth(), 1), label: t('pharmacy.lastMonth') }
+    case 'thisYear': return { start: new Date(td.getFullYear(), 0, 1), end: tomorrow, label: t('pharmacy.thisYear') }
+    case 'lastYear': return { start: new Date(td.getFullYear() - 1, 0, 1), end: new Date(td.getFullYear(), 0, 1), label: t('pharmacy.lastYear') }
+    case 'custom': return customRange.value || { start: addDays(td, -6), end: tomorrow, label: t('pharmacy.customRange') }
+    default: return { start: addDays(td, -6), end: tomorrow, label: t('pharmacy.last7Days') }
   }
 }
 
@@ -344,30 +347,30 @@ let allTx = []
 const barColors = ['primary', 'info', 'success', 'warning', 'purple', 'teal']
 
 const kpis = computed(() => [
-  { title: "Today's revenue", value: formatMoney(todayRevenue.value), icon: 'mdi-cash-multiple', color: 'primary', delta: revDelta.value },
-  { title: "Today's orders", value: todayOrders.value, icon: 'mdi-receipt-text', color: 'info', delta: null },
-  { title: 'Avg. order value', value: formatMoney(aov.value), icon: 'mdi-trending-up', color: 'success', delta: null },
-  { title: 'Low stock', value: lowStock.value.length, icon: 'mdi-alert', color: 'warning', delta: null },
-  { title: 'Expiring', value: expiring.value.length, icon: 'mdi-clock-alert', color: 'error', delta: null },
-  { title: 'Pending orders', value: pendingOrders.value.length, icon: 'mdi-package-variant', color: 'purple', delta: null }
+  { title: t('pharmacy.todaysRevenue'), value: formatMoney(todayRevenue.value), icon: 'mdi-cash-multiple', color: 'primary', delta: revDelta.value },
+  { title: t('pharmacy.todaysOrders'), value: todayOrders.value, icon: 'mdi-receipt-text', color: 'info', delta: null },
+  { title: t('pharmacy.avgOrderValue'), value: formatMoney(aov.value), icon: 'mdi-trending-up', color: 'success', delta: null },
+  { title: t('pharmacy.lowStock'), value: lowStock.value.length, icon: 'mdi-alert', color: 'warning', delta: null },
+  { title: t('pharmacy.expiring'), value: expiring.value.length, icon: 'mdi-clock-alert', color: 'error', delta: null },
+  { title: t('pharmacy.pendingOrders'), value: pendingOrders.value.length, icon: 'mdi-package-variant', color: 'purple', delta: null }
 ])
 
-const actions = [
-  { icon: 'mdi-point-of-sale', label: 'Open POS', to: '/pos', color: 'primary' },
-  { icon: 'mdi-receipt-text', label: 'Patient Orders', to: '/pharmacy-orders', color: 'info' },
-  { icon: 'mdi-package-variant', label: 'Inventory', to: '/inventory', color: 'success' },
-  { icon: 'mdi-cart', label: 'Purchase Orders', to: '/purchase-orders/orders', color: 'warning' },
-  { icon: 'mdi-clipboard-check', label: 'Dispensing', to: '/dispensing', color: 'purple' },
-  { icon: 'mdi-chart-bar', label: 'Analytics', to: '/analytics', color: 'teal' }
-]
+const actions = computed(() => [
+  { icon: 'mdi-point-of-sale', label: t('pharmacy.openPOS'), to: '/pharmacy/pos', color: 'primary' },
+  { icon: 'mdi-receipt-text', label: t('pharmacy.patientOrders'), to: '/pharmacy/orders', color: 'info' },
+  { icon: 'mdi-package-variant', label: t('nav.inventory'), to: '/pharmacy/inventory', color: 'success' },
+  { icon: 'mdi-cart', label: t('nav.purchaseOrders'), to: '/pharmacy/purchase-orders', color: 'warning' },
+  { icon: 'mdi-clipboard-check', label: t('nav.dispensing'), to: '/pharmacy/dispensing', color: 'purple' },
+  { icon: 'mdi-chart-bar', label: t('nav.analytics'), to: '/pharmacy/analytics', color: 'teal' }
+])
 
 function formatRelative(v) {
   if (!v) return ''
   const d = new Date(v)
   const diff = (Date.now() - d.getTime()) / 1000
-  if (diff < 60) return 'just now'
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+  if (diff < 60) return t('common.justNow')
+  if (diff < 3600) return t('common.minutesAgo', { n: Math.floor(diff / 60) })
+  if (diff < 86400) return t('common.hoursAgo', { n: Math.floor(diff / 3600) })
   return d.toLocaleDateString()
 }
 

@@ -1,78 +1,86 @@
 <template>
-  <v-container fluid class="pa-3 pa-md-5">
-    <v-card flat rounded="xl" class="hero text-white pa-5 pa-md-6 mb-4">
-      <v-row align="center" no-gutters>
-        <v-col cols="12" md="8">
+  <v-container fluid class="pa-4 pa-md-6">
+    <!-- Header -->
+    <div class="d-flex align-center flex-wrap ga-3 mb-5">
+      <v-avatar color="green-lighten-5" size="48">
+        <v-icon color="green-darken-2" size="28">mdi-cash-register</v-icon>
+      </v-avatar>
+      <div>
+        <div class="text-h5 font-weight-bold">{{ $t('posShifts.title') }}</div>
+        <div class="text-body-2 text-medium-emphasis">
+          Open / close drawer · Z-Report · Cash variance reconciliation
+        </div>
+      </div>
+      <v-spacer />
+      <v-btn v-if="!current" variant="elevated" rounded="lg" color="success"
+             prepend-icon="mdi-cash-plus" @click="openShift">{{ $t('posShifts.openShift') }}</v-btn>
+      <v-btn v-else variant="elevated" rounded="lg" color="amber-darken-2"
+             prepend-icon="mdi-cash-minus" @click="openCloseDialog">{{ $t('posShifts.closeShift') }}</v-btn>
+      <v-btn variant="outlined" rounded="lg" prepend-icon="mdi-refresh"
+             :loading="loading" @click="load">{{ $t('common.refresh') }}</v-btn>
+    </div>
+
+    <!-- KPIs -->
+    <v-row dense class="mb-4">
+      <v-col v-for="k in kpis" :key="k.label" cols="6" md="3">
+        <v-card flat rounded="lg" class="kpi pa-3">
           <div class="d-flex align-center">
-            <v-avatar color="white" size="56" class="mr-4 elevation-2">
-              <v-icon color="green-darken-3" size="32">mdi-cash-register</v-icon>
+            <v-avatar :color="k.color + '-lighten-5'" size="36" class="mr-2">
+              <v-icon :color="k.color + '-darken-2'" size="20">{{ k.icon }}</v-icon>
             </v-avatar>
             <div>
-              <div class="text-h5 text-md-h4 font-weight-bold">Cashier Shifts</div>
-              <div class="text-body-2" style="opacity:0.9">
-                Open / close drawer · Z-Report · Cash variance reconciliation.
-              </div>
+              <div class="text-caption text-medium-emphasis">{{ k.label }}</div>
+              <div class="text-h6 font-weight-bold">{{ k.value }}</div>
             </div>
           </div>
-        </v-col>
-        <v-col cols="12" md="4" class="d-flex justify-md-end mt-3 mt-md-0" style="gap:8px">
-          <v-btn v-if="!current" color="white" variant="elevated" class="text-green-darken-3"
-                 prepend-icon="mdi-cash-plus" @click="openShift">Open Shift</v-btn>
-          <v-btn v-else color="amber" variant="elevated" class="text-grey-darken-4"
-                 prepend-icon="mdi-cash-minus" @click="openCloseDialog">Close Shift</v-btn>
-          <v-btn color="white" variant="outlined" prepend-icon="mdi-refresh"
-                 :loading="loading" @click="load">Refresh</v-btn>
-        </v-col>
-      </v-row>
-
-      <v-row class="mt-4" dense>
-        <v-col v-for="k in kpis" :key="k.label" cols="6" md="3">
-          <v-card flat rounded="lg" class="kpi pa-3">
-            <div class="d-flex align-center">
-              <v-avatar :color="k.color" size="36" class="mr-3">
-                <v-icon color="white" size="20">{{ k.icon }}</v-icon>
-              </v-avatar>
-              <div>
-                <div class="text-caption text-medium-emphasis">{{ k.label }}</div>
-                <div class="text-h6 font-weight-bold">{{ k.value }}</div>
-              </div>
-            </div>
-          </v-card>
-        </v-col>
-      </v-row>
-    </v-card>
+        </v-card>
+      </v-col>
+    </v-row>
 
     <!-- Live shift card -->
-    <v-card v-if="current" flat rounded="xl" border class="mb-3">
-      <v-card-text>
-        <div class="d-flex align-center mb-3">
-          <v-icon color="success" class="mr-2">mdi-circle-medium</v-icon>
-          <div class="text-subtitle-1 font-weight-bold">Live Shift · {{ current.reference }}</div>
-          <v-spacer />
-          <v-chip color="success" variant="flat" size="small">OPEN</v-chip>
-        </div>
-        <v-row dense>
-          <v-col cols="6" md="3"><div class="text-caption text-medium-emphasis">Opened</div>
-            <div class="font-weight-medium">{{ formatDate(current.opened_at) }}</div></v-col>
-          <v-col cols="6" md="3"><div class="text-caption text-medium-emphasis">Branch</div>
-            <div class="font-weight-medium">{{ current.branch_name || '—' }}</div></v-col>
-          <v-col cols="6" md="3"><div class="text-caption text-medium-emphasis">Opening Float</div>
-            <div class="font-weight-medium">KSh {{ Number(current.opening_float).toLocaleString() }}</div></v-col>
-          <v-col cols="6" md="3"><div class="text-caption text-medium-emphasis">Cashier</div>
-            <div class="font-weight-medium">{{ current.cashier_name }}</div></v-col>
-        </v-row>
-        <v-divider class="my-3" />
-        <div v-if="liveZ" class="text-body-2">
-          <div class="d-flex justify-space-between mb-1"><span>Transactions</span><strong>{{ liveZ.transactions }}</strong></div>
-          <div class="d-flex justify-space-between mb-1"><span>Gross revenue</span><strong>KSh {{ Number(liveZ.gross_revenue || 0).toLocaleString() }}</strong></div>
-          <div class="d-flex justify-space-between mb-1"><span>Cash sales</span><strong>KSh {{ Number(liveZ.cash_sales || 0).toLocaleString() }}</strong></div>
-          <div class="d-flex justify-space-between"><span>Expected cash</span><strong>KSh {{ Number(liveZ.expected_cash || 0).toLocaleString() }}</strong></div>
-        </div>
-      </v-card-text>
+    <v-card v-if="current" flat rounded="lg" class="live-shift-card mb-4 pa-4">
+      <div class="d-flex align-center mb-3">
+        <v-icon color="success" class="mr-2">mdi-circle-medium</v-icon>
+        <div class="text-subtitle-1 font-weight-bold">Live Shift · {{ current.reference }}</div>
+        <v-spacer />
+        <v-chip color="success" variant="flat" size="small">OPEN</v-chip>
+      </div>
+      <v-row dense>
+        <v-col cols="6" md="3"><div class="text-caption text-medium-emphasis">Opened</div>
+          <div class="font-weight-medium">{{ formatDate(current.opened_at) }}</div></v-col>
+        <v-col cols="6" md="3"><div class="text-caption text-medium-emphasis">Branch</div>
+          <div class="font-weight-medium">{{ current.branch_name || '—' }}</div></v-col>
+        <v-col cols="6" md="3"><div class="text-caption text-medium-emphasis">{{ $t('posShifts.openingFloat') }}</div>
+          <div class="font-weight-medium">KSh {{ Number(current.opening_float).toLocaleString() }}</div></v-col>
+        <v-col cols="6" md="3"><div class="text-caption text-medium-emphasis">{{ $t('posShifts.cashier') }}</div>
+          <div class="font-weight-medium">{{ current.cashier_name }}</div></v-col>
+      </v-row>
+      <v-divider class="my-3" />
+      <div v-if="liveZ" class="text-body-2">
+        <div class="d-flex justify-space-between mb-1"><span>{{ $t('posShifts.transactions') }}</span><strong>{{ liveZ.transactions }}</strong></div>
+        <div class="d-flex justify-space-between mb-1"><span>Gross revenue</span><strong>KSh {{ Number(liveZ.gross_revenue || 0).toLocaleString() }}</strong></div>
+        <div class="d-flex justify-space-between mb-1"><span>Cash sales</span><strong>KSh {{ Number(liveZ.cash_sales || 0).toLocaleString() }}</strong></div>
+        <div class="d-flex justify-space-between"><span>Expected cash</span><strong>KSh {{ Number(liveZ.expected_cash || 0).toLocaleString() }}</strong></div>
+      </div>
     </v-card>
 
-    <v-card flat rounded="xl" border>
-      <v-data-table :headers="headers" :items="shifts" :loading="loading" items-per-page="10">
+    <!-- Shifts table -->
+    <v-card flat rounded="lg" class="shifts-table-card">
+      <div class="d-flex align-center pa-3">
+        <div class="text-subtitle-2 font-weight-bold">All shifts</div>
+        <v-spacer />
+        <v-text-field v-model="shiftSearch" prepend-inner-icon="mdi-magnify"
+                      placeholder="Search shifts…" variant="outlined" density="compact"
+                      hide-details clearable style="max-width:280px" />
+        <v-btn-toggle v-model="shiftStatusFilter" mandatory density="compact" rounded="lg"
+                      color="primary" class="ml-2">
+          <v-btn value="all" size="small">All</v-btn>
+          <v-btn value="open" size="small">Open</v-btn>
+          <v-btn value="closed" size="small">Closed</v-btn>
+        </v-btn-toggle>
+      </div>
+      <v-data-table :headers="headers" :items="filteredShifts" :loading="loading"
+                    :items-per-page="15" density="comfortable" item-value="id">
         <template #item.reference="{ item }">
           <div class="font-weight-bold">{{ item.reference }}</div>
           <div class="text-caption text-medium-emphasis">{{ formatDate(item.opened_at) }}</div>
@@ -88,7 +96,8 @@
           <span v-else class="text-medium-emphasis">—</span>
         </template>
         <template #item.status="{ item }">
-          <v-chip size="small" variant="flat" :color="item.status === 'open' ? 'success' : 'grey'">
+          <v-chip size="x-small" variant="tonal" :color="item.status === 'open' ? 'success' : 'grey'">
+            <v-icon size="12" start>{{ item.status === 'open' ? 'mdi-circle-medium' : 'mdi-check' }}</v-icon>
             {{ item.status === 'open' ? 'Open' : 'Closed' }}
           </v-chip>
         </template>
@@ -100,7 +109,7 @@
 
     <!-- Open shift dialog -->
     <v-dialog v-model="openDialog" max-width="480" persistent>
-      <v-card rounded="xl">
+      <v-card rounded="lg">
         <v-card-title>
           <v-icon class="mr-2" color="success">mdi-cash-plus</v-icon>Open Shift
         </v-card-title>
@@ -113,16 +122,16 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" @click="openDialog = false">Cancel</v-btn>
-          <v-btn color="success" :loading="saving" @click="confirmOpen">Open Shift</v-btn>
+          <v-btn variant="text" @click="openDialog = false">{{ $t('common.cancel') }}</v-btn>
+          <v-btn color="success" :loading="saving" @click="confirmOpen">{{ $t('posShifts.openShift') }}</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
 
     <!-- Close shift dialog -->
     <v-dialog v-model="closeDialog" max-width="540" persistent>
-      <v-card rounded="xl">
-        <v-card-title><v-icon class="mr-2" color="warning">mdi-cash-minus</v-icon>Close Shift</v-card-title>
+      <v-card rounded="lg">
+        <v-card-title><v-icon class="mr-2" color="warning">mdi-cash-minus</v-icon>{{ $t('posShifts.closeShift') }}</v-card-title>
         <v-card-text>
           <v-alert v-if="liveZ" type="info" variant="tonal" density="compact" class="mb-3">
             Expected cash in drawer: <strong>KSh {{ Number(liveZ.expected_cash).toLocaleString() }}</strong>
@@ -136,7 +145,7 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" @click="closeDialog = false">Cancel</v-btn>
+          <v-btn variant="text" @click="closeDialog = false">{{ $t('common.cancel') }}</v-btn>
           <v-btn color="warning" :loading="saving" @click="confirmClose">Close &amp; Print Z-Report</v-btn>
         </v-card-actions>
       </v-card>
@@ -144,23 +153,23 @@
 
     <!-- Z-Report dialog -->
     <v-dialog v-model="zDialog" max-width="600">
-      <v-card v-if="zShift" rounded="xl">
+      <v-card v-if="zShift" rounded="lg">
         <v-card-title>
           <v-icon class="mr-2">mdi-receipt-text</v-icon>Z-Report · {{ zShift.reference }}
         </v-card-title>
         <v-card-text id="z-report-print">
           <div class="text-center mb-3">
-            <div class="text-subtitle-2 font-weight-bold">Z-REPORT</div>
+            <div class="text-subtitle-2 font-weight-bold">{{ $t('posShifts.zReport') }}</div>
             <div class="text-caption">{{ zShift.reference }} · {{ zShift.cashier_name }}</div>
             <div class="text-caption">{{ formatDate(zShift.opened_at) }} → {{ zShift.closed_at ? formatDate(zShift.closed_at) : 'OPEN' }}</div>
           </div>
           <v-divider />
           <div class="py-2">
             <div class="d-flex justify-space-between"><span>Opening float</span><strong>KSh {{ fmt(zShift.z_report?.opening_float) }}</strong></div>
-            <div class="d-flex justify-space-between"><span>Transactions</span><strong>{{ zShift.z_report?.transactions || 0 }}</strong></div>
+            <div class="d-flex justify-space-between"><span>{{ $t('posShifts.transactions') }}</span><strong>{{ zShift.z_report?.transactions || 0 }}</strong></div>
             <div class="d-flex justify-space-between"><span>Gross revenue</span><strong>KSh {{ fmt(zShift.z_report?.gross_revenue) }}</strong></div>
             <div class="d-flex justify-space-between"><span>Discounts</span><strong>KSh {{ fmt(zShift.z_report?.discount) }}</strong></div>
-            <div class="d-flex justify-space-between"><span>Tax</span><strong>KSh {{ fmt(zShift.z_report?.tax) }}</strong></div>
+            <div class="d-flex justify-space-between"><span>{{ $t('common.tax') }}</span><strong>KSh {{ fmt(zShift.z_report?.tax) }}</strong></div>
           </div>
           <v-divider />
           <div class="py-2">
@@ -176,7 +185,7 @@
             <div class="d-flex justify-space-between"><span>Expected cash</span><strong>KSh {{ fmt(zShift.z_report?.expected_cash) }}</strong></div>
             <div class="d-flex justify-space-between"><span>Actual cash</span><strong>KSh {{ fmt(zShift.z_report?.actual_cash) }}</strong></div>
             <div class="d-flex justify-space-between" :class="varianceColor(zShift.z_report?.variance || 0)">
-              <span>Variance</span>
+              <span>{{ $t('posShifts.variance') }}</span>
               <strong>{{ (zShift.z_report?.variance || 0) > 0 ? '+' : '' }}KSh {{ fmt(zShift.z_report?.variance) }}</strong>
             </div>
           </div>
@@ -187,8 +196,8 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" @click="zDialog = false">Close</v-btn>
-          <v-btn color="primary" prepend-icon="mdi-printer" @click="printZ">Print</v-btn>
+          <v-btn variant="text" @click="zDialog = false">{{ $t('common.close') }}</v-btn>
+          <v-btn color="primary" prepend-icon="mdi-printer" @click="printZ">{{ $t('common.print') }}</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -198,6 +207,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 const { $api } = useNuxtApp()
 
@@ -214,6 +226,8 @@ const zShift = ref(null)
 const openForm = ref({ opening_float: 0, branch: null })
 const closeForm = ref({ closing_actual_cash: 0, closing_notes: '' })
 const snack = ref({ show: false, color: 'success', text: '' })
+const shiftSearch = ref('')
+const shiftStatusFilter = ref('all')
 
 const headers = [
   { title: 'Reference', key: 'reference', width: 170 },
@@ -236,6 +250,22 @@ const kpis = computed(() => {
     { label: 'Total Revenue', value: 'KSh ' + Math.round(totalRev).toLocaleString(), icon: 'mdi-cash-fast', color: 'blue' },
     { label: 'Net Variance', value: (totalVar >= 0 ? '+' : '') + 'KSh ' + Math.round(totalVar).toLocaleString(), icon: 'mdi-scale-balance', color: totalVar >= 0 ? 'success' : 'red' },
   ]
+})
+
+const filteredShifts = computed(() => {
+  let arr = shifts.value
+  if (shiftStatusFilter.value !== 'all') {
+    arr = arr.filter(s => s.status === shiftStatusFilter.value)
+  }
+  if (shiftSearch.value) {
+    const q = shiftSearch.value.toLowerCase()
+    arr = arr.filter(s =>
+      (s.reference || '').toLowerCase().includes(q) ||
+      (s.cashier_name || '').toLowerCase().includes(q) ||
+      (s.branch_name || '').toLowerCase().includes(q)
+    )
+  }
+  return arr
 })
 
 let pollTimer = null
@@ -331,8 +361,14 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
 </script>
 
 <style scoped>
-.hero { background: linear-gradient(135deg, #14532d 0%, #16a34a 50%, #4ade80 100%); }
-.kpi { background: rgba(255, 255, 255, 0.1) !important; backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, 0.15); }
-.kpi :deep(.text-h6) { color: #fff; }
-.kpi :deep(.text-medium-emphasis) { color: rgba(255, 255, 255, 0.85) !important; }
+.kpi {
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+}
+.live-shift-card {
+  border: 1px solid rgba(var(--v-theme-success), 0.25);
+  background: rgba(var(--v-theme-success), 0.03);
+}
+.shifts-table-card {
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+}
 </style>

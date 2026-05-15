@@ -186,3 +186,7 @@ class DoctorCommissionRate(models.Model):
             currency="KSH",
             notes="Auto-created default commission rate",
         )
+
+
+# Import referral models so Django discovers them in this app
+from .referral_models import ReferralProfile, Referral, CoinTransaction  # noqa: E402, F401

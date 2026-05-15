@@ -1,78 +1,65 @@
 <template>
   <v-container fluid class="pa-3 pa-md-5">
-    <!-- Hero -->
-    <v-card flat rounded="xl" class="hero text-white pa-5 pa-md-6 mb-4">
-      <v-row align="center" no-gutters>
-        <v-col cols="12" md="8">
-          <div class="d-flex align-center">
-            <v-avatar color="white" size="56" class="mr-4 elevation-2">
-              <v-icon color="emerald" size="32">mdi-bank</v-icon>
-            </v-avatar>
-            <div class="min-width-0">
-              <div class="text-h5 text-md-h4 font-weight-bold">Accounts</div>
-              <div class="text-body-2" style="opacity:0.9">
-                Income, expenses, receivables &amp; payables — your full financial position.
-              </div>
-            </div>
-          </div>
-        </v-col>
-        <v-col cols="12" md="4" class="d-flex justify-md-end mt-3 mt-md-0" style="gap:8px">
-          <v-select
-            v-model="rangeKey"
-            :items="rangeOptions" item-title="label" item-value="key"
-            density="compact" variant="solo-filled" hide-details
-            bg-color="white" base-color="grey-darken-3"
-            prepend-inner-icon="mdi-calendar-range"
-            style="min-width:200px"
-            @update:model-value="onRangeChange"
-          />
-          <v-btn variant="flat" color="white" prepend-icon="mdi-refresh" class="text-emerald-darken-3"
+        <!-- Header -->
+    <div class="d-flex flex-wrap align-center justify-space-between mb-4">
+      <div class="d-flex align-center">
+        <v-avatar color="green-lighten-5" size="48" class="mr-3">
+          <v-icon color="green-darken-2" size="28">mdi-bank</v-icon>
+        </v-avatar>
+        <div>
+          <h1 class="text-h5 font-weight-bold mb-1">Accounts</h1>
+          <div class="text-body-2 text-medium-emphasis">Income, expenses, receivables &amp; payables — your full financial position</div>
+        </div>
+      </div>
+      <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
+        <v-btn rounded="lg" variant="flat" color="primary" prepend-icon="mdi-refresh" class="text-none"
                  :loading="loading" @click="loadAll">Refresh</v-btn>
-          <v-menu>
-            <template #activator="{ props }">
-              <v-btn v-bind="props" variant="flat" color="white" class="text-emerald-darken-3"
+      <v-btn rounded="lg" v-bind="props" variant="flat" color="primary" class="text-none"
                      prepend-icon="mdi-download">Export</v-btn>
-            </template>
-            <v-list density="compact">
-              <v-list-item @click="exportCsv('pnl')">
-                <template #prepend><v-icon>mdi-chart-box-outline</v-icon></template>
-                <v-list-item-title>P&amp;L (CSV)</v-list-item-title>
-              </v-list-item>
-              <v-list-item @click="exportCsv('ledger')">
-                <template #prepend><v-icon>mdi-format-list-bulleted</v-icon></template>
-                <v-list-item-title>Transactions (CSV)</v-list-item-title>
-              </v-list-item>
-              <v-list-item @click="exportCsv('receivables')">
-                <template #prepend><v-icon>mdi-receipt-text-outline</v-icon></template>
-                <v-list-item-title>Receivables (CSV)</v-list-item-title>
-              </v-list-item>
-              <v-list-item @click="exportCsv('payables')">
-                <template #prepend><v-icon>mdi-cash-clock</v-icon></template>
-                <v-list-item-title>Payables (CSV)</v-list-item-title>
-              </v-list-item>
-            </v-list>
-          </v-menu>
-        </v-col>
-      </v-row>
+      </div>
+    </div>
 
-      <!-- KPI strip -->
-      <v-row class="mt-4" dense>
-        <v-col v-for="k in kpiTiles" :key="k.label" cols="6" md="3">
-          <v-card flat rounded="lg" class="kpi pa-3">
-            <div class="d-flex align-center">
-              <v-avatar :color="k.color" size="40" class="mr-3">
-                <v-icon color="white" size="22">{{ k.icon }}</v-icon>
-              </v-avatar>
-              <div class="min-width-0">
-                <div class="text-caption text-medium-emphasis text-uppercase">{{ k.label }}</div>
-                <div class="text-h6 font-weight-bold">{{ k.value }}</div>
-                <div class="text-caption" :class="k.trendClass">{{ k.sub }}</div>
-              </div>
-            </div>
-          </v-card>
-        </v-col>
-      </v-row>
+    <!-- Date Filter Chips -->
+    <v-card flat rounded="xl" class="mb-4 pa-3" border>
+      <div class="d-flex align-center flex-wrap ga-2">
+        <v-icon size="20" color="primary" class="mr-1">mdi-calendar-filter</v-icon>
+        <v-chip-group v-model="rangeKey" selected-class="text-primary" mandatory>
+          <v-chip v-for="opt in rangeChips" :key="opt.key" :value="opt.key"
+                  variant="outlined" size="small" rounded="lg" filter>
+            {{ opt.label }}
+          </v-chip>
+        </v-chip-group>
+        <v-spacer />
+        <v-chip v-if="rangeKey === 'custom' && customStart && customEnd"
+                size="small" variant="tonal" color="primary" rounded="lg"
+                prepend-icon="mdi-calendar-range" closable
+                @click="customDialog = true"
+                @click:close="resetRange">
+          {{ customStart }} — {{ customEnd }}
+        </v-chip>
+        <v-chip size="small" variant="tonal" color="grey" rounded="lg" prepend-icon="mdi-clock-outline">
+          {{ data?.range?.label }}
+        </v-chip>
+      </div>
     </v-card>
+
+    <!-- KPIs -->
+    <v-row dense class="mb-4">
+      <v-col v-for="k in kpiTiles" :key="k.label" cols="6" md="3">
+        <v-card rounded="lg" class="pa-4 h-100 kpi-card">
+          <div class="d-flex align-start justify-space-between">
+            <div>
+              <div class="text-caption text-medium-emphasis">{{ k.label }}</div>
+              <div class="text-h6 font-weight-bold mt-1">{{ k.value }}</div>
+              <div v-if="k.sub" class="text-caption text-medium-emphasis mt-1">{{ k.sub }}</div>
+            </div>
+            <v-avatar :color="k.color" variant="tonal" rounded="lg" size="40">
+              <v-icon size="20">{{ k.icon }}</v-icon>
+            </v-avatar>
+          </div>
+        </v-card>
+      </v-col>
+    </v-row>
 
     <!-- Tabs -->
     <v-card flat rounded="xl" class="mb-4" border>
@@ -147,14 +134,14 @@
           <v-card class="pa-4 h-100" rounded="xl" border>
             <div class="d-flex align-center mb-3">
               <v-icon color="error" class="mr-2">mdi-receipt-text-outline</v-icon>
-              <div class="text-subtitle-1 font-weight-medium">Top outstanding invoices</div>
+              <div class="text-subtitle-1 font-weight-medium">Top outstanding receivables</div>
               <v-spacer />
               <v-btn size="small" variant="text" color="primary" @click="tab = 'receivables'">View all</v-btn>
             </div>            <div v-if="!topReceivables.length" class="text-center text-medium-emphasis py-4">
-              No outstanding invoices.
+              No outstanding receivables.
             </div>
             <v-list v-else density="compact" class="pa-0">
-              <v-list-item v-for="inv in topReceivables" :key="inv.id" class="px-0">
+              <v-list-item v-for="inv in topReceivables" :key="`${inv._type}-${inv.id}`" class="px-0">
                 <template #prepend>
                   <v-avatar size="32" :color="inv._isOverdue ? 'error' : 'warning'" variant="tonal">
                     <v-icon size="16">{{ inv._isOverdue ? 'mdi-alert' : 'mdi-clock-outline' }}</v-icon>
@@ -162,6 +149,7 @@
                 </template>
                 <v-list-item-title class="text-body-2 font-weight-medium">
                   {{ inv.invoice_number }}
+                  <v-chip v-if="inv._type === 'credit'" size="x-small" color="orange" variant="tonal" class="ml-1">Credit</v-chip>
                   <span class="text-caption text-medium-emphasis"> · {{ inv.patient_name || '—' }}</span>
                 </v-list-item-title>
                 <v-list-item-subtitle class="text-caption">
@@ -171,7 +159,7 @@
                   </span>
                 </v-list-item-subtitle>
                 <template #append>
-                  <span class="font-weight-bold">{{ formatMoney(invoiceBalance(inv)) }}</span>
+                  <span class="font-weight-bold">{{ formatMoney(inv._balance) }}</span>
                 </template>
               </v-list-item>
             </v-list>
@@ -339,7 +327,7 @@
               <div class="text-caption text-uppercase text-medium-emphasis">{{ b.label }}</div>
             </div>
             <div class="text-h6 font-weight-bold">{{ formatMoney(b.total) }}</div>
-            <div class="text-caption text-medium-emphasis">{{ b.count }} invoices</div>
+            <div class="text-caption text-medium-emphasis">{{ b.count }} items</div>
           </v-card>
         </v-col>
       </v-row>
@@ -398,6 +386,69 @@
           <template #no-data>
             <EmptyState icon="mdi-receipt-text-outline" title="No invoices found"
                         message="Try widening the date range or adjusting filters." />
+          </template>
+        </v-data-table>
+      </v-card>
+
+      <!-- POS Credit Sales -->
+      <v-card flat rounded="xl" border class="mt-4">
+        <div class="d-flex align-center pa-4 pb-2">
+          <v-icon color="orange" class="mr-2">mdi-account-credit-card</v-icon>
+          <div class="text-subtitle-1 font-weight-medium">POS Credit Sales</div>
+          <v-spacer />
+          <v-chip size="small" color="orange" variant="tonal">
+            {{ filteredCreditSales.filter(c => Number(c.balance_amount || 0) > 0).length }} outstanding
+          </v-chip>
+        </div>
+        <v-data-table
+          :headers="creditHeaders"
+          :items="filteredCreditSales"
+          :loading="loading"
+          item-value="id"
+          density="comfortable" hover :items-per-page="10"
+        >
+          <template #item.transaction_number="{ item }">
+            <div class="font-weight-medium">{{ item.transaction_number || `CR-${item.id}` }}</div>
+            <div class="text-caption text-medium-emphasis">{{ formatDate(item.created_at) }}</div>
+          </template>
+          <template #item.customer_name="{ item }">
+            <div class="d-flex align-center">
+              <v-avatar :color="avatarColor(item.customer_name)" size="32" class="mr-2">
+                <span class="text-caption font-weight-bold text-white">{{ initials(item.customer_name) }}</span>
+              </v-avatar>
+              <div>
+                <div>{{ item.customer_name || '—' }}</div>
+                <div v-if="item.customer_phone" class="text-caption text-medium-emphasis">{{ item.customer_phone }}</div>
+              </div>
+            </div>
+          </template>
+          <template #item.total_amount="{ item }">
+            <span class="font-weight-bold">{{ formatMoney(item.total_amount) }}</span>
+          </template>
+          <template #item.partial_paid_amount="{ item }">
+            <span class="text-medium-emphasis">{{ formatMoney(item.partial_paid_amount) }}</span>
+          </template>
+          <template #item.balance_amount="{ item }">
+            <span class="font-weight-bold" :class="Number(item.balance_amount) > 0 ? 'text-error' : 'text-success'">
+              {{ formatMoney(item.balance_amount) }}
+            </span>
+          </template>
+          <template #item.due_date="{ item }">
+            <div v-if="item.due_date" class="d-flex align-center">
+              <span>{{ formatDate(item.due_date) }}</span>
+              <v-chip v-if="item.due_date < new Date().toISOString().slice(0, 10) && Number(item.balance_amount) > 0"
+                      size="x-small" color="error" variant="tonal" class="ml-2">overdue</v-chip>
+            </div>
+            <span v-else class="text-medium-emphasis">—</span>
+          </template>
+          <template #item.status="{ item }">
+            <v-chip :color="creditStatusColor(item.status)" size="small" variant="tonal" class="text-capitalize">
+              {{ (item.status || '').replace('_', ' ') }}
+            </v-chip>
+          </template>
+          <template #no-data>
+            <EmptyState icon="mdi-account-credit-card" title="No credit sales"
+                        message="POS credit sales will appear here." />
           </template>
         </v-data-table>
       </v-card>
@@ -600,7 +651,7 @@
                 <tr v-if="pnl.vat > 0" class="vat-row">
                   <td class="text-medium-emphasis">
                     <v-icon size="16" color="orange" class="mr-2">mdi-percent-outline</v-icon>
-                    Less: VAT (16% inclusive)
+                    Less: VAT (per-item tax)
                   </td>
                   <td class="text-right text-medium-emphasis">− {{ formatMoney(pnl.vat) }}</td>
                   <td></td>
@@ -662,7 +713,7 @@
             <div class="text-h6 font-weight-bold text-success">{{ formatMoney(pnl.totalIncome) }}</div>
           </v-col>
           <v-col cols="6" md="2">
-            <div class="text-caption text-medium-emphasis">VAT (16%)</div>
+            <div class="text-caption text-medium-emphasis">VAT (item tax)</div>
             <div class="text-h6 font-weight-bold text-warning">{{ formatMoney(pnl.vat) }}</div>
           </v-col>
           <v-col cols="6" md="2">
@@ -1183,17 +1234,34 @@
     </v-dialog>
 
     <!-- Custom range -->
-    <v-dialog v-model="customDialog" max-width="420">
+    <v-dialog v-model="customDialog" max-width="400" persistent>
       <v-card rounded="xl">
-        <v-card-title>Custom date range</v-card-title>
-        <v-card-text>
-          <v-text-field v-model="customStart" type="date" label="Start" variant="outlined" density="comfortable" />
-          <v-text-field v-model="customEnd" type="date" label="End" variant="outlined" density="comfortable" />
+        <v-card-title class="d-flex align-center ga-2 pa-4 pb-2">
+          <v-avatar color="primary" variant="tonal" size="40" rounded="lg">
+            <v-icon>mdi-calendar-range</v-icon>
+          </v-avatar>
+          <div>
+            <div class="text-h6">Custom Date Range</div>
+            <div class="text-caption text-medium-emphasis">Select start and end dates</div>
+          </div>
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-4">
+          <v-text-field v-model="customStart" type="date" label="Start *"
+                        variant="outlined" density="comfortable" rounded="lg"
+                        prepend-inner-icon="mdi-calendar-start" hide-details="auto" class="mb-3" />
+          <v-text-field v-model="customEnd" type="date" label="End *"
+                        variant="outlined" density="comfortable" rounded="lg"
+                        prepend-inner-icon="mdi-calendar-end" hide-details="auto" :min="customStart" />
         </v-card-text>
-        <v-card-actions>
+        <v-divider />
+        <v-card-actions class="pa-3">
+          <v-btn variant="text" @click="cancelCustom">Cancel</v-btn>
           <v-spacer />
-          <v-btn variant="text" @click="customDialog = false">Cancel</v-btn>
-          <v-btn color="primary" variant="flat" @click="applyCustom">Apply</v-btn>
+          <v-btn color="primary" variant="flat" rounded="lg" prepend-icon="mdi-check"
+                 :disabled="!customStart || !customEnd" @click="applyCustom">
+            Apply
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -1225,16 +1293,17 @@ watch(() => route.query.tab, (v) => {
 
 // ────── Date range
 const rangeKey = ref('30d')
-const rangeOptions = [
+const rangeChips = [
   { key: 'today', label: 'Today' },
+  { key: 'yesterday', label: 'Yesterday' },
   { key: '7d', label: 'Last 7 days' },
   { key: '30d', label: 'Last 30 days' },
   { key: 'mtd', label: 'Month to date' },
   { key: '90d', label: 'Last 90 days' },
   { key: 'ytd', label: 'Year to date' },
-  { key: '1y', label: 'Last 365 days' },
-  { key: 'custom', label: 'Custom range…' },
+  { key: 'custom', label: 'Custom' },
 ]
+const rangeOptions = rangeChips
 const customDialog = ref(false)
 const customStart = ref('')
 const customEnd = ref('')
@@ -1247,6 +1316,7 @@ function resolveRange() {
   const yearStart = new Date(today.getFullYear(), 0, 1)
   switch (rangeKey.value) {
     case 'today': return { start: iso(today), end: iso(today), label: 'Today' }
+    case 'yesterday': return { start: iso(sub(1)), end: iso(sub(1)), label: 'Yesterday' }
     case '7d': return { start: iso(sub(6)), end: iso(today), label: 'Last 7 days' }
     case 'mtd': return { start: iso(monthStart), end: iso(today), label: 'Month to date' }
     case '90d': return { start: iso(sub(89)), end: iso(today), label: 'Last 90 days' }
@@ -1263,11 +1333,12 @@ function resolveRange() {
 
 const data = ref({ range: resolveRange() })
 
-function onRangeChange(v) {
+watch(rangeKey, (v) => {
   if (v === 'custom') { customDialog.value = true; return }
   data.value.range = resolveRange()
   loadAll()
-}
+})
+
 function applyCustom() {
   if (!customStart.value || !customEnd.value) return
   rangeKey.value = 'custom'
@@ -1275,12 +1346,24 @@ function applyCustom() {
   data.value.range = resolveRange()
   loadAll()
 }
+function cancelCustom() {
+  customDialog.value = false
+  if (!customStart.value || !customEnd.value) {
+    rangeKey.value = '30d'
+  }
+}
+function resetRange() {
+  customStart.value = ''
+  customEnd.value = ''
+  rangeKey.value = '30d'
+}
 
 // ────── Data sources
 const sales = ref([])         // POS transactions (income)
 const invoices = ref([])      // billing invoices
 const payments = ref([])      // billing payments (income)
 const expenses = ref([])      // expenses (outflow)
+const creditSales = ref([])   // POS credit sales (receivables)
 const apiBilling = ref(null)  // /usage-billing/dashboard/ response
 const inventoryValuation = ref(null) // /reports/inventory-valuation/ snapshot
 
@@ -1290,11 +1373,12 @@ async function loadAll() {
   const { start, end } = data.value.range
   try {
     const params = { date_from: start, date_to: end, page_size: 500, ordering: '-created_at' }
-    const [s, inv, pay, exp, api, invVal] = await Promise.allSettled([
+    const [s, inv, pay, exp, cred, api, invVal] = await Promise.allSettled([
       $api.get('/pos/transactions/', { params: { ...params, status: 'completed' } }),
       $api.get('/billing/invoices/', { params: { page_size: 500, ordering: '-created_at' } }),
       $api.get('/billing/payments/', { params: { page_size: 500, ordering: '-paid_at' } }),
       $api.get('/expenses/expenses/', { params: { page_size: 500, ordering: '-expense_date' } }),
+      $api.get('/pos/credits/', { params: { page_size: 500, ordering: '-created_at' } }),
       $api.get('/usage-billing/dashboard/'),
       $api.get('/reports/inventory-valuation/'),
     ])
@@ -1302,6 +1386,7 @@ async function loadAll() {
     invoices.value = pickRows(inv)
     payments.value = pickRows(pay)
     expenses.value = pickRows(exp)
+    creditSales.value = pickRows(cred)
     apiBilling.value = api.status === 'fulfilled' ? api.value?.data : null
     inventoryValuation.value = invVal.status === 'fulfilled' ? invVal.value?.data : null
   } catch (e) {
@@ -1414,7 +1499,9 @@ const totalExpensePaid = computed(() => sumBy(expensesPaidInRange.value, 'amount
 const netCash = computed(() => totalIncome.value - totalExpensePaid.value)
 const outstandingReceivables = computed(() =>
   invoices.value.filter(i => invoiceBalance(i) > 0)
-    .reduce((s, i) => s + invoiceBalance(i), 0))
+    .reduce((s, i) => s + invoiceBalance(i), 0)
+  + creditSales.value.filter(c => Number(c.balance_amount || 0) > 0)
+    .reduce((s, c) => s + Number(c.balance_amount || 0), 0))
 const pendingPayables = computed(() =>
   expenses.value.filter(e => ['pending', 'approved'].includes(e.status))
     .reduce((s, e) => s + Number(e.amount || 0), 0)
@@ -1424,7 +1511,7 @@ const pendingPayables = computed(() =>
 const kpiTiles = computed(() => [
   { label: 'Income', value: formatMoney(totalIncome.value), icon: 'mdi-arrow-down-bold-circle',
     color: 'success',
-    sub: `${formatMoney(vatIncome.value)} VAT included`, trendClass: 'text-success' },
+    sub: `${formatMoney(vatIncome.value)} VAT (per-item)`, trendClass: 'text-success' },
   { label: 'Expenses', value: formatMoney(totalExpensePaid.value), icon: 'mdi-arrow-up-bold-circle',
     color: 'error', sub: `${expensesPaidInRange.value.length} recorded`, trendClass: 'text-error' },
   { label: 'Net cash flow', value: formatMoney(netCash.value), icon: netCash.value >= 0 ? 'mdi-trending-up' : 'mdi-trending-down',
@@ -1433,7 +1520,7 @@ const kpiTiles = computed(() => [
     trendClass: netCash.value >= 0 ? 'text-success' : 'text-error' },
   { label: 'Outstanding', value: formatMoney(outstandingReceivables.value), icon: 'mdi-cash-fast',
     color: 'amber-darken-2',
-    sub: `${formatMoney(pendingPayables.value)} payables`, trendClass: 'text-medium-emphasis' },
+    sub: `${creditSales.value.filter(c => Number(c.balance_amount || 0) > 0).length} credits · ${formatMoney(pendingPayables.value)} payables`, trendClass: 'text-medium-emphasis' },
 ])
 
 // ────── Cash position by method
@@ -1530,29 +1617,79 @@ const filteredInvoices = computed(() => {
   return [...rows].sort(sorters[invSort.value] || sorters.balance_desc)
 })
 
-const topReceivables = computed(() =>
-  invoices.value.filter(i => invoiceBalance(i) > 0)
-    .map(i => ({ ...i, _isOverdue: isOverdue(i), _daysLate: daysLate(i) }))
-    .sort((a, b) => invoiceBalance(b) - invoiceBalance(a))
-    .slice(0, 5))
+const topReceivables = computed(() => {
+  const fromInvoices = invoices.value.filter(i => invoiceBalance(i) > 0)
+    .map(i => ({ ...i, _balance: invoiceBalance(i), _isOverdue: isOverdue(i), _daysLate: daysLate(i), _type: 'invoice' }))
+  const fromCredit = creditSales.value.filter(c => Number(c.balance_amount || 0) > 0)
+    .map(c => {
+      const overdue = c.due_date && !['settled'].includes(c.status) && new Date(c.due_date) < new Date(new Date().toISOString().slice(0, 10))
+      const late = overdue ? Math.floor((new Date() - new Date(c.due_date)) / 86400000) : 0
+      return {
+        ...c,
+        _balance: Number(c.balance_amount),
+        _isOverdue: overdue,
+        _daysLate: late,
+        _type: 'credit',
+        invoice_number: c.transaction_number || `CR-${c.id}`,
+        patient_name: c.customer_name,
+      }
+    })
+  return [...fromInvoices, ...fromCredit]
+    .sort((a, b) => b._balance - a._balance)
+    .slice(0, 5)
+})
 
 const agingBuckets = computed(() => {
-  const out = invoices.value.filter(i => invoiceBalance(i) > 0)
   const buckets = [
     { key: 'current', label: 'Not yet due', icon: 'mdi-calendar-clock', color: 'info', total: 0, count: 0 },
     { key: '1-30', label: '1-30 days', icon: 'mdi-calendar-alert', color: 'amber-darken-2', total: 0, count: 0 },
     { key: '31-60', label: '31-60 days', icon: 'mdi-alert', color: 'orange-darken-2', total: 0, count: 0 },
     { key: '60+', label: '60+ days', icon: 'mdi-alert-octagon', color: 'error', total: 0, count: 0 },
   ]
-  out.forEach(i => {
+  // Invoice receivables
+  invoices.value.filter(i => invoiceBalance(i) > 0).forEach(i => {
     const bal = invoiceBalance(i)
     if (!isOverdue(i)) { buckets[0].total += bal; buckets[0].count++; return }
     const d = daysLate(i)
     const idx = d <= 30 ? 1 : d <= 60 ? 2 : 3
     buckets[idx].total += bal; buckets[idx].count++
   })
+  // Credit sale receivables
+  const todayStr = new Date().toISOString().slice(0, 10)
+  creditSales.value.filter(c => Number(c.balance_amount || 0) > 0).forEach(c => {
+    const bal = Number(c.balance_amount)
+    const overdue = c.due_date && !['settled'].includes(c.status) && c.due_date < todayStr
+    if (!overdue) { buckets[0].total += bal; buckets[0].count++; return }
+    const d = Math.floor((new Date() - new Date(c.due_date)) / 86400000)
+    const idx = d <= 30 ? 1 : d <= 60 ? 2 : 3
+    buckets[idx].total += bal; buckets[idx].count++
+  })
   return buckets
 })
+
+// ────── Credit sales table
+const creditHeaders = [
+  { title: 'Receipt', key: 'transaction_number', sortable: true },
+  { title: 'Customer', key: 'customer_name', sortable: true },
+  { title: 'Total', key: 'total_amount', sortable: true, align: 'end' },
+  { title: 'Paid', key: 'partial_paid_amount', sortable: true, align: 'end' },
+  { title: 'Balance', key: 'balance_amount', sortable: true, align: 'end' },
+  { title: 'Due', key: 'due_date', sortable: true },
+  { title: 'Status', key: 'status', sortable: true },
+]
+const filteredCreditSales = computed(() => {
+  const q = (invSearch.value || '').toLowerCase().trim()
+  let rows = creditSales.value
+  if (invStatus.value === 'outstanding') rows = rows.filter(c => Number(c.balance_amount || 0) > 0)
+  if (q) rows = rows.filter(c =>
+    (c.customer_name || '').toLowerCase().includes(q) ||
+    (c.transaction_number || '').toLowerCase().includes(q) ||
+    (c.customer_phone || '').toLowerCase().includes(q))
+  return [...rows].sort((a, b) => Number(b.balance_amount || 0) - Number(a.balance_amount || 0))
+})
+function creditStatusColor(s) {
+  return ({ open: 'info', partial: 'amber', settled: 'success', overdue: 'error' })[s] || 'grey'
+}
 
 // ────── Payables
 const expSearch = ref('')
@@ -1703,11 +1840,8 @@ const filteredLedger = computed(() => {
   })
 })
 
-// ────── VAT (16% inclusive of selling price)
-const VAT_RATE = 0.16
-const extractVat = (gross) => Number(gross || 0) * VAT_RATE / (1 + VAT_RATE)
-const grossExcludingVat = (gross) => Number(gross || 0) - extractVat(gross)
-const vatIncome = computed(() => extractVat(totalIncome.value))
+// ────── VAT (computed from per-item tax_percent stored in transaction.tax field)
+const vatIncome = computed(() => sumBy(salesInRange.value, 'tax'))
 const netIncomeExVat = computed(() => totalIncome.value - vatIncome.value)
 
 // ────── P&L
@@ -1719,7 +1853,7 @@ const pnl = computed(() => {
     incomeRows.push({ label: 'Invoice payments (gross)', amount: totalPaymentsIncome.value, icon: 'mdi-receipt', color: 'primary' })
 
   const grossIncome = incomeRows.reduce((s, r) => s + r.amount, 0)
-  const vat = extractVat(grossIncome)
+  const vat = vatIncome.value
   const netRevenue = grossIncome - vat
 
   const byCat = new Map()
@@ -1873,7 +2007,7 @@ function exportCsv(kind) {
       ['Income', '', ''],
       ...pnl.value.incomeRows.map(r => [r.label, r.amount, '']),
       ['Total gross income', pnl.value.totalIncome, ''],
-      ['Less: VAT (16% inclusive)', -pnl.value.vat, ''],
+      ['Less: VAT (per-item tax)', -pnl.value.vat, ''],
       ['Net revenue (ex-VAT)', pnl.value.netRevenue, ''],
       ['', '', ''],
       ['Expenses', '', ''],
@@ -1928,11 +2062,19 @@ const balanceSheet = computed(() => {
   const ar = invoices.value.filter(i => invoiceBalance(i) > 0).reduce((s, i) => s + invoiceBalance(i), 0)
   const arOverdue = invoices.value.filter(i => isOverdue(i)).reduce((s, i) => s + invoiceBalance(i), 0)
 
+  // POS credit sale receivables
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const creditAr = creditSales.value.filter(c => Number(c.balance_amount || 0) > 0).reduce((s, c) => s + Number(c.balance_amount), 0)
+  const creditArOverdue = creditSales.value.filter(c => Number(c.balance_amount || 0) > 0 && c.due_date && c.due_date < todayStr)
+    .reduce((s, c) => s + Number(c.balance_amount), 0)
+
   const arGroup = {
     label: 'Accounts Receivable',
     rows: [
       { label: 'Customer invoices (current)', amount: Math.max(0, ar - arOverdue), icon: 'mdi-receipt-text', color: 'amber-darken-2' },
-      { label: 'Overdue receivables', amount: arOverdue, icon: 'mdi-clock-alert', color: 'error' },
+      { label: 'Overdue invoice receivables', amount: arOverdue, icon: 'mdi-clock-alert', color: 'error' },
+      { label: 'POS credit sales (current)', amount: Math.max(0, creditAr - creditArOverdue), icon: 'mdi-account-credit-card', color: 'orange' },
+      { label: 'Overdue credit receivables', amount: creditArOverdue, icon: 'mdi-clock-alert', color: 'red-darken-2' },
     ].filter(r => r.amount > 0),
   }
   arGroup.subtotal = arGroup.rows.reduce((s, r) => s + r.amount, 0)
@@ -1975,7 +2117,7 @@ const balanceSheet = computed(() => {
   const taxGroup = {
     label: 'Tax Liabilities',
     rows: [
-      { label: 'VAT collected (16% of sales)', amount: vatPayable, icon: 'mdi-percent', color: 'orange-darken-2' },
+      { label: 'VAT collected (per-item tax)', amount: vatPayable, icon: 'mdi-percent', color: 'orange-darken-2' },
     ].filter(r => r.amount > 0),
   }
   taxGroup.subtotal = taxGroup.rows.reduce((s, r) => s + r.amount, 0)
@@ -2058,6 +2200,7 @@ const glTypeOptions = [
   { title: 'Invoice', value: 'INV' },
   { title: 'Payment', value: 'PAY' },
   { title: 'Expense', value: 'EXP' },
+  { title: 'Credit Payment', value: 'CRPAY' },
 ]
 
 const glHeaders = [
@@ -2086,25 +2229,43 @@ function jentry(date, source, sourceColor, reference, description, account, debi
 
 const journalEntries = computed(() => {
   const entries = []
-  // POS Sales: DR Cash, CR Revenue (split VAT)
+  // POS Sales: DR Cash/AR, CR Revenue (split VAT from per-item tax)
+  // Build credit sale lookup by transaction id for credit split
+  const creditByTxn = new Map()
+  creditSales.value.forEach(c => { if (c.transaction) creditByTxn.set(c.transaction, c) })
+
   salesInRange.value.forEach(s => {
     const total = Number(s.total || 0)
-    const vat = extractVat(total)
+    const vat = Number(s.tax || 0)
     const net = total - vat
     const ref = s.transaction_number || s.reference || `POS-${s.id}`
-    entries.push(jentry(s.created_at, 'POS', 'green', ref, `POS sale (${s.payment_method || 'cash'})`, ACC.CASH, total, 0))
+    const isCredit = s.payment_method === 'credit'
+    const credit = isCredit ? creditByTxn.get(s.id) : null
+    if (isCredit && credit) {
+      const paidUpfront = Number(credit.partial_paid_amount || 0)
+      const balance = Number(credit.balance_amount || 0)
+      if (paidUpfront > 0) {
+        const pm = credit.partial_payment_method || 'cash'
+        entries.push(jentry(s.created_at, 'POS', 'green', ref, `POS credit sale – upfront (${pm})`, ACC.CASH, paidUpfront, 0))
+      }
+      if (balance > 0) {
+        entries.push(jentry(s.created_at, 'POS', 'orange', ref, `POS credit sale – receivable (${credit.customer_name})`, ACC.AR, balance, 0, credit.customer_name))
+      }
+    } else {
+      entries.push(jentry(s.created_at, 'POS', 'green', ref, `POS sale (${s.payment_method || 'cash'})`, ACC.CASH, total, 0))
+    }
     entries.push(jentry(s.created_at, 'POS', 'green', ref, 'Sales revenue (ex-VAT)', ACC.REVENUE, 0, net))
-    if (vat > 0) entries.push(jentry(s.created_at, 'POS', 'green', ref, 'VAT collected (16%)', ACC.VAT, 0, vat))
+    if (vat > 0) entries.push(jentry(s.created_at, 'POS', 'green', ref, 'VAT collected', ACC.VAT, 0, vat))
   })
   // Invoices issued: DR AR, CR Revenue (only those in range, treat as accrual)
   invoices.value.filter(i => inRange(i.created_at) && !['cancelled', 'draft'].includes(i.status)).forEach(i => {
     const total = Number(i.total || 0)
-    const vat = extractVat(total)
+    const vat = Number(i.tax || 0)
     const net = total - vat
     const ref = i.invoice_number
     entries.push(jentry(i.created_at, 'INV', 'amber', ref, `Invoice issued`, ACC.AR, total, 0, i.patient_name))
     entries.push(jentry(i.created_at, 'INV', 'amber', ref, 'Sales revenue (ex-VAT)', ACC.REVENUE, 0, net, i.patient_name))
-    if (vat > 0) entries.push(jentry(i.created_at, 'INV', 'amber', ref, 'VAT collected (16%)', ACC.VAT, 0, vat))
+    if (vat > 0) entries.push(jentry(i.created_at, 'INV', 'amber', ref, 'VAT collected', ACC.VAT, 0, vat))
   })
   // Payments received: DR Cash, CR AR
   paymentsInRange.value.forEach(p => {
@@ -2225,22 +2386,8 @@ const tbComposition = computed(() => {
 </script>
 
 <style scoped>
-.hero {
-  background: linear-gradient(135deg, #047857 0%, #10b981 50%, #06b6d4 100%);
-  border-radius: 20px !important;
-  box-shadow: 0 12px 32px rgba(16, 185, 129, 0.25);
-}
-.kpi {
-  background: rgba(255, 255, 255, 0.97);
-  color: rgba(0, 0, 0, 0.87);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-.kpi:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0, 0, 0, 0.1); }
-.kpi :deep(.text-h6) { color: rgba(0, 0, 0, 0.87) !important; }
-.kpi :deep(.text-medium-emphasis) { color: rgba(0, 0, 0, 0.62) !important; }
-.kpi :deep(.text-caption) { color: rgba(0, 0, 0, 0.62); }
-.kpi :deep(.text-success) { color: #15803d !important; }
-.kpi :deep(.text-error) { color: #b91c1c !important; }
+.kpi-card { transition: transform 0.15s ease, box-shadow 0.15s ease; border: 1px solid rgba(var(--v-theme-on-surface), 0.06); }
+.kpi-card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.06); }
 
 .cashflow-wrap { padding-top: 4px; }
 

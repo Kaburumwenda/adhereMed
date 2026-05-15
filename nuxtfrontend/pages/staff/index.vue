@@ -1,51 +1,49 @@
 <template>
   <v-container fluid class="pa-4 pa-md-6 staff-module">
     <!-- ───────────────────────── Hero ───────────────────────── -->
-    <v-card flat rounded="xl" class="hero mb-5 text-white pa-5 pa-md-6">
-      <v-row align="center" no-gutters>
-        <v-col cols="12" md="8">
-          <div class="d-flex align-center mb-2">
-            <v-avatar color="white" size="44" class="mr-3">
-              <v-icon color="indigo-darken-2" size="26">mdi-badge-account-horizontal</v-icon>
-            </v-avatar>
-            <div>
-              <div class="text-h5 font-weight-bold">Pharmacy Staff</div>
-              <div class="text-caption opacity-80">Manage team members, specializations &amp; schedules</div>
-            </div>
-          </div>
-        </v-col>
-        <v-col cols="12" md="4" class="d-flex justify-md-end mt-3 mt-md-0">
-          <v-btn color="white" variant="elevated" class="text-indigo-darken-3 mr-2"
-                 prepend-icon="mdi-account-plus" @click="openStaffDialog()">Add Staff</v-btn>
-          <v-btn color="white" variant="outlined" prepend-icon="mdi-refresh"
-                 :loading="loading" @click="reloadAll">Refresh</v-btn>
-        </v-col>
-      </v-row>
+        <!-- Header -->
+    <div class="d-flex flex-wrap align-center justify-space-between mb-4">
+      <div class="d-flex align-center">
+        <v-avatar color="indigo-lighten-5" size="48" class="mr-3">
+          <v-icon color="indigo-darken-2" size="28">mdi-badge-account-horizontal</v-icon>
+        </v-avatar>
+        <div>
+          <h1 class="text-h5 font-weight-bold mb-1">{{ $t('staff.title') }}</h1>
+          <div class="text-body-2 text-medium-emphasis">Manage team members, specializations &amp; schedules</div>
+        </div>
+      </div>
+      <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
+        <v-btn rounded="lg" color="primary" variant="flat" class="text-none mr-2"
+                 prepend-icon="mdi-account-plus" @click="openStaffDialog()">{{ $t('staff.addStaff') }}</v-btn>
+      <v-btn rounded="lg" color="primary" variant="tonal" prepend-icon="mdi-refresh"
+                 :loading="loading" @click="reloadAll">{{ $t('common.refresh') }}</v-btn>
+      </div>
+    </div>
 
-      <v-row class="mt-4" dense>
-        <v-col v-for="card in statCards" :key="card.key" cols="6" md="3">
-          <v-card flat rounded="lg" class="stat-card pa-3"
-                  @click="card.tab && (tab = card.tab)">
-            <div class="d-flex align-center">
-              <v-avatar :color="card.color" size="36" class="mr-3">
-                <v-icon color="white" size="20">{{ card.icon }}</v-icon>
-              </v-avatar>
-              <div>
-                <div class="text-caption text-medium-emphasis">{{ card.label }}</div>
-                <div class="text-h6 font-weight-bold">{{ card.value }}</div>
-              </div>
+    <!-- KPIs -->
+    <v-row dense class="mb-4">
+      <v-col v-for="k in statCards" :key="k.label" cols="6" md="3">
+        <v-card rounded="lg" class="pa-4 h-100 kpi-card">
+          <div class="d-flex align-start justify-space-between">
+            <div>
+              <div class="text-caption text-medium-emphasis">{{ k.label }}</div>
+              <div class="text-h6 font-weight-bold mt-1">{{ k.value }}</div>
+              <div v-if="k.sub" class="text-caption text-medium-emphasis mt-1">{{ k.sub }}</div>
             </div>
-          </v-card>
-        </v-col>
-      </v-row>
-    </v-card>
+            <v-avatar :color="k.color" variant="tonal" rounded="lg" size="40">
+              <v-icon size="20">{{ k.icon }}</v-icon>
+            </v-avatar>
+          </div>
+        </v-card>
+      </v-col>
+    </v-row>
 
     <!-- ───────────────────────── Tabs ───────────────────────── -->
     <v-card flat rounded="xl" class="mb-4">
       <v-tabs v-model="tab" color="indigo-darken-2" align-tabs="start" show-arrows>
-        <v-tab value="team" prepend-icon="mdi-account-group">Team</v-tab>
-        <v-tab value="specializations" prepend-icon="mdi-school">Specializations</v-tab>
-        <v-tab value="schedule" prepend-icon="mdi-calendar-week">Weekly Schedule</v-tab>
+        <v-tab value="team" prepend-icon="mdi-account-group">{{ $t('staff.team') }}</v-tab>
+        <v-tab value="specializations" prepend-icon="mdi-school">{{ $t('staff.specializations') }}</v-tab>
+        <v-tab value="schedule" prepend-icon="mdi-calendar-week">{{ $t('staff.weeklySchedule') }}</v-tab>
       </v-tabs>
     </v-card>
 
@@ -55,7 +53,7 @@
         <v-row dense align="center">
           <v-col cols="12" md="4">
             <v-text-field v-model="staffSearch" prepend-inner-icon="mdi-magnify"
-                          placeholder="Search by name, email…" density="comfortable" hide-details
+                          :placeholder="$t('staff.searchByNameEmail')" density="comfortable" hide-details
                           variant="solo-filled" flat clearable @update:model-value="debouncedLoadStaff" />
           </v-col>
           <v-col cols="6" md="2">
@@ -94,13 +92,11 @@
           </v-col>
           <v-col cols="auto">
             <v-btn size="small" variant="tonal" color="error" prepend-icon="mdi-delete"
-                   @click="bulkDelete">Delete</v-btn>
+                   @click="bulkDelete">{{ $t('common.delete') }}</v-btn>
           </v-col>
           <v-spacer />
           <v-col cols="auto">
-            <v-btn size="small" variant="text" prepend-icon="mdi-download" @click="exportStaffCsv">
-              Export CSV
-            </v-btn>
+            <v-btn size="small" variant="text" prepend-icon="mdi-download" @click="exportStaffCsv">{{ $t('common.exportCSV') }}</v-btn>
           </v-col>
         </v-row>
       </v-card>
@@ -158,11 +154,11 @@
             </v-btn>
             <v-btn icon size="small" variant="text" @click="openStaffDialog(item)">
               <v-icon size="20">mdi-pencil</v-icon>
-              <v-tooltip activator="parent" location="top">Edit</v-tooltip>
+              <v-tooltip activator="parent" location="top">{{ $t('common.edit') }}</v-tooltip>
             </v-btn>
             <v-btn icon size="small" variant="text" color="error" @click="confirmDelete(item)">
               <v-icon size="20">mdi-delete</v-icon>
-              <v-tooltip activator="parent" location="top">Delete</v-tooltip>
+              <v-tooltip activator="parent" location="top">{{ $t('common.delete') }}</v-tooltip>
             </v-btn>
           </template>
 
@@ -375,7 +371,7 @@
         <v-divider />
         <v-card-actions class="pa-3">
           <v-spacer />
-          <v-btn variant="text" @click="staffDialog = false">Cancel</v-btn>
+          <v-btn variant="text" @click="staffDialog = false">{{ $t('common.cancel') }}</v-btn>
           <v-btn color="primary" variant="elevated" :loading="saving" @click="saveStaff">
             {{ editingStaff ? 'Save changes' : 'Create staff' }}
           </v-btn>
@@ -400,8 +396,8 @@
         <v-divider />
         <v-card-actions class="pa-3">
           <v-spacer />
-          <v-btn variant="text" @click="specDialog = false">Cancel</v-btn>
-          <v-btn color="primary" variant="elevated" :loading="saving" @click="saveSpec">Save</v-btn>
+          <v-btn variant="text" @click="specDialog = false">{{ $t('common.cancel') }}</v-btn>
+          <v-btn color="primary" variant="elevated" :loading="saving" @click="saveSpec">{{ $t('common.save') }}</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -419,8 +415,8 @@
         </v-card-text>
         <v-card-actions class="pa-3">
           <v-spacer />
-          <v-btn variant="text" @click="confirmDialog = false">Cancel</v-btn>
-          <v-btn color="error" variant="elevated" @click="performDelete">Delete</v-btn>
+          <v-btn variant="text" @click="confirmDialog = false">{{ $t('common.cancel') }}</v-btn>
+          <v-btn color="error" variant="elevated" @click="performDelete">{{ $t('common.delete') }}</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -432,6 +428,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 
 const { $api } = useNuxtApp()
@@ -872,15 +871,9 @@ onMounted(() => { reloadAll() })
 </script>
 
 <style scoped>
-.hero {
-  background: linear-gradient(135deg, #4338ca 0%, #6d28d9 50%, #2563eb 100%);
-}
-.hero .stat-card {
-  background: rgba(255, 255, 255, 0.96);
-  color: rgb(33, 33, 33);
-  cursor: pointer;
-  transition: transform .15s ease, box-shadow .15s ease;
-}
+.kpi-card { transition: transform 0.15s ease, box-shadow 0.15s ease; border: 1px solid rgba(var(--v-theme-on-surface), 0.06); }
+.kpi-card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.06); }
+
 .hero .stat-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);

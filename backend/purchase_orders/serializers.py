@@ -50,7 +50,9 @@ def _normalize_items(items):
             raw.get('unit_selling_price') or raw.get('selling_price') or 0
         )
         discount = _to_decimal(raw.get('discount_percent') or raw.get('discount') or 0)
+        tax_pct = _to_decimal(raw.get('tax_percent') or 0)
         line_total = (unit_cost * qty).quantize(Decimal('0.01'))
+        line_tax = (line_total * tax_pct / 100).quantize(Decimal('0.01')) if tax_pct > 0 else Decimal('0')
         cleaned.append({
             'medication_stock_id': int(stock_id),
             'name': raw.get('name') or '',
@@ -58,12 +60,14 @@ def _normalize_items(items):
             'unit_cost': float(unit_cost),
             'unit_selling_price': float(unit_selling),
             'discount_percent': float(discount),
+            'tax_percent': float(tax_pct),
+            'tax_amount': float(line_tax),
             'expiry_date': raw.get('expiry_date') or '',
             'batch_number': raw.get('batch_number') or '',
             'total': float(line_total),
             '_synced': bool(raw.get('_synced', False)),
         })
-        total += line_total
+        total += line_total + line_tax
     return cleaned, total.quantize(Decimal('0.01'))
 
 
@@ -95,6 +99,7 @@ def _sync_received_items(purchase_order):
         it['_prev_cost_price'] = float(stock.cost_price or 0)
         it['_prev_selling_price'] = float(stock.selling_price or 0)
         it['_prev_discount_percent'] = float(stock.discount_percent or 0)
+        it['_prev_tax_percent'] = float(stock.tax_percent or 0)
         StockBatch.objects.create(
             stock=stock,
             batch_number=batch_number,
@@ -116,6 +121,10 @@ def _sync_received_items(purchase_order):
         if discount >= 0 and stock.discount_percent != discount:
             stock.discount_percent = discount
             changed.append('discount_percent')
+        tax_pct = _to_decimal(it.get('tax_percent'))
+        if tax_pct >= 0 and stock.tax_percent != tax_pct:
+            stock.tax_percent = tax_pct
+            changed.append('tax_percent')
         if changed:
             changed.append('updated_at')
             stock.save(update_fields=changed)
@@ -186,6 +195,7 @@ def revert_received_items(purchase_order, force=False):
         prev_cost = _to_decimal(it.get('_prev_cost_price'))
         prev_sell = _to_decimal(it.get('_prev_selling_price'))
         prev_disc = _to_decimal(it.get('_prev_discount_percent'))
+        prev_tax = _to_decimal(it.get('_prev_tax_percent'))
         if '_prev_cost_price' in it and stock.cost_price != prev_cost:
             stock.cost_price = prev_cost
             changed.append('cost_price')
@@ -195,6 +205,9 @@ def revert_received_items(purchase_order, force=False):
         if '_prev_discount_percent' in it and stock.discount_percent != prev_disc:
             stock.discount_percent = prev_disc
             changed.append('discount_percent')
+        if '_prev_tax_percent' in it and stock.tax_percent != prev_tax:
+            stock.tax_percent = prev_tax
+            changed.append('tax_percent')
         if changed:
             changed.append('updated_at')
             stock.save(update_fields=changed)
@@ -261,7 +274,7 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
                     if prev.get('_synced'):
                         it['_synced'] = True
                     # Preserve previous-price snapshot and returned flag
-                    for k in ('_prev_cost_price', '_prev_selling_price', '_prev_discount_percent', '_returned'):
+                    for k in ('_prev_cost_price', '_prev_selling_price', '_prev_discount_percent', '_prev_tax_percent', '_returned'):
                         if k in prev:
                             it[k] = prev[k]
             validated_data['items'] = cleaned

@@ -17,6 +17,9 @@ export default defineNuxtPlugin((nuxtApp) => {
   const initial = readInitialTheme()
 
   const vuetify = createVuetify({
+    locale: {
+      rtl: { ar: true }
+    },
     theme: {
       defaultTheme: initial,
       themes: {

@@ -1,58 +1,43 @@
 <template>
   <v-container fluid class="pa-3 pa-md-5">
-    <!-- Hero -->
-    <v-card flat rounded="xl" class="hero text-white pa-5 pa-md-6 mb-4">
-      <v-row align="center" no-gutters>
-        <v-col cols="12" md="7">
-          <div class="d-flex align-center">
-            <v-avatar color="white" size="56" class="mr-4 elevation-2">
-              <v-icon color="indigo" size="32">mdi-receipt-text</v-icon>
-            </v-avatar>
-            <div class="min-width-0">
-              <div class="text-h5 text-md-h4 font-weight-bold">Invoices</div>
-              <div class="text-body-2" style="opacity:0.9">
-                Issue, track &amp; collect — full receivables management.
-              </div>
-            </div>
-          </div>
-        </v-col>
-        <v-col cols="12" md="5" class="d-flex justify-md-end mt-3 mt-md-0" style="gap:8px">
-          <v-select
-            v-model="rangeKey"
-            :items="rangeOptions" item-title="label" item-value="key"
-            density="compact" variant="solo-filled" hide-details
-            bg-color="white" base-color="grey-darken-3"
-            prepend-inner-icon="mdi-calendar-range"
-            style="min-width:180px"
-            @update:model-value="onRangeChange"
-          />
-          <v-btn variant="flat" color="white" prepend-icon="mdi-refresh" class="text-indigo-darken-3"
-                 :loading="loading" @click="loadAll">Refresh</v-btn>
-          <v-btn variant="flat" color="white" prepend-icon="mdi-download" class="text-indigo-darken-3"
+        <!-- Header -->
+    <div class="d-flex flex-wrap align-center justify-space-between mb-4">
+      <div class="d-flex align-center">
+        <v-avatar color="indigo-lighten-5" size="48" class="mr-3">
+          <v-icon color="indigo-darken-2" size="28">mdi-receipt-text</v-icon>
+        </v-avatar>
+        <div>
+          <h1 class="text-h5 font-weight-bold mb-1">{{ $t('invoices.title') }}</h1>
+          <div class="text-body-2 text-medium-emphasis">Issue, track &amp; collect — full receivables management</div>
+        </div>
+      </div>
+      <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
+        <v-btn rounded="lg" variant="flat" color="primary" prepend-icon="mdi-refresh" class="text-none"
+                 :loading="loading" @click="loadAll">{{ $t('common.refresh') }}</v-btn>
+      <v-btn rounded="lg" variant="flat" color="primary" prepend-icon="mdi-download" class="text-none"
                  @click="exportCsv">Export</v-btn>
-          <v-btn color="white" variant="flat" class="text-indigo-darken-3"
+      <v-btn rounded="lg" color="primary" variant="flat" class="text-none"
                  prepend-icon="mdi-plus" to="/invoices/new">New invoice</v-btn>
-        </v-col>
-      </v-row>
+      </div>
+    </div>
 
-      <!-- KPI strip -->
-      <v-row class="mt-4" dense>
-        <v-col v-for="k in kpiTiles" :key="k.label" cols="6" md="3">
-          <v-card flat rounded="lg" class="kpi pa-3">
-            <div class="d-flex align-center">
-              <v-avatar :color="k.color" size="40" class="mr-3">
-                <v-icon color="white" size="22">{{ k.icon }}</v-icon>
-              </v-avatar>
-              <div class="min-width-0">
-                <div class="text-caption text-medium-emphasis text-uppercase">{{ k.label }}</div>
-                <div class="text-h6 font-weight-bold">{{ k.value }}</div>
-                <div class="text-caption" :class="k.trendClass">{{ k.sub }}</div>
-              </div>
+    <!-- KPIs -->
+    <v-row dense class="mb-4">
+      <v-col v-for="k in kpiTiles" :key="k.label" cols="6" md="3">
+        <v-card rounded="lg" class="pa-4 h-100 kpi-card">
+          <div class="d-flex align-start justify-space-between">
+            <div>
+              <div class="text-caption text-medium-emphasis">{{ k.label }}</div>
+              <div class="text-h6 font-weight-bold mt-1">{{ k.value }}</div>
+              <div v-if="k.sub" class="text-caption text-medium-emphasis mt-1">{{ k.sub }}</div>
             </div>
-          </v-card>
-        </v-col>
-      </v-row>
-    </v-card>
+            <v-avatar :color="k.color" variant="tonal" rounded="lg" size="40">
+              <v-icon size="20">{{ k.icon }}</v-icon>
+            </v-avatar>
+          </div>
+        </v-card>
+      </v-col>
+    </v-row>
 
     <!-- Aging buckets -->
     <v-row dense class="mb-3">
@@ -106,7 +91,7 @@
         <v-btn size="small" variant="tonal" color="info" prepend-icon="mdi-email-fast"
                @click="bulkUpdateStatus('sent')">Mark Sent</v-btn>
         <v-btn size="small" variant="tonal" color="error" prepend-icon="mdi-cancel"
-               @click="bulkUpdateStatus('cancelled')">Cancel</v-btn>
+               @click="bulkUpdateStatus('cancelled')">{{ $t('common.cancel') }}</v-btn>
         <v-btn size="small" variant="text" @click="selected = []">Clear</v-btn>
       </div>
     </v-card>
@@ -175,7 +160,7 @@
                 <v-list-item-title>Open</v-list-item-title>
               </v-list-item>
               <v-list-item :to="`/invoices/${item.id}/edit`" prepend-icon="mdi-pencil">
-                <v-list-item-title>Edit</v-list-item-title>
+                <v-list-item-title>{{ $t('common.edit') }}</v-list-item-title>
               </v-list-item>
               <v-list-item prepend-icon="mdi-content-copy" @click="duplicateInvoice(item)">
                 <v-list-item-title>Duplicate</v-list-item-title>
@@ -190,7 +175,7 @@
               </v-list-item>
               <v-divider />
               <v-list-item prepend-icon="mdi-delete" base-color="error" @click="confirmDelete(item)">
-                <v-list-item-title>Delete</v-list-item-title>
+                <v-list-item-title>{{ $t('common.delete') }}</v-list-item-title>
               </v-list-item>
             </v-list>
           </v-menu>
@@ -222,7 +207,7 @@
             <span>{{ payTarget.patient_name || '—' }}</span>
           </div>
           <div class="d-flex justify-space-between mb-2">
-            <span class="text-caption text-medium-emphasis">Total</span>
+            <span class="text-caption text-medium-emphasis">{{ $t('common.total') }}</span>
             <span class="font-weight-bold">{{ formatMoney(payTarget.total) }}</span>
           </div>
           <div class="d-flex justify-space-between mb-3">
@@ -245,7 +230,7 @@
         <v-card-actions class="pa-3">
           <v-btn variant="text" @click="setFullAmount">Pay full balance</v-btn>
           <v-spacer />
-          <v-btn variant="text" @click="payDialog = false">Cancel</v-btn>
+          <v-btn variant="text" @click="payDialog = false">{{ $t('common.cancel') }}</v-btn>
           <v-btn color="success" variant="flat" :loading="saving" @click="recordPayment">
             Record payment
           </v-btn>
@@ -282,7 +267,7 @@
               <div>{{ invDetail.due_date ? formatDate(invDetail.due_date) : '—' }}</div>
             </v-col>
             <v-col cols="6">
-              <div class="text-caption text-medium-emphasis">Status</div>
+              <div class="text-caption text-medium-emphasis">{{ $t('common.status') }}</div>
               <v-chip size="x-small" :color="invoiceStatusColor(invDetail.status)" variant="tonal">
                 {{ invDetail.status }}
               </v-chip>
@@ -296,7 +281,7 @@
               <tr>
                 <th>Description</th>
                 <th class="text-right">Qty × Unit</th>
-                <th class="text-right">Total</th>
+                <th class="text-right">{{ $t('common.total') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -314,17 +299,17 @@
           <v-divider class="my-3" />
           <v-row dense>
             <v-col cols="12" md="6">
-              <div v-if="invDetail.notes" class="text-caption text-medium-emphasis">Notes</div>
+              <div v-if="invDetail.notes" class="text-caption text-medium-emphasis">{{ $t('common.notes') }}</div>
               <div v-if="invDetail.notes" class="text-body-2">{{ invDetail.notes }}</div>
             </v-col>
             <v-col cols="12" md="6">
-              <div class="d-flex justify-space-between"><span>Subtotal</span><span>{{ formatMoney(invDetail.subtotal) }}</span></div>
-              <div class="d-flex justify-space-between"><span>Tax</span><span>{{ formatMoney(invDetail.tax) }}</span></div>
-              <div class="d-flex justify-space-between"><span>Discount</span><span>− {{ formatMoney(invDetail.discount) }}</span></div>
-              <div class="d-flex justify-space-between font-weight-bold"><span>Total</span><span>{{ formatMoney(invDetail.total) }}</span></div>
-              <div class="d-flex justify-space-between text-success"><span>Paid</span><span>{{ formatMoney(invDetail.amount_paid) }}</span></div>
+              <div class="d-flex justify-space-between"><span>{{ $t('common.subtotal') }}</span><span>{{ formatMoney(invDetail.subtotal) }}</span></div>
+              <div class="d-flex justify-space-between"><span>{{ $t('common.tax') }}</span><span>{{ formatMoney(invDetail.tax) }}</span></div>
+              <div class="d-flex justify-space-between"><span>{{ $t('common.discount') }}</span><span>− {{ formatMoney(invDetail.discount) }}</span></div>
+              <div class="d-flex justify-space-between font-weight-bold"><span>{{ $t('common.total') }}</span><span>{{ formatMoney(invDetail.total) }}</span></div>
+              <div class="d-flex justify-space-between text-success"><span>{{ $t('common.paid') }}</span><span>{{ formatMoney(invDetail.amount_paid) }}</span></div>
               <div class="d-flex justify-space-between font-weight-bold text-error">
-                <span>Balance</span><span>{{ formatMoney(invoiceBalance(invDetail)) }}</span>
+                <span>{{ $t('common.balance') }}</span><span>{{ formatMoney(invoiceBalance(invDetail)) }}</span>
               </div>
             </v-col>
           </v-row>
@@ -349,9 +334,9 @@
         </v-card-text>
         <v-divider />
         <v-card-actions class="pa-3">
-          <v-btn variant="text" :to="`/invoices/${invDetail.id}/edit`" prepend-icon="mdi-pencil">Edit</v-btn>
+          <v-btn variant="text" :to="`/invoices/${invDetail.id}/edit`" prepend-icon="mdi-pencil">{{ $t('common.edit') }}</v-btn>
           <v-spacer />
-          <v-btn variant="text" @click="invDetailDialog = false">Close</v-btn>
+          <v-btn variant="text" @click="invDetailDialog = false">{{ $t('common.close') }}</v-btn>
           <v-btn v-if="invoiceBalance(invDetail) > 0" color="success" variant="flat"
                  prepend-icon="mdi-cash-plus"
                  @click="openPayDialog(invDetail); invDetailDialog = false">
@@ -371,7 +356,7 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" @click="customDialog = false">Cancel</v-btn>
+          <v-btn variant="text" @click="customDialog = false">{{ $t('common.cancel') }}</v-btn>
           <v-btn color="primary" variant="flat" @click="applyCustom">Apply</v-btn>
         </v-card-actions>
       </v-card>
@@ -387,8 +372,8 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" @click="deleteDialog = false">Cancel</v-btn>
-          <v-btn color="error" variant="flat" :loading="saving" @click="deleteInvoice">Delete</v-btn>
+          <v-btn variant="text" @click="deleteDialog = false">{{ $t('common.cancel') }}</v-btn>
+          <v-btn color="error" variant="flat" :loading="saving" @click="deleteInvoice">{{ $t('common.delete') }}</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -400,6 +385,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { ref, reactive, computed, onMounted } from 'vue'
 import { formatMoney, formatDate, formatDateTime } from '~/utils/format'
 import EmptyState from '~/components/EmptyState.vue'
@@ -766,16 +754,16 @@ function printInvoice(inv) {
       <div style="font-weight:600">${escapeHtml(inv.patient_name || '—')}</div>
     </div>
     <table><thead><tr><th>Description</th><th style="text-align:right">Qty</th>
-      <th style="text-align:right">Unit</th><th style="text-align:right">Total</th></tr></thead>
+      <th style="text-align:right">Unit</th><th style="text-align:right">{{ $t('common.total') }}</th></tr></thead>
       <tbody>${itemsHtml || '<tr><td colspan="4" style="padding:12px;text-align:center;color:#999">No line items</td></tr>'}</tbody>
     </table>
     <div class="totals">
-      <div><span>Subtotal</span><span>${formatMoney(inv.subtotal)}</span></div>
-      <div><span>Tax</span><span>${formatMoney(inv.tax)}</span></div>
-      <div><span>Discount</span><span>− ${formatMoney(inv.discount)}</span></div>
-      <div style="font-weight:700;border-top:1px solid #ddd;margin-top:6px;padding-top:6px"><span>Total</span><span>${formatMoney(inv.total)}</span></div>
-      <div style="color:#0a0"><span>Paid</span><span>${formatMoney(inv.amount_paid)}</span></div>
-      <div style="font-weight:700;color:#c00"><span>Balance</span><span>${formatMoney(invoiceBalance(inv))}</span></div>
+      <div><span>{{ $t('common.subtotal') }}</span><span>${formatMoney(inv.subtotal)}</span></div>
+      <div><span>{{ $t('common.tax') }}</span><span>${formatMoney(inv.tax)}</span></div>
+      <div><span>{{ $t('common.discount') }}</span><span>− ${formatMoney(inv.discount)}</span></div>
+      <div style="font-weight:700;border-top:1px solid #ddd;margin-top:6px;padding-top:6px"><span>{{ $t('common.total') }}</span><span>${formatMoney(inv.total)}</span></div>
+      <div style="color:#0a0"><span>{{ $t('common.paid') }}</span><span>${formatMoney(inv.amount_paid)}</span></div>
+      <div style="font-weight:700;color:#c00"><span>{{ $t('common.balance') }}</span><span>${formatMoney(invoiceBalance(inv))}</span></div>
     </div>
     <div style="clear:both;margin-top:32px" class="muted">${escapeHtml(inv.notes || '')}</div>
     <script>window.onload=()=>setTimeout(()=>window.print(),200)<\/script>
@@ -815,22 +803,9 @@ function notify(message, color = 'success') { Object.assign(snack, { show: true,
 </script>
 
 <style scoped>
-.hero {
-  background: linear-gradient(135deg, #4338ca 0%, #6366f1 50%, #8b5cf6 100%);
-  border-radius: 20px !important;
-  box-shadow: 0 12px 32px rgba(99, 102, 241, 0.25);
-}
-.kpi {
-  background: rgba(255, 255, 255, 0.97);
-  color: rgba(0, 0, 0, 0.87);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-.kpi:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0, 0, 0, 0.1); }
-.kpi :deep(.text-h6) { color: rgba(0, 0, 0, 0.87) !important; }
-.kpi :deep(.text-medium-emphasis) { color: rgba(0, 0, 0, 0.62) !important; }
-.kpi :deep(.text-caption) { color: rgba(0, 0, 0, 0.62); }
-.kpi :deep(.text-success) { color: #15803d !important; }
-.kpi :deep(.text-error) { color: #b91c1c !important; }
+.kpi-card { transition: transform 0.15s ease, box-shadow 0.15s ease; border: 1px solid rgba(var(--v-theme-on-surface), 0.06); }
+.kpi-card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.06); }
+
 .bucket { cursor: pointer; transition: transform 0.15s ease, box-shadow 0.15s ease; }
 .bucket:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0, 0, 0, 0.08); }
 .bucket-active {

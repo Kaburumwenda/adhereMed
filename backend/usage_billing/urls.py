@@ -1,6 +1,7 @@
 from django.urls import path
 
 from . import views
+from . import referral_views
 
 app_name = "usage_billing"
 
@@ -11,6 +12,13 @@ urlpatterns = [
     path("lab/dashboard/", views.tenant_lab_dashboard, name="tenant-lab-dashboard"),
     path("lab/range/", views.tenant_lab_range, name="tenant-lab-range"),
     path("doctor/dashboard/", views.doctor_dashboard, name="doctor-dashboard"),
+
+    # Referral system
+    path("referral/dashboard/", referral_views.referral_dashboard, name="referral-dashboard"),
+    path("referral/transactions/", referral_views.referral_transactions, name="referral-transactions"),
+    path("referral/stats/", referral_views.referral_stats, name="referral-stats"),
+    path("referral/performance/", referral_views.referral_performance, name="referral-performance"),
+    path("referral/validate/<str:code>/", referral_views.validate_referral_code, name="referral-validate"),
 
     # Super admin
     path("admin/rates/", views.RateListCreateView.as_view(), name="admin-rate-list"),

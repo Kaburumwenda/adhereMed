@@ -58,6 +58,7 @@ class TenantRegistrationView(generics.CreateAPIView):
             schema_name=data['slug'].replace('-', '_'),
             address=data.get('address', ''),
             city=data.get('city', ''),
+            country=data.get('country', 'Kenya'),
             phone=data.get('phone', ''),
             email=data.get('email', ''),
         )
@@ -80,6 +81,35 @@ class TenantRegistrationView(generics.CreateAPIView):
 
         from accounts.tasks import send_welcome_email
         send_welcome_email(user.id)
+
+        # ── Referral system: create profile for new tenant ────────────
+        from usage_billing.referral_models import CoinTransaction, Referral, ReferralProfile
+        new_profile = ReferralProfile.objects.create(tenant=tenant)
+
+        referral_code = data.get('referral_code', '').strip().upper()
+        if referral_code:
+            try:
+                referrer_profile = ReferralProfile.objects.select_related('tenant').get(
+                    referral_code=referral_code,
+                )
+                # Don't allow self-referral
+                if referrer_profile.tenant_id != tenant.id:
+                    Referral.objects.create(
+                        referrer=referrer_profile.tenant,
+                        referred=tenant,
+                        status=Referral.Status.ACTIVE,
+                        bonus_awarded=True,
+                    )
+                    # Award 100 Adhere Coins to the referrer
+                    referrer_profile.credit(
+                        100,
+                        f'Referral bonus: {tenant.name} joined using your code',
+                        related_tenant=tenant,
+                    )
+                    referrer_profile.referral_count += 1
+                    referrer_profile.save(update_fields=['referral_count'])
+            except ReferralProfile.DoesNotExist:
+                pass  # Invalid code — silently ignore
 
         return Response(
             TenantSerializer(tenant).data,

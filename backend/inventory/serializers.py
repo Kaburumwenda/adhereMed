@@ -49,14 +49,14 @@ class MedicationStockSerializer(serializers.ModelSerializer):
     # Write-only fields for creating an initial batch alongside the stock item
     initial_quantity = serializers.IntegerField(write_only=True, required=False, min_value=0)
     batch_number = serializers.CharField(write_only=True, required=False, allow_blank=True)
-    expiry_date = serializers.DateField(write_only=True, required=False)
+    expiry_date = serializers.DateField(write_only=True, required=False, allow_null=True, default=None)
 
     class Meta:
         model = MedicationStock
         fields = [
             'id', 'medication_id', 'medication_name', 'abbreviation',
             'category', 'category_name', 'unit', 'unit_name', 'unit_abbreviation',
-            'selling_price', 'cost_price', 'discount_percent',
+            'selling_price', 'cost_price', 'tax_percent', 'discount_percent',
             'reorder_level', 'reorder_quantity',
             'location_in_store', 'barcode', 'prescription_required', 'is_active',
             'total_quantity', 'is_low_stock',
@@ -70,7 +70,7 @@ class MedicationStockSerializer(serializers.ModelSerializer):
         batch_number = validated_data.pop('batch_number', None) or ''
         expiry_date = validated_data.pop('expiry_date', None)
         stock = super().create(validated_data)
-        if initial_quantity and expiry_date:
+        if initial_quantity:
             StockBatch.objects.create(
                 stock=stock,
                 batch_number=batch_number or f'INIT-{stock.pk:05d}',

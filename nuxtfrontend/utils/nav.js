@@ -1,7 +1,7 @@
 // Mirrors the role/tenant-aware sidebar from lib/features/shell/shell_screen.dart
 // Each section: { label, items: [{ icon, label, path, children? }] }
 
-export function getNavSections(role, tenantType) {
+export function getNavSections(role, tenantType, t = (x) => x) {
   const sections = []
   const isSuperAdmin = role === 'super_admin'
 
@@ -34,7 +34,7 @@ export function getNavSections(role, tenantType) {
     items: [{
       icon: 'mdi-view-dashboard',
       label: 'Dashboard',
-      path: tenantType === 'lab' ? '/lab' : '/dashboard'
+      path: tenantType === 'lab' ? '/lab' : tenantType === 'pharmacy' ? '/pharmacy' : tenantType === 'radiology_center' ? '/radiology' : '/dashboard'
     }]
   })
 
@@ -85,104 +85,84 @@ export function getNavSections(role, tenantType) {
   const pharmacyRoles = ['tenant_admin', 'pharmacy_admin', 'pharmacist', 'pharmacy_tech', 'cashier', 'admin']
   if (tenantType === 'pharmacy' && pharmacyRoles.includes(role)) {
     sections.push({
-      label: 'PHARMACY',
+      label: t('nav.pharmacy'),
       items: [
-        { icon: 'mdi-point-of-sale', label: 'POS', path: '/pos' },
-        { icon: 'mdi-cash-register', label: 'Cashier Shifts', path: '/pos/shifts' },
-        { icon: 'mdi-receipt-text', label: 'Patient Orders', path: '/pharmacy-orders' },
+        { icon: 'mdi-point-of-sale', label: t('nav.pos'), path: '/pharmacy/pos' },
         {
-          icon: 'mdi-package-variant', label: 'Inventory', path: '/inventory',
+          icon: 'mdi-bank', label: t('nav.accountsFinance'), path: '/pharmacy/accounts',
           children: [
-            { icon: 'mdi-pill', label: 'Stock Items', path: '/inventory' },
-            { icon: 'mdi-shape', label: 'Categories', path: '/categories' },
-            { icon: 'mdi-ruler', label: 'Units', path: '/units' },
-            { icon: 'mdi-tune', label: 'Adjustments', path: '/adjustments' },
-            { icon: 'mdi-chart-line', label: 'Stock Analysis', path: '/inventory/stock-analysis' },
-            { icon: 'mdi-clipboard-list-outline', label: 'Stock Take', path: '/inventory/stock-take' },
-            { icon: 'mdi-truck-delivery-outline', label: 'Branch Transfers', path: '/inventory/transfers' },
-            { icon: 'mdi-shield-lock-outline', label: 'Controlled Register', path: '/inventory/controlled-register' }
+            { icon: 'mdi-view-dashboard-outline', label: t('nav.overview'), path: '/pharmacy/accounts' },
+            { icon: 'mdi-history', label: t('nav.salesHistory'), path: '/pharmacy/pos/history' },
+            { icon: 'mdi-account-cash-outline', label: t('nav.credits'), path: '/pharmacy/credit' },
+            { icon: 'mdi-cart', label: t('nav.purchaseOrders'), path: '/pharmacy/purchase-orders' },
+            { icon: 'mdi-receipt-text', label: t('nav.invoices'), path: '/pharmacy/invoices' },
+            { icon: 'mdi-cash-minus', label: t('nav.expenses'), path: '/pharmacy/expenses' },
+            { icon: 'mdi-tray-arrow-up', label: t('nav.onHoldSales'), path: '/pharmacy/pos/parked' },
           ]
         },
+        { icon: 'mdi-cash-register', label: t('nav.cashierShifts'), path: '/pharmacy/pos/shifts' },
+        { icon: 'mdi-receipt-text', label: t('nav.orders'), path: '/pharmacy/orders' },
         {
-          icon: 'mdi-chart-bar', label: 'Analytics', path: '/analytics',
+          icon: 'mdi-package-variant', label: t('nav.inventory'), path: '/pharmacy/inventory',
           children: [
-            { icon: 'mdi-chart-bar', label: 'Overview', path: '/analytics' },
-            { icon: 'mdi-shape', label: 'Category Sales', path: '/analytics/categories' },
-            { icon: 'mdi-trophy', label: 'Top Products', path: '/analytics/products' }
-          ]
-        },
-        { icon: 'mdi-clipboard-text', label: 'Reports', path: '/reports',
-          children: [
-            { icon: 'mdi-view-dashboard', label: 'Reports Hub', path: '/reports' },
-            { icon: 'mdi-chart-box-multiple', label: 'Analytics Dashboard', path: '/reports/analytics' }
+            { icon: 'mdi-pill', label: t('nav.stockItems'), path: '/pharmacy/inventory' },
+            { icon: 'mdi-shape', label: t('nav.categories'), path: '/pharmacy/categories' },
+            { icon: 'mdi-ruler', label: t('nav.units'), path: '/pharmacy/units' },
+            { icon: 'mdi-tune', label: t('nav.adjustments'), path: '/pharmacy/adjustments' },
+            { icon: 'mdi-chart-line', label: t('nav.stockAnalysis'), path: '/pharmacy/inventory/stock-analysis' },
+            { icon: 'mdi-clipboard-list-outline', label: t('nav.stockTake'), path: '/pharmacy/inventory/stock-take' },
+            { icon: 'mdi-truck-delivery-outline', label: t('nav.branchTransfers'), path: '/pharmacy/inventory/transfers' },
+            { icon: 'mdi-shield-lock-outline', label: t('nav.controlledRegister'), path: '/pharmacy/inventory/controlled-register' }
           ]
         },
         {
-          icon: 'mdi-receipt-text', label: 'Invoices', path: '/invoices',
+          icon: 'mdi-chart-bar', label: t('nav.analytics'), path: '/pharmacy/analytics',
           children: [
-            { icon: 'mdi-format-list-bulleted', label: 'All Invoices', path: '/invoices' },
-            { icon: 'mdi-plus-circle', label: 'New Invoice', path: '/invoices/new' }
+            { icon: 'mdi-chart-bar', label: t('nav.overview'), path: '/pharmacy/analytics' },
+            { icon: 'mdi-shape', label: t('nav.categorySales'), path: '/pharmacy/analytics/categories' },
+            { icon: 'mdi-trophy', label: t('nav.products'), path: '/pharmacy/analytics/products' }
           ]
         },
-        { icon: 'mdi-cash-multiple', label: 'API Billing', path: '/billing/usage' },
+        { icon: 'mdi-clipboard-text', label: t('nav.reports'), path: '/pharmacy/reports' },
+        { icon: 'mdi-cash-multiple', label: t('nav.apiBilling'), path: '/pharmacy/billing/usage' },
+        { icon: 'mdi-truck', label: t('nav.deliveries'), path: '/pharmacy/deliveries' },
         {
-          icon: 'mdi-bank', label: 'Accounts', path: '/accounts',
+          icon: 'mdi-clipboard-check', label: t('nav.dispensing'), path: '/pharmacy/dispensing',
           children: [
-            { icon: 'mdi-view-dashboard-outline', label: 'Overview', path: '/accounts' },
-            { icon: 'mdi-cash-fast', label: 'Receivables', path: '/accounts?tab=receivables' },
-            { icon: 'mdi-cash-clock', label: 'Payables', path: '/accounts?tab=payables' },
-            { icon: 'mdi-swap-vertical', label: 'Transactions', path: '/accounts?tab=transactions' },
-            { icon: 'mdi-chart-box', label: 'Profit &amp; Loss', path: '/accounts?tab=pnl' }
+            { icon: 'mdi-clipboard-check', label: t('nav.dispenseRecords'), path: '/pharmacy/dispensing' },
+            { icon: 'mdi-keyboard-return', label: t('nav.returns'), path: '/pharmacy/dispensing/returns' }
           ]
         },
-        { icon: 'mdi-truck', label: 'Deliveries', path: '/deliveries' },
-        { icon: 'mdi-cart', label: 'Purchase Orders', path: '/purchase-orders' },
+        { icon: 'mdi-pill-multiple', label: t('nav.prescriptions'), path: '/pharmacy/rx' },
+        { icon: 'mdi-bell-alert', label: t('nav.alerts'), path: '/pharmacy/alerts' },
+        { icon: 'mdi-shield-account', label: t('nav.insurance'), path: '/pharmacy/insurance' },
         {
-          icon: 'mdi-cash-minus', label: 'Expenses', path: '/expenses',
+          icon: 'mdi-pill', label: t('nav.medications'), path: '/pharmacy/medications',
           children: [
-            { icon: 'mdi-format-list-bulleted', label: 'View Expenses', path: '/expenses' },
-            { icon: 'mdi-plus-circle', label: 'New Expense', path: '/expenses/new' },
-            { icon: 'mdi-shape', label: 'Categories', path: '/expenses/categories' }
-          ]
-        },
-        {
-          icon: 'mdi-clipboard-check', label: 'Dispensing', path: '/dispensing',
-          children: [
-            { icon: 'mdi-clipboard-check', label: 'Dispense Records', path: '/dispensing' },
-            { icon: 'mdi-keyboard-return', label: 'Returns', path: '/dispensing/returns' }
-          ]
-        },
-        { icon: 'mdi-history', label: 'Sales History', path: '/pos/history' },
-        { icon: 'mdi-tray-arrow-up', label: 'On-Hold Sales', path: '/pos/parked' },
-        { icon: 'mdi-pill-multiple', label: 'Prescriptions', path: '/pharmacy-rx' },
-        { icon: 'mdi-bell-alert', label: 'Alerts', path: '/alerts' },
-        {
-          icon: 'mdi-shield-account', label: 'Insurance', path: '/insurance',
-          children: [
-            { icon: 'mdi-file-document', label: 'Claims', path: '/insurance' },
-            { icon: 'mdi-domain', label: 'Providers', path: '/insurance/providers' }
+            { icon: 'mdi-pill', label: t('nav.catalog'), path: '/pharmacy/medications' },
+            { icon: 'mdi-pill-multiple', label: t('nav.drugInteractions'), path: '/pharmacy/medications/interactions' }
           ]
         },
         {
-          icon: 'mdi-pill', label: 'Medications', path: '/medications',
+          icon: 'mdi-account-cog', label: t('nav.iam'), path: '/pharmacy/staff',
           children: [
-            { icon: 'mdi-pill', label: 'Catalog', path: '/medications' },
-            { icon: 'mdi-pill-multiple', label: 'Drug Interactions', path: '/medications/interactions' }
+            { icon: 'mdi-account-multiple', label: t('nav.customers'), path: '/pharmacy/customers' },
+            { icon: 'mdi-star-circle', label: t('nav.loyalty'), path: '/pharmacy/pos/loyalty' },
+            { icon: 'mdi-badge-account', label: t('nav.staff'), path: '/pharmacy/staff' },
+            { icon: 'mdi-school', label: t('nav.specializations'), path: '/pharmacy/specializations' },
+            { icon: 'mdi-podium', label: t('nav.performance'), path: '/pharmacy/staff-performance' },
+            { icon: 'mdi-truck', label: t('nav.suppliers'), path: '/pharmacy/suppliers' }
           ]
         },
+        { icon: 'mdi-cog', label: t('nav.settings'), path: '/pharmacy/settings' },
         {
-          icon: 'mdi-account-cog', label: 'IAM', path: '/staff',
+          icon: 'mdi-gift', label: 'Referrals', path: '/pharmacy/referral',
           children: [
-            { icon: 'mdi-account-multiple', label: 'Customers', path: '/customers' },
-            { icon: 'mdi-star-circle', label: 'Loyalty', path: '/pos/loyalty' },
-            { icon: 'mdi-badge-account', label: 'Staff', path: '/staff' },
-            { icon: 'mdi-school', label: 'Specializations', path: '/specializations' },
-            { icon: 'mdi-podium', label: 'Performance', path: '/staff-performance' },
-            { icon: 'mdi-truck', label: 'Suppliers', path: '/suppliers' }
+            { icon: 'mdi-view-dashboard', label: 'Dashboard', path: '/pharmacy/referral' },
+            { icon: 'mdi-chart-line', label: 'Performance', path: '/pharmacy/referral/performance' }
           ]
         },
-        { icon: 'mdi-cog', label: 'Settings', path: '/settings' },
-        { icon: 'mdi-bank', label: 'Branches', path: '/branches' }
+        { icon: 'mdi-bank', label: t('nav.branches'), path: '/pharmacy/branches' }
       ]
     })
   }
@@ -241,6 +221,69 @@ export function getNavSections(role, tenantType) {
         { icon: 'mdi-printer-pos', label: 'Report Templates', path: '/lab/report-templates' },
         { icon: 'mdi-bell', label: 'Notifications', path: '/lab/notifications' },
         { icon: 'mdi-cog', label: 'Settings', path: '/lab/settings' }
+      ]
+    })
+  }
+
+  // ── Radiology Center ──────────────────────────────────────────────
+  const radiologyRoles = ['tenant_admin', 'radiology_admin', 'radiologist', 'lab_tech', 'admin']
+  if (tenantType === 'radiology_center' && radiologyRoles.includes(role)) {
+    sections.push({
+      label: 'WORKLIST & ORDERS',
+      items: [
+        { icon: 'mdi-account-multiple', label: 'Patients', path: '/radiology/patients' },
+        {
+          icon: 'mdi-clipboard-text-clock', label: 'Orders', path: '/radiology/orders',
+          children: [
+            { icon: 'mdi-format-list-bulleted', label: 'All Orders', path: '/radiology/orders' },
+            { icon: 'mdi-plus-circle', label: 'New Order', path: '/radiology/orders/new' }
+          ]
+        },
+        { icon: 'mdi-clipboard-list-outline', label: 'Worklist', path: '/radiology/worklist' },
+        { icon: 'mdi-calendar-clock', label: 'Scheduling', path: '/radiology/scheduling' }
+      ]
+    })
+    sections.push({
+      label: 'REPORTING',
+      items: [
+        { icon: 'mdi-file-chart', label: 'Reports', path: '/radiology/reports' },
+        { icon: 'mdi-printer-pos', label: 'Report Templates', path: '/radiology/report-templates' },
+        { icon: 'mdi-alert-octagram', label: 'Critical Findings', path: '/radiology/critical-findings' }
+      ]
+    })
+    sections.push({
+      label: 'CATALOG & REFERRING',
+      items: [
+        { icon: 'mdi-flask-outline', label: 'Exam Catalog', path: '/radiology/catalog' },
+        { icon: 'mdi-package-variant', label: 'Exam Panels', path: '/radiology/panels' },
+        { icon: 'mdi-stethoscope', label: 'Referring Doctors', path: '/radiology/referring/doctors' },
+        { icon: 'mdi-hospital-building', label: 'Referring Facilities', path: '/radiology/referring/facilities' }
+      ]
+    })
+    sections.push({
+      label: 'EQUIPMENT & QC',
+      items: [
+        { icon: 'mdi-cog-transfer', label: 'Modalities / Equipment', path: '/radiology/equipment' },
+        { icon: 'mdi-chart-bell-curve-cumulative', label: 'Quality Control', path: '/radiology/qc' }
+      ]
+    })
+    sections.push({
+      label: 'BILLING & FINANCE',
+      items: [
+        { icon: 'mdi-receipt-text', label: 'Invoices', path: '/radiology/billing' },
+        { icon: 'mdi-bank', label: 'Accounts', path: '/radiology/accounts' },
+        { icon: 'mdi-cash-minus', label: 'Expenses', path: '/radiology/expenses' },
+        { icon: 'mdi-cash-multiple', label: 'API Billing', path: '/radiology/api/billing' }
+      ]
+    })
+    sections.push({
+      label: 'ADMIN & ANALYTICS',
+      items: [
+        { icon: 'mdi-account-group', label: 'Staff', path: '/radiology/staff' },
+        { icon: 'mdi-chart-bar', label: 'Analytics', path: '/radiology/analytics' },
+        { icon: 'mdi-bank', label: 'Branches', path: '/radiology/branches' },
+        { icon: 'mdi-bell', label: 'Notifications', path: '/radiology/notifications' },
+        { icon: 'mdi-cog', label: 'Settings', path: '/radiology/settings' }
       ]
     })
   }

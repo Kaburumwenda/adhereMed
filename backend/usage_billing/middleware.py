@@ -88,3 +88,36 @@ class RequestUsageMiddleware:
                     DailyUsage.objects.filter(
                         tenant_id=tenant.id, date=today
                     ).update(**update_fields)
+
+        # ── Referral coin tracking ────────────────────────────────────
+        self._track_referral_coins(tenant)
+
+    # noinspection PyMethodMayBeStatic
+    def _track_referral_coins(self, tenant):
+        """Award 1 Adhere Coin to the referrer for every 1 000 requests made by this tenant."""
+        try:
+            from usage_billing.referral_models import Referral
+            referral = Referral.objects.select_related('referrer__referral_profile').filter(
+                referred=tenant, status=Referral.Status.ACTIVE,
+            ).first()
+            if referral is None:
+                return
+
+            from django.db.models import F
+            Referral.objects.filter(pk=referral.pk).update(tracked_requests=F('tracked_requests') + 1)
+            referral.refresh_from_db()
+
+            # Every 1000th request earns the referrer 1 coin
+            if referral.tracked_requests % 1000 == 0:
+                from decimal import Decimal
+                profile = referral.referrer.referral_profile
+                profile.credit(
+                    Decimal('1'),
+                    f'Usage milestone: {referral.tracked_requests} requests by {tenant.name}',
+                    related_tenant=tenant,
+                )
+                Referral.objects.filter(pk=referral.pk).update(
+                    coins_from_usage=F('coins_from_usage') + 1,
+                )
+        except Exception:
+            logger.exception("Referral coin tracking failed")

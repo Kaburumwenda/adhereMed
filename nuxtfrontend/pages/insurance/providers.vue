@@ -8,7 +8,7 @@
               <v-icon color="cyan-darken-3" size="32">mdi-domain</v-icon>
             </v-avatar>
             <div>
-              <div class="text-h5 text-md-h4 font-weight-bold">Insurance Providers</div>
+              <div class="text-h5 text-md-h4 font-weight-bold">{{ $t('insuranceProviders.title') }}</div>
               <div class="text-body-2" style="opacity:0.9">
                 Manage insurance partners, contractual rates &amp; claim addresses.
               </div>
@@ -17,8 +17,8 @@
         </v-col>
         <v-col cols="12" md="4" class="d-flex justify-md-end mt-3 mt-md-0" style="gap:8px">
           <v-btn color="white" variant="elevated" class="text-cyan-darken-3"
-                 prepend-icon="mdi-plus" @click="openCreate">New Provider</v-btn>
-          <v-btn color="white" variant="outlined" prepend-icon="mdi-arrow-left" to="/insurance">Claims</v-btn>
+                 prepend-icon="mdi-plus" @click="openCreate">{{ $t('insuranceProviders.newProvider') }}</v-btn>
+          <v-btn color="white" variant="outlined" prepend-icon="mdi-arrow-left" to="/insurance">{{ $t('insuranceProviders.claims') }}</v-btn>
         </v-col>
       </v-row>
     </v-card>
@@ -102,8 +102,8 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" @click="formDialog = false">Cancel</v-btn>
-          <v-btn color="primary" :loading="saving" @click="save">Save</v-btn>
+          <v-btn variant="text" @click="formDialog = false">{{ $t('common.cancel') }}</v-btn>
+          <v-btn color="primary" :loading="saving" @click="save">{{ $t('common.save') }}</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -113,6 +113,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { ref, onMounted } from 'vue'
 const { $api } = useNuxtApp()
 

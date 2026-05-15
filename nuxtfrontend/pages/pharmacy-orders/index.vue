@@ -1,45 +1,38 @@
 <template>
   <v-container fluid class="pa-4 pa-md-6">
-    <!-- ════════ Hero ════════ -->
-    <v-card flat rounded="xl" class="hero pa-5 pa-md-6 mb-4 text-white">
-      <v-row align="center" no-gutters>
-        <v-col cols="12" md="7">
-          <div class="d-flex align-center mb-2">
-            <v-avatar color="white" size="44" class="mr-3">
-              <v-icon color="indigo-darken-3" size="26">mdi-receipt-text</v-icon>
-            </v-avatar>
-            <div>
-              <div class="text-h5 font-weight-bold">Patient Orders</div>
-              <div class="text-body-2 opacity-90">Walk-in & online pharmacy orders</div>
-            </div>
-          </div>
-        </v-col>
-        <v-col cols="12" md="5">
-          <div class="d-flex justify-md-end gap-2 mt-3 mt-md-0 flex-wrap">
-            <v-btn color="white" variant="flat" prepend-icon="mdi-refresh"
-                   @click="reload" :loading="loading">Refresh</v-btn>
-            <v-btn color="white" variant="outlined" prepend-icon="mdi-download"
-                   class="text-white" @click="exportCsv">Export CSV</v-btn>
-            <v-btn color="white" variant="outlined" prepend-icon="mdi-printer"
-                   class="text-white" @click="printPage">Print</v-btn>
-          </div>
-        </v-col>
-      </v-row>
-    </v-card>
+    <!-- Header -->
+    <div class="d-flex flex-wrap align-center justify-space-between mb-4">
+      <div class="d-flex align-center">
+        <v-avatar color="indigo-lighten-5" size="48" class="mr-3">
+          <v-icon color="indigo-darken-2" size="28">mdi-receipt-text</v-icon>
+        </v-avatar>
+        <div>
+          <h1 class="text-h5 font-weight-bold mb-1">{{ $t('pharmacyOrders.title') }}</h1>
+          <div class="text-body-2 text-medium-emphasis">Walk-in &amp; online pharmacy orders</div>
+        </div>
+      </div>
+      <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
+        <v-btn rounded="lg" color="primary" variant="flat" prepend-icon="mdi-refresh"
+                   @click="reload" :loading="loading">{{ $t('common.refresh') }}</v-btn>
+      <v-btn rounded="lg" color="primary" variant="tonal" prepend-icon="mdi-download"
+                   class="text-none" @click="exportCsv">{{ $t('common.exportCSV') }}</v-btn>
+      <v-btn rounded="lg" color="primary" variant="tonal" prepend-icon="mdi-printer"
+                   class="text-none" @click="printPage">{{ $t('common.print') }}</v-btn>
+      </div>
+    </div>
 
-    <!-- ════════ KPI strip ════════ -->
-    <v-row dense class="mb-1">
-      <v-col v-for="k in kpis" :key="k.label" cols="6" sm="4" md="2">
-        <v-card flat rounded="xl" class="kpi-card pa-3"
-                @click="filterByStatus(k.statusFilter)" style="cursor:pointer">
-          <div class="d-flex align-center justify-space-between">
+    <!-- KPIs -->
+    <v-row dense class="mb-4">
+      <v-col v-for="k in kpis" :key="k.label" cols="6" md="3">
+        <v-card rounded="lg" class="pa-4 h-100 kpi-card">
+          <div class="d-flex align-start justify-space-between">
             <div>
               <div class="text-caption text-medium-emphasis">{{ k.label }}</div>
-              <div class="text-h6 font-weight-bold">{{ k.value }}</div>
-              <div v-if="k.sub" class="text-caption" :class="`text-${k.tone}`">{{ k.sub }}</div>
+              <div class="text-h6 font-weight-bold mt-1">{{ k.value }}</div>
+              <div v-if="k.sub" class="text-caption text-medium-emphasis mt-1">{{ k.sub }}</div>
             </div>
-            <v-avatar :color="k.tone" size="38" variant="tonal">
-              <v-icon :color="k.tone" size="20">{{ k.icon }}</v-icon>
+            <v-avatar :color="k.color" variant="tonal" rounded="lg" size="40">
+              <v-icon size="20">{{ k.icon }}</v-icon>
             </v-avatar>
           </div>
         </v-card>
@@ -220,7 +213,7 @@
           <v-row dense class="mt-3">
             <v-col cols="12" md="8">
               <v-card flat rounded="lg" class="pa-3 info-tile">
-                <div class="text-caption text-medium-emphasis">Delivery Address</div>
+                <div class="text-caption text-medium-emphasis">{{ $t('pharmacyOrders.deliveryAddress') }}</div>
                 <div class="font-weight-medium">
                   <v-icon size="16" class="mr-1">mdi-map-marker</v-icon>
                   {{ selected.delivery_address || 'Pickup at counter' }}
@@ -245,7 +238,7 @@
                 <th>Medication</th>
                 <th class="text-end">Qty</th>
                 <th class="text-end">Unit Price</th>
-                <th class="text-end">Subtotal</th>
+                <th class="text-end">{{ $t('common.subtotal') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -262,20 +255,20 @@
 
           <v-row dense class="mt-3">
             <v-col cols="12" md="6">
-              <div v-if="selected.notes" class="text-caption text-medium-emphasis">Notes</div>
+              <div v-if="selected.notes" class="text-caption text-medium-emphasis">{{ $t('common.notes') }}</div>
               <div v-if="selected.notes" class="text-body-2">{{ selected.notes }}</div>
             </v-col>
             <v-col cols="12" md="6">
               <v-card flat rounded="lg" class="pa-3 totals-tile">
                 <div class="d-flex justify-space-between text-body-2">
-                  <span>Subtotal</span><span>{{ formatMoney(selected.subtotal) }}</span>
+                  <span>{{ $t('common.subtotal') }}</span><span>{{ formatMoney(selected.subtotal) }}</span>
                 </div>
                 <div class="d-flex justify-space-between text-body-2 mt-1">
-                  <span>Delivery Fee</span><span>{{ formatMoney(selected.delivery_fee) }}</span>
+                  <span>{{ $t('pharmacyOrders.deliveryFee') }}</span><span>{{ formatMoney(selected.delivery_fee) }}</span>
                 </div>
                 <v-divider class="my-2" />
                 <div class="d-flex justify-space-between font-weight-bold">
-                  <span>Total</span>
+                  <span>{{ $t('common.total') }}</span>
                   <span class="text-success text-h6">{{ formatMoney(selected.total) }}</span>
                 </div>
               </v-card>
@@ -325,6 +318,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { ref, computed, reactive, onMounted, onBeforeUnmount } from 'vue'
 import { formatMoney, formatDateTime } from '~/utils/format'
 
@@ -562,10 +558,10 @@ function printOrder(o) {
     <div><strong>Phone:</strong> ${o.patient_phone || '—'}</div>
     <div><strong>Address:</strong> ${o.delivery_address || 'Pickup'}</div>
     <div><strong>Payment:</strong> ${o.payment_method}</div>
-    <table><thead><tr><th>Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit</th><th style="text-align:right">Total</th></tr></thead><tbody>${itemRows}</tbody></table>
-    <div class="totals"><div><span>Subtotal</span><span>${formatMoney(o.subtotal)}</span></div>
+    <table><thead><tr><th>Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit</th><th style="text-align:right">{{ $t('common.total') }}</th></tr></thead><tbody>${itemRows}</tbody></table>
+    <div class="totals"><div><span>{{ $t('common.subtotal') }}</span><span>${formatMoney(o.subtotal)}</span></div>
     <div><span>Delivery</span><span>${formatMoney(o.delivery_fee)}</span></div>
-    <div class="grand"><span>Total</span><span>${formatMoney(o.total)}</span></div></div>
+    <div class="grand"><span>{{ $t('common.total') }}</span><span>${formatMoney(o.total)}</span></div></div>
     <p style="text-align:center;margin-top:24px;font-size:12px;color:#64748b">Status: ${o.status}</p>
     </body></html>`)
   w.document.close()
@@ -581,11 +577,7 @@ onBeforeUnmount(() => clearInterval(pollTimer))
 </script>
 
 <style scoped>
-.hero {
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%);
-  border-radius: 20px !important;
-  box-shadow: 0 12px 32px rgba(99, 102, 241, 0.25);
-}
+
 .gap-2 > * + * { margin-left: 8px; }
 
 .kpi-card {

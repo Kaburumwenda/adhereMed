@@ -15,6 +15,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { useResource } from '~/composables/useResource'
 import { formatDateTime, formatMoney } from '~/utils/format'
 const r = useResource('/exchange/orders/')

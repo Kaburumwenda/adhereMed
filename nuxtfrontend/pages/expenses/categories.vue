@@ -1,9 +1,9 @@
 <template>
   <v-container fluid class="pa-4 pa-md-6 exp-cat-shell">
-    <PageHeader title="Expense Categories" icon="mdi-shape" subtitle="Group expenses for reporting and analytics">
+    <PageHeader :title="$t('expenseCategories.title')" icon="mdi-shape" subtitle="Group expenses for reporting and analytics">
       <template #actions>
-        <v-btn variant="text" rounded="lg" class="text-none" prepend-icon="mdi-arrow-left" to="/expenses">Back</v-btn>
-        <v-btn color="primary" rounded="lg" class="text-none" prepend-icon="mdi-plus" @click="openNew">New Category</v-btn>
+        <v-btn variant="text" rounded="lg" class="text-none" prepend-icon="mdi-arrow-left" to="/expenses">{{ $t('common.back') }}</v-btn>
+        <v-btn color="primary" rounded="lg" class="text-none" prepend-icon="mdi-plus" @click="openNew">{{ $t('expenseCategories.newCategory') }}</v-btn>
       </template>
     </PageHeader>
 
@@ -20,7 +20,7 @@
     <template v-else-if="!filtered.length">
       <EmptyState icon="mdi-shape-outline" title="No categories" message="Create one to start grouping expenses, or pick a suggestion below.">
         <template #actions>
-          <v-btn color="primary" rounded="lg" prepend-icon="mdi-plus" @click="openNew">New Category</v-btn>
+          <v-btn color="primary" rounded="lg" prepend-icon="mdi-plus" @click="openNew">{{ $t('expenseCategories.newCategory') }}</v-btn>
         </template>
       </EmptyState>
       <v-card rounded="lg" class="pa-4 mt-3">
@@ -52,7 +52,7 @@
           <v-divider class="my-2" />
           <div class="d-flex justify-space-between">
             <div>
-              <div class="text-caption text-medium-emphasis">Expenses</div>
+              <div class="text-caption text-medium-emphasis">{{ $t('expenses.title') }}</div>
               <div class="font-weight-bold">{{ c.expense_count || 0 }}</div>
             </div>
             <div class="text-end">
@@ -107,8 +107,8 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" @click="dialog.show = false">Cancel</v-btn>
-          <v-btn color="primary" variant="flat" :loading="dialog.busy" :disabled="!dialog.form.name" @click="save">Save</v-btn>
+          <v-btn variant="text" @click="dialog.show = false">{{ $t('common.cancel') }}</v-btn>
+          <v-btn color="primary" variant="flat" :loading="dialog.busy" :disabled="!dialog.form.name" @click="save">{{ $t('common.save') }}</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -116,11 +116,11 @@
     <v-dialog v-model="del.show" max-width="400" persistent>
       <v-card rounded="lg">
         <v-card-title class="text-subtitle-1 font-weight-bold">Delete Category</v-card-title>
-        <v-card-text>Delete <b>{{ del.cat?.name }}</b>?</v-card-text>
+        <v-card-text>{{ $t('common.delete') }}<b>{{ del.cat?.name }}</b>?</v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" @click="del.show = false">Cancel</v-btn>
-          <v-btn color="error" variant="flat" :loading="del.busy" @click="doDelete">Delete</v-btn>
+          <v-btn variant="text" @click="del.show = false">{{ $t('common.cancel') }}</v-btn>
+          <v-btn color="error" variant="flat" :loading="del.busy" @click="doDelete">{{ $t('common.delete') }}</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -130,6 +130,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { useResource } from '~/composables/useResource'
 import { formatMoney } from '~/utils/format'
 

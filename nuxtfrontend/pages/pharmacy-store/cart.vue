@@ -25,9 +25,9 @@
       <v-col cols="12" md="4">
         <v-card rounded="lg" class="pa-4">
           <h3 class="text-h6 font-weight-bold mb-3">Summary</h3>
-          <div class="d-flex justify-space-between mb-2"><span>Subtotal</span><span>{{ formatMoney(cart.total) }}</span></div>
+          <div class="d-flex justify-space-between mb-2"><span>{{ $t('common.subtotal') }}</span><span>{{ formatMoney(cart.total) }}</span></div>
           <v-divider class="my-2" />
-          <div class="d-flex justify-space-between mb-3"><span class="text-subtitle-1 font-weight-bold">Total</span><span class="text-h6 font-weight-bold">{{ formatMoney(cart.total) }}</span></div>
+          <div class="d-flex justify-space-between mb-3"><span class="text-subtitle-1 font-weight-bold">{{ $t('common.total') }}</span><span class="text-h6 font-weight-bold">{{ formatMoney(cart.total) }}</span></div>
           <v-textarea v-model="deliveryAddress" label="Delivery address" rows="2" auto-grow density="compact" />
           <v-text-field v-model="contactPhone" label="Contact phone" density="compact" />
           <v-btn color="primary" block rounded="lg" class="text-none mt-2" :loading="placing" @click="checkout">Place Order</v-btn>
@@ -39,6 +39,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { useCartStore } from '~/stores/cart'
 import { formatMoney } from '~/utils/format'
 const cart = useCartStore()

@@ -2,8 +2,8 @@
   <v-container fluid class="pa-4 pa-md-6" style="max-width:1080px;">
     <PageHeader :title="title" :icon="icon" :subtitle="subtitle">
       <template #actions>
-        <v-btn variant="text" rounded="lg" class="text-none" prepend-icon="mdi-arrow-left" :to="backPath">Back</v-btn>
-        <v-btn v-if="editPath" color="primary" rounded="lg" class="text-none" prepend-icon="mdi-pencil" :to="editPath">Edit</v-btn>
+        <v-btn variant="text" rounded="lg" class="text-none" prepend-icon="mdi-arrow-left" :to="backPath">{{ $t('common.back') }}</v-btn>
+        <v-btn v-if="editPath" color="primary" rounded="lg" class="text-none" prepend-icon="mdi-pencil" :to="editPath">{{ $t('common.edit') }}</v-btn>
         <slot name="actions" />
       </template>
     </PageHeader>

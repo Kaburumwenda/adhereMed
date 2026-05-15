@@ -24,10 +24,10 @@
 
     <v-card flat rounded="xl" border>
       <v-tabs v-model="tab" color="primary" align-tabs="start" show-arrows>
-        <v-tab value="profile" prepend-icon="mdi-store">Profile</v-tab>
+        <v-tab value="profile" prepend-icon="mdi-store">{{ $t('settingsPage.profileTab') }}</v-tab>
         <v-tab value="hours" prepend-icon="mdi-clock">Operating hours</v-tab>
         <v-tab value="delivery" prepend-icon="mdi-truck-fast">Delivery &amp; services</v-tab>
-        <v-tab value="insurance" prepend-icon="mdi-shield-check">Insurance</v-tab>
+        <v-tab value="insurance" prepend-icon="mdi-shield-check">{{ $t('settingsPage.insuranceTab') }}</v-tab>
       </v-tabs>
       <v-divider />
 
@@ -175,6 +175,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { ref, reactive, onMounted } from 'vue'
 
 const { $api } = useNuxtApp()

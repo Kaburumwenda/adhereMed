@@ -1,7 +1,9 @@
+from decimal import Decimal
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import serializers
 
-from .models import POSTransaction, TransactionItem, Customer, ParkedSale, CashierShift, LoyaltyTransaction
+from .models import POSTransaction, TransactionItem, Customer, ParkedSale, CashierShift, LoyaltyTransaction, CreditSale, CreditPayment
 from inventory.models import MedicationStock, StockBatch
 
 
@@ -53,6 +55,44 @@ class POSTransactionSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at']
 
 
+class CreditSaleSerializer(serializers.ModelSerializer):
+    transaction_number = serializers.CharField(source='transaction.transaction_number', read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    cashier_name = serializers.CharField(source='transaction.cashier.full_name', read_only=True, default='')
+
+    class Meta:
+        model = CreditSale
+        fields = [
+            'id', 'transaction', 'transaction_number',
+            'customer_name', 'customer_phone',
+            'due_date', 'notes',
+            'total_amount', 'partial_paid_amount', 'balance_amount',
+            'partial_payment_method', 'status',
+            'cashier_name',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'transaction', 'transaction_number', 'created_at', 'updated_at', 'cashier_name']
+
+
+class CreditPaymentSerializer(serializers.ModelSerializer):
+    recorded_by_name = serializers.CharField(source='recorded_by.full_name', read_only=True, default='')
+
+    class Meta:
+        model = CreditPayment
+        fields = [
+            'id', 'credit_sale', 'amount', 'payment_method',
+            'reference', 'notes', 'recorded_by', 'recorded_by_name', 'paid_at',
+        ]
+        read_only_fields = ['id', 'credit_sale', 'recorded_by', 'recorded_by_name', 'paid_at']
+
+
+class RecordCreditPaymentSerializer(serializers.Serializer):
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal('0.01'))
+    payment_method = serializers.ChoiceField(choices=CreditPayment.PaymentMethod.choices)
+    reference = serializers.CharField(max_length=100, required=False, default='', allow_blank=True)
+    notes = serializers.CharField(max_length=500, required=False, default='', allow_blank=True)
+
+
 class CheckoutItemSerializer(serializers.Serializer):
     stock_id = serializers.IntegerField()
     quantity = serializers.IntegerField(min_value=1)
@@ -65,7 +105,31 @@ class POSCheckoutSerializer(serializers.Serializer):
     payment_reference = serializers.CharField(max_length=100, required=False, default='', allow_blank=True)
     discount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, default=0)
     branch_id = serializers.IntegerField(required=False, allow_null=True)
+    credit_due_date = serializers.DateField(required=False, allow_null=True)
+    credit_notes = serializers.CharField(required=False, allow_blank=True, max_length=500, default='')
+    partial_paid_amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, default=0)
+    partial_payment_method = serializers.ChoiceField(
+        choices=CreditSale.PartialPaymentMethod.choices,
+        required=False,
+        default=CreditSale.PartialPaymentMethod.NONE,
+    )
     items = CheckoutItemSerializer(many=True)
+
+    def validate(self, attrs):
+        payment_method = attrs.get('payment_method')
+        if payment_method == POSTransaction.PaymentMethod.CREDIT:
+            customer_name = (attrs.get('customer_name') or '').strip()
+            if not customer_name:
+                raise serializers.ValidationError({'customer_name': 'Customer name is required for credit sales.'})
+            if not attrs.get('credit_due_date'):
+                raise serializers.ValidationError({'credit_due_date': 'Due date is required for credit sales.'})
+
+            total_partial = attrs.get('partial_paid_amount') or 0
+            if total_partial < 0:
+                raise serializers.ValidationError({'partial_paid_amount': 'Partial payment cannot be negative.'})
+            if total_partial > 0 and attrs.get('partial_payment_method') == CreditSale.PartialPaymentMethod.NONE:
+                raise serializers.ValidationError({'partial_payment_method': 'Select partial payment method when partial payment is entered.'})
+        return attrs
 
     def validate_items(self, value):
         if not value:
@@ -93,6 +157,7 @@ class POSCheckoutSerializer(serializers.Serializer):
         transaction_number = f'TXN-{uuid.uuid4().hex[:8].upper()}'
 
         subtotal = 0
+        total_tax = Decimal('0')
         transaction_items = []
 
         for item_data in items_data:
@@ -101,6 +166,14 @@ class POSCheckoutSerializer(serializers.Serializer):
             unit_price = stock.selling_price
             line_total = unit_price * qty_needed
             subtotal += line_total
+
+            # Compute tax per item based on stock.tax_percent (tax-inclusive price)
+            tax_pct = Decimal(str(stock.tax_percent or 0))
+            if tax_pct > 0:
+                line_tax = line_total * tax_pct / (100 + tax_pct)
+            else:
+                line_tax = Decimal('0')
+            total_tax += line_tax
 
             # FEFO: deduct from earliest expiring batches first
             batches = StockBatch.objects.filter(
@@ -130,6 +203,10 @@ class POSCheckoutSerializer(serializers.Serializer):
 
         discount = validated_data.get('discount', 0)
         total = subtotal - discount
+
+        # Round tax to 2 decimal places
+        total_tax = total_tax.quantize(Decimal('0.01'))
+
         branch_id = validated_data.get('branch_id')
 
         pos_txn = POSTransaction.objects.create(
@@ -137,7 +214,7 @@ class POSCheckoutSerializer(serializers.Serializer):
             customer_name=validated_data.get('customer_name', ''),
             customer_phone=validated_data.get('customer_phone', ''),
             subtotal=subtotal,
-            tax=0,
+            tax=total_tax,
             discount=discount,
             total=total,
             payment_method=validated_data['payment_method'],
@@ -148,6 +225,31 @@ class POSCheckoutSerializer(serializers.Serializer):
 
         for ti in transaction_items:
             TransactionItem.objects.create(transaction=pos_txn, **ti)
+
+        if validated_data['payment_method'] == POSTransaction.PaymentMethod.CREDIT:
+            partial_paid = validated_data.get('partial_paid_amount', 0) or 0
+            balance = max(Decimal('0'), total - partial_paid)
+            due_date = validated_data.get('credit_due_date')
+            status = CreditSale.Status.OPEN
+            if balance == 0:
+                status = CreditSale.Status.SETTLED
+            elif partial_paid > 0:
+                status = CreditSale.Status.PARTIAL
+            if due_date and due_date < timezone.now().date() and balance > 0:
+                status = CreditSale.Status.OVERDUE
+
+            CreditSale.objects.create(
+                transaction=pos_txn,
+                customer_name=validated_data.get('customer_name', ''),
+                customer_phone=validated_data.get('customer_phone', ''),
+                due_date=due_date,
+                notes=validated_data.get('credit_notes', ''),
+                total_amount=total,
+                partial_paid_amount=partial_paid,
+                balance_amount=balance,
+                partial_payment_method=validated_data.get('partial_payment_method', CreditSale.PartialPaymentMethod.NONE),
+                status=status,
+            )
 
         return pos_txn
 

@@ -13,7 +13,7 @@
         <v-divider class="my-4" />
         <h3 class="text-subtitle-1 font-weight-bold mb-2">Items</h3>
         <v-table density="compact">
-          <thead><tr><th>Product</th><th class="text-end">Qty</th><th class="text-end">Unit</th><th class="text-end">Subtotal</th></tr></thead>
+          <thead><tr><th>Product</th><th class="text-end">Qty</th><th class="text-end">Unit</th><th class="text-end">{{ $t('common.subtotal') }}</th></tr></thead>
           <tbody>
             <tr v-for="(it, i) in (item.items || [])" :key="i">
               <td>{{ it.product_name }}</td>
@@ -29,6 +29,9 @@
   </ResourceDetailPage>
 </template>
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { useResource } from '~/composables/useResource'
 import { formatDateTime, formatMoney } from '~/utils/format'
 const route = useRoute()

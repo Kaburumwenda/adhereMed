@@ -7,7 +7,7 @@
           <v-icon color="green-darken-3" size="28">mdi-cash-register</v-icon>
         </v-avatar>
         <div>
-          <div class="text-h5 text-md-h4 font-weight-bold">New Dispense</div>
+          <div class="text-h5 text-md-h4 font-weight-bold">{{ $t('newDispense.title') }}</div>
           <div class="text-body-2" style="opacity:0.9">
             Search items, build the cart and complete the sale.
           </div>
@@ -104,9 +104,9 @@
               <thead>
                 <tr>
                   <th>Medication</th>
-                  <th style="width:120px">Qty</th>
+                  <th style="width:120px">{{ $t('newDispense.qty') }}</th>
                   <th style="width:140px">Unit price</th>
-                  <th style="width:140px" class="text-right">Total</th>
+                  <th style="width:140px" class="text-right">{{ $t('common.total') }}</th>
                   <th style="width:60px"></th>
                 </tr>
               </thead>
@@ -159,14 +159,14 @@
               <v-icon color="white" class="mr-2">mdi-receipt</v-icon>Summary
             </div>
             <div class="d-flex justify-space-between text-white py-1">
-              <span>Subtotal</span><span>KSh {{ subtotal.toLocaleString() }}</span>
+              <span>{{ $t('common.subtotal') }}</span><span>KSh {{ subtotal.toLocaleString() }}</span>
             </div>
             <v-text-field v-model.number="form.discount" type="number" min="0"
                           density="compact" variant="solo-filled" flat hide-details
                           prefix="− KSh" label="Discount" class="my-2" @update:model-value="recalc" />
             <v-divider class="my-2 border-opacity-50" color="white" />
             <div class="d-flex justify-space-between text-h6 font-weight-bold text-white">
-              <span>Total</span><span>KSh {{ total.toLocaleString() }}</span>
+              <span>{{ $t('common.total') }}</span><span>KSh {{ total.toLocaleString() }}</span>
             </div>
           </v-card>
 
@@ -207,7 +207,7 @@
                  :loading="saving" :disabled="!canSave" @click="save">
             Complete Dispense
           </v-btn>
-          <v-btn block class="mt-2" variant="text" :to="'/dispensing'">Cancel</v-btn>
+          <v-btn block class="mt-2" variant="text" :to="'/dispensing'">{{ $t('common.cancel') }}</v-btn>
         </v-col>
       </v-row>
     </v-form>
@@ -217,6 +217,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { ref, computed, onMounted, watch } from 'vue'
 const { $api } = useNuxtApp()
 const router = useRouter()

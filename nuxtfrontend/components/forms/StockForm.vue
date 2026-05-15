@@ -1,8 +1,9 @@
 <template>
   <ResourceFormPage
     :resource="r"
-    :title="loadId ? 'Edit Stock' : 'Add Stock'"
-    icon="mdi-package-variant"
+    :title="loadId ? 'Edit Stock Item' : 'New Stock Item'"
+    :subtitle="loadId ? 'Update inventory details and stock levels' : 'Register a new item in your inventory'"
+    icon="mdi-package-variant-plus"
     back-path="/inventory"
     :load-id="loadId"
     :initial="initial"
@@ -10,155 +11,294 @@
     @saved="onSaved"
   >
     <template #default="{ form }">
-      <!-- Auto-fill SKU & batch # once on create -->
       <ClientOnly>
         <span v-if="autofill(form)" />
         <span v-if="syncEdit(form)" />
       </ClientOnly>
-      <v-row dense>
-        <v-col cols="12" sm="6"><v-text-field v-model="form.medication_name" label="Item name" :rules="req" /></v-col>
-        <v-col v-if="!loadId" cols="12" sm="6">
-          <v-text-field
-            v-model="form.barcode"
-            label="SKU / Code"
-            placeholder="Auto-generated"
-            persistent-hint
-            hint="Generated automatically"
-          >
-            <template #append-inner>
-              <v-tooltip text="Regenerate SKU" location="top">
-                <template #activator="{ props }">
-                  <v-btn v-bind="props" icon="mdi-refresh" variant="text" density="comfortable" size="small" @click="form.barcode = generateSku()" />
+
+      <!-- ── Section 1 · Item Details ─────────────────────── -->
+      <div class="stock-section">
+        <div class="stock-section__header">
+          <div class="stock-section__icon bg-primary">
+            <v-icon size="18" color="white">mdi-tag-outline</v-icon>
+          </div>
+          <div>
+            <div class="stock-section__title">Item Details</div>
+            <div class="stock-section__sub">Name, code, and classification</div>
+          </div>
+        </div>
+        <v-row>
+          <v-col cols="12" md="6">
+            <v-combobox
+              v-model="nameSelection"
+              :items="catalogResults"
+              :item-title="item => typeof item === 'string' ? item : item.generic_name"
+              :item-value="item => typeof item === 'string' ? item : item.generic_name"
+              :search="nameQuery"
+              :loading="catalogLoading"
+              label="Item Name *"
+              :rules="req"
+              variant="outlined"
+              density="comfortable"
+              rounded="lg"
+              no-filter
+              clearable
+              return-object
+              placeholder="Search medication catalog or type a name..."
+              @update:search="onNameSearch"
+              @update:model-value="onNameSelected($event, form)"
+            >
+              <template #no-data><div /></template>
+              <template #item="{ item, props: ip }">
+                <v-list-item v-bind="ip" :title="undefined" :subtitle="undefined">
+                  <template #prepend>
+                    <v-icon size="18" color="primary">mdi-book-outline</v-icon>
+                  </template>
+                  <template #title>{{ item.raw?.generic_name || item.title }}</template>
+                  <template #subtitle>{{ [item.raw?.dosage_form, item.raw?.strength].filter(Boolean).join(' · ') || 'Catalog item' }}</template>
+                </v-list-item>
+              </template>
+            </v-combobox>
+
+            <!-- Not in catalog warning -->
+            <v-alert v-if="showNotInCatalog && !loadId" type="warning" variant="tonal" rounded="lg" class="mt-n2 mb-2">
+              <template #prepend><v-icon size="18">mdi-alert-outline</v-icon></template>
+              <div class="text-body-2">"<strong>{{ nameQuery }}</strong>" is not in the medication catalog. Please add it to the catalog first.</div>
+              <div class="d-flex ga-2 mt-3">
+                <v-btn size="small" variant="flat" color="warning" rounded="lg" class="text-none" prepend-icon="mdi-book-plus-outline" @click="router.push('/pharmacy/medications')">
+                  Go to Catalog
+                </v-btn>
+              </div>
+            </v-alert>
+
+            <!-- Duplicate warning -->
+            <v-alert v-if="existingStock && !loadId" type="error" variant="tonal" rounded="lg" class="mt-n2 mb-2">
+              <template #prepend><v-icon size="18">mdi-alert-circle-outline</v-icon></template>
+              <div class="text-body-2">
+                <strong>{{ existingStock.medication_name }}</strong> already exists in your inventory
+                <span v-if="existingStock.total_quantity != null" class="text-medium-emphasis">
+                  · {{ existingStock.total_quantity }} in stock
+                </span>
+              </div>
+              <div class="text-body-2 text-medium-emphasis mt-1">To avoid duplicate entries, edit the existing item instead.</div>
+              <div class="d-flex ga-2 mt-3">
+                <v-btn size="small" variant="flat" color="primary" rounded="lg" class="text-none" prepend-icon="mdi-pencil-outline" @click="goEditExisting">
+                  Edit Existing Item
+                </v-btn>
+                <v-btn size="small" variant="tonal" color="primary" rounded="lg" class="text-none" prepend-icon="mdi-swap-vertical" @click="goAdjust">
+                  Stock Adjustment
+                </v-btn>
+              </div>
+            </v-alert>
+          </v-col>
+          <v-col v-if="!loadId" cols="12" md="6">
+            <v-text-field v-model="form.barcode" label="SKU / Code" placeholder="Auto-generated" persistent-hint hint="Generated automatically" variant="outlined" density="comfortable" rounded="lg" :disabled="formDisabled">
+              <template #append-inner>
+                <v-tooltip text="Regenerate SKU" location="top">
+                  <template #activator="{ props: tp }">
+                    <v-btn v-bind="tp" icon="mdi-refresh" variant="text" density="comfortable" size="small" @click="form.barcode = generateSku()" />
+                  </template>
+                </v-tooltip>
+              </template>
+            </v-text-field>
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-autocomplete v-model="form.category" :items="categories" item-title="name" item-value="id" label="Category" variant="outlined" density="comfortable" rounded="lg" clearable :disabled="formDisabled" />
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-autocomplete v-model="form.unit" :items="units" item-title="name" item-value="id" label="Unit of Measure" variant="outlined" density="comfortable" rounded="lg" clearable :disabled="formDisabled" />
+          </v-col>
+          <v-col cols="12" md="6" class="d-flex align-center">
+            <v-switch
+              v-model="form.is_active"
+              :label="form.is_active ? 'Active' : 'Inactive'"
+              color="success"
+              density="comfortable"
+              hide-details
+              inset
+              :disabled="formDisabled"
+            />
+          </v-col>
+        </v-row>
+      </div>
+
+      <v-divider class="my-1" />
+
+      <!-- ── Section 2 · Stock Levels ─────────────────────── -->
+      <div class="stock-section">
+        <div class="stock-section__header">
+          <div class="stock-section__icon bg-teal">
+            <v-icon size="18" color="white">mdi-cube-outline</v-icon>
+          </div>
+          <div>
+            <div class="stock-section__title">Stock Levels</div>
+            <div class="stock-section__sub">Quantity and reorder thresholds</div>
+          </div>
+          <v-chip size="x-small" variant="tonal" color="teal" class="ml-auto" label>
+            <v-icon start size="12">mdi-auto-fix</v-icon> Auto-calculated
+          </v-chip>
+        </div>
+        <v-card variant="flat" rounded="xl" class="pa-4 inner-card">
+          <v-row>
+            <v-col cols="12" sm="4">
+              <v-text-field v-model.number="form.quantity" :label="(loadId ? 'Current Stock Qty' : 'Initial Quantity') + ' *'" type="number" min="0" :rules="reqNum" :hint="loadId ? 'Edits create a Count Correction' : 'Stock on hand'" persistent-hint variant="outlined" density="comfortable" rounded="lg" :disabled="formDisabled" @update:model-value="recalc(form, $event)" />
+            </v-col>
+            <v-col cols="12" sm="4">
+              <v-text-field v-model.number="form.reorder_level" label="Reorder Level" type="number" min="0" :hint="levelTouched ? 'Custom value' : 'Auto: 30 % of qty'" persistent-hint variant="outlined" density="comfortable" rounded="lg" :disabled="formDisabled" @update:model-value="levelTouched = true">
+                <template #append-inner>
+                  <v-tooltip text="Reset to 30% of quantity" location="top">
+                    <template #activator="{ props: tp }">
+                      <v-btn v-bind="tp" icon="mdi-refresh" variant="text" density="comfortable" size="small" @click="resetLevel(form)" />
+                    </template>
+                  </v-tooltip>
                 </template>
-              </v-tooltip>
-            </template>
-          </v-text-field>
-        </v-col>
-        <v-col cols="12" sm="6">
-          <v-autocomplete v-model="form.category" :items="categories" item-title="name" item-value="id" label="Category" />
-        </v-col>
-        <v-col cols="12" sm="6">
-          <v-autocomplete v-model="form.unit" :items="units" item-title="name" item-value="id" label="Unit" />
-        </v-col>
-        <v-col cols="6" sm="3">
-          <v-text-field
-            v-model.number="form.quantity"
-            :label="loadId ? 'Quantity (current stock)' : 'Initial quantity'"
-            type="number"
-            min="0"
-            :hint="loadId ? 'Edits create a Count Correction adjustment' : 'Stock on hand'"
-            persistent-hint
-            @update:model-value="recalc(form, $event)"
-          />
-        </v-col>
-        <v-col cols="6" sm="3">
-          <v-text-field
-            v-model.number="form.reorder_level"
-            label="Reorder level"
-            type="number"
-            min="0"
-            :hint="levelTouched ? 'Custom value' : 'Auto: 30% of quantity'"
-            persistent-hint
-            @update:model-value="levelTouched = true"
-          >
-            <template #append-inner>
-              <v-tooltip text="Reset to 30% of quantity" location="top">
-                <template #activator="{ props }">
-                  <v-btn v-bind="props" icon="mdi-refresh" variant="text" density="comfortable" size="small" @click="resetLevel(form)" />
+              </v-text-field>
+            </v-col>
+            <v-col cols="12" sm="4">
+              <v-text-field v-model.number="form.reorder_quantity" label="Reorder Quantity" type="number" min="0" :hint="qtyTouched ? 'Custom value' : 'Auto: 50 % of qty'" persistent-hint variant="outlined" density="comfortable" rounded="lg" :disabled="formDisabled" @update:model-value="qtyTouched = true">
+                <template #append-inner>
+                  <v-tooltip text="Reset to 50% of quantity" location="top">
+                    <template #activator="{ props: tp }">
+                      <v-btn v-bind="tp" icon="mdi-refresh" variant="text" density="comfortable" size="small" @click="resetQty(form)" />
+                    </template>
+                  </v-tooltip>
                 </template>
-              </v-tooltip>
-            </template>
-          </v-text-field>
-        </v-col>
-        <v-col cols="6" sm="3">
-          <v-text-field
-            v-model.number="form.reorder_quantity"
-            label="Reorder quantity"
-            type="number"
-            min="0"
-            :hint="qtyTouched ? 'Custom value' : 'Auto: 50% of quantity'"
-            persistent-hint
-            @update:model-value="qtyTouched = true"
-          >
-            <template #append-inner>
-              <v-tooltip text="Reset to 50% of quantity" location="top">
-                <template #activator="{ props }">
-                  <v-btn v-bind="props" icon="mdi-refresh" variant="text" density="comfortable" size="small" @click="resetQty(form)" />
-                </template>
-              </v-tooltip>
-            </template>
-          </v-text-field>
-        </v-col>
-        <v-col cols="6" sm="3"><v-text-field v-model.number="form.cost_price" label="Unit Cost (Before Tax)" type="number" step="0.01" /></v-col>
-        <v-col cols="6" sm="3"><v-text-field v-model.number="form.selling_price" label="Unit Selling Price (Inc. Tax)" type="number" step="0.01" /></v-col>
-        <v-col cols="12">
-          <v-card variant="tonal" :color="marginColor(form)" rounded="lg" class="pa-3">
-            <div class="d-flex flex-wrap align-center" style="gap:18px">
-              <v-icon :color="marginColor(form)">mdi-chart-line-variant</v-icon>
-              <div>
-                <div class="text-caption text-medium-emphasis text-uppercase">Profit margin</div>
-                <div class="text-h6 font-weight-bold">
-                  {{ formatMoney(margin(form)) }}
-                  <span class="text-body-2 font-weight-regular text-medium-emphasis">per unit</span>
-                </div>
-                <div v-if="(Number(form.discount_percent) || 0) > 0" class="text-caption text-medium-emphasis">
-                  After {{ Number(form.discount_percent).toFixed(2) }}% discount ({{ formatMoney(effectivePrice(form)) }} ea)
+              </v-text-field>
+            </v-col>
+          </v-row>
+        </v-card>
+      </div>
+
+      <v-divider class="my-1" />
+
+      <!-- ── Section 3 · Pricing ──────────────────────────── -->
+      <div class="stock-section">
+        <div class="stock-section__header">
+          <div class="stock-section__icon bg-amber-darken-1">
+            <v-icon size="18" color="white">mdi-cash-register</v-icon>
+          </div>
+          <div>
+            <div class="stock-section__title">Pricing</div>
+            <div class="stock-section__sub">Cost, selling price, and discounts</div>
+          </div>
+        </div>
+        <v-row>
+          <v-col cols="12" sm="3">
+            <v-text-field v-model.number="form.cost_price" label="Unit Cost (Before Tax) *" type="number" step="0.01" :rules="reqNum" variant="outlined" density="comfortable" rounded="lg" :disabled="formDisabled" />
+          </v-col>
+          <v-col cols="12" sm="3">
+            <v-text-field v-model.number="form.tax_percent" label="VAT / Tax" type="number" min="0" max="100" step="0.01" suffix="%" hint="Applied on cost price" persistent-hint variant="outlined" density="comfortable" rounded="lg" :disabled="formDisabled" />
+          </v-col>
+          <v-col cols="12" sm="3">
+            <v-text-field v-model.number="form.selling_price" label="Selling Price *" type="number" step="0.01" variant="outlined" density="comfortable" rounded="lg" :rules="reqNum" :hint="taxHint(form)" persistent-hint :disabled="formDisabled" />
+          </v-col>
+          <v-col cols="12" sm="3">
+            <v-text-field v-model.number="form.discount_percent" label="Default Discount" type="number" min="0" max="100" step="0.01" suffix="%" hint="Applied at POS" persistent-hint variant="outlined" density="comfortable" rounded="lg" :disabled="formDisabled" />
+          </v-col>
+        </v-row>
+
+        <!-- Profit Analysis -->
+        <v-card variant="tonal" :color="marginColor(form)" rounded="xl" class="pa-5 mt-3 profit-card" :class="'profit-card--' + marginColor(form)">
+          <div class="d-flex align-center mb-4">
+            <v-icon :color="marginColor(form)" size="22" class="mr-2">mdi-chart-line-variant</v-icon>
+            <span class="text-subtitle-2 font-weight-bold text-uppercase" style="letter-spacing:.5px">Profit Analysis</span>
+            <v-spacer />
+            <v-chip size="x-small" variant="outlined" :color="marginColor(form)" label>
+              <v-icon start size="12">mdi-autorenew</v-icon> Live
+            </v-chip>
+          </div>
+          <v-row dense>
+            <v-col cols="12" sm="3">
+              <div class="profit-metric">
+                <div class="profit-metric__label">Tax per unit</div>
+                <div class="profit-metric__value">{{ formatMoney(taxPerUnit(form)) }}</div>
+                <div class="profit-metric__hint">Cost incl. tax: {{ formatMoney(costWithTax(form)) }}</div>
+              </div>
+            </v-col>
+            <v-col cols="12" sm="3">
+              <div class="profit-metric">
+                <div class="profit-metric__label">Margin per unit</div>
+                <div class="profit-metric__value">{{ formatMoney(margin(form)) }}</div>
+                <div v-if="(Number(form.discount_percent) || 0) > 0" class="profit-metric__hint">
+                  After {{ Number(form.discount_percent).toFixed(1) }}% disc. ({{ formatMoney(effectivePrice(form)) }} ea)
                 </div>
               </div>
-              <v-divider vertical />
-              <div>
-                <div class="text-caption text-medium-emphasis text-uppercase">Margin %</div>
-                <div class="text-h6 font-weight-bold">{{ marginPercent(form).toFixed(2) }}%</div>
+            </v-col>
+            <v-col cols="12" sm="3">
+              <div class="profit-metric">
+                <div class="profit-metric__label">Margin %</div>
+                <div class="profit-metric__value">{{ marginPercent(form).toFixed(1) }}%</div>
               </div>
-              <v-divider vertical />
-              <div>
-                <div class="text-caption text-medium-emphasis text-uppercase">
-                  Total profit <span class="text-medium-emphasis">({{ Number(form.quantity) || 0 }} units)</span>
+            </v-col>
+            <v-col cols="12" sm="3">
+              <div class="profit-metric">
+                <div class="profit-metric__label">
+                  Total profit
+                  <span class="text-medium-emphasis">({{ Number(form.quantity) || 0 }} units)</span>
                 </div>
-                <div class="text-h6 font-weight-bold">{{ formatMoney(totalProfit(form)) }}</div>
-                <div v-if="(Number(form.discount_percent) || 0) > 0" class="text-caption text-error">
-                  − {{ formatMoney(discountAmount(form) * (Number(form.quantity) || 0)) }} discount given
+                <div class="profit-metric__value">{{ formatMoney(totalProfit(form)) }}</div>
+                <div v-if="(Number(form.tax_percent) || 0) > 0" class="profit-metric__hint">
+                  Total tax: {{ formatMoney(taxPerUnit(form) * (Number(form.quantity) || 0)) }}
+                </div>
+                <div v-if="(Number(form.discount_percent) || 0) > 0" class="profit-metric__hint text-error">
+                  − {{ formatMoney(discountAmount(form) * (Number(form.quantity) || 0)) }} discount
                 </div>
               </div>
-              <v-spacer />
-              <span class="text-caption text-medium-emphasis">Computed live · not stored</span>
-            </div>
-          </v-card>
-        </v-col>
-        <v-col cols="6" sm="3">
-          <v-text-field
-            v-model.number="form.discount_percent"
-            label="Discount %"
-            type="number"
-            min="0"
-            max="100"
-            step="0.01"
-            suffix="%"
-            hint="Default discount at POS"
-            persistent-hint
-          />
-        </v-col>
-        <v-col cols="12" sm="6">
-          <v-text-field
-            v-model="form.batch_number"
-            label="Batch #"
-            placeholder="Auto-generated"
-            readonly
-            persistent-hint
-            hint="Generated automatically"
-          >
-            <template #append-inner>
-              <v-tooltip text="Regenerate batch #" location="top">
-                <template #activator="{ props }">
-                  <v-btn v-bind="props" icon="mdi-refresh" variant="text" density="comfortable" size="small" @click="form.batch_number = generateBatch()" />
-                </template>
-              </v-tooltip>
-            </template>
-          </v-text-field>
-        </v-col>
-        <v-col cols="12" sm="6"><v-text-field v-model="form.expiry_date" label="Expiry date" type="date" /></v-col>
-        <v-col cols="12"><v-textarea v-model="form.description" label="Description" rows="2" auto-grow /></v-col>
-      </v-row>
+            </v-col>
+          </v-row>
+        </v-card>
+      </div>
+
+      <v-divider class="my-1" />
+
+      <!-- ── Section 4 · Batch & Expiry ───────────────────── -->
+      <div class="stock-section">
+        <div class="stock-section__header">
+          <div class="stock-section__icon bg-deep-purple">
+            <v-icon size="18" color="white">mdi-barcode</v-icon>
+          </div>
+          <div>
+            <div class="stock-section__title">Batch & Expiry</div>
+            <div class="stock-section__sub">Tracking and shelf life</div>
+          </div>
+        </div>
+        <v-row>
+          <v-col cols="12" md="6">
+            <v-text-field v-model="form.batch_number" label="Batch Number" placeholder="Auto-generated" readonly persistent-hint hint="Generated automatically" variant="outlined" density="comfortable" rounded="lg" :disabled="formDisabled">
+              <template #append-inner>
+                <v-tooltip text="Regenerate batch #" location="top">
+                  <template #activator="{ props: tp }">
+                    <v-btn v-bind="tp" icon="mdi-refresh" variant="text" density="comfortable" size="small" @click="form.batch_number = generateBatch()" />
+                  </template>
+                </v-tooltip>
+              </template>
+            </v-text-field>
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-text-field v-model="form.expiry_date" label="Expiry Date" type="date" variant="outlined" density="comfortable" rounded="lg" hint="Default: 5 years from today. Change if needed." persistent-hint clearable :disabled="formDisabled" />
+          </v-col>
+        </v-row>
+      </div>
+
+      <v-divider class="my-1" />
+
+      <!-- ── Section 5 · Additional Details ───────────────── -->
+      <div class="stock-section">
+        <div class="stock-section__header">
+          <div class="stock-section__icon bg-blue-grey">
+            <v-icon size="18" color="white">mdi-text-box-outline</v-icon>
+          </div>
+          <div>
+            <div class="stock-section__title">Additional Details</div>
+            <div class="stock-section__sub">Optional notes or description</div>
+          </div>
+        </div>
+        <v-row>
+          <v-col cols="12">
+            <v-textarea v-model="form.description" label="Description" rows="3" auto-grow variant="outlined" density="comfortable" rounded="lg" :disabled="formDisabled" />
+          </v-col>
+        </v-row>
+      </div>
     </template>
   </ResourceFormPage>
 </template>
@@ -171,9 +311,151 @@ const { $api } = useNuxtApp()
 const loadId = computed(() => route.params.id || null)
 const r = useResource('/inventory/stocks/')
 const req = [v => !!v || 'Required']
+const reqNum = [v => (v !== null && v !== '' && v !== undefined) || 'Required']
 
+// ── Catalog search + duplicate detection ─────────────
+const nameQuery = ref('')
+const nameSelection = ref(null)
+const catalogResults = ref([])
+const catalogLoading = ref(false)
+const existingStock = ref(null)
+const showNotInCatalog = ref(false)
+let searchTimer = null
+
+// Disable all fields except item name when item not in catalog or already exists in inventory
+const formDisabled = computed(() => !loadId.value && (showNotInCatalog.value || !!existingStock.value))
+
+function onNameSearch(val) {
+  nameQuery.value = val
+  clearTimeout(searchTimer)
+  if (!val || val.length < 2) {
+    catalogResults.value = []
+    existingStock.value = null
+    showNotInCatalog.value = false
+    return
+  }
+  catalogLoading.value = true
+  searchTimer = setTimeout(() => searchCatalogAndInventory(val), 300)
+}
+
+async function searchCatalogAndInventory(q) {
+  try {
+    const [catRes, invRes] = await Promise.all([
+      $api.get('/medications/search/', { params: { q } }).catch(() => ({ data: [] })),
+      $api.get('/inventory/stocks/', { params: { search: q, page_size: 10 } }).catch(() => ({ data: { results: [] } })),
+    ])
+    const catalogItems = (Array.isArray(catRes.data) ? catRes.data : catRes.data?.results || []).map(m => ({ ...m, _source: 'catalog' }))
+    catalogResults.value = catalogItems
+    // Show "not in catalog" alert when search returns no results
+    showNotInCatalog.value = q.length >= 2 && catalogItems.length === 0
+    // Check for existing inventory match (exact or close)
+    const invItems = invRes.data?.results || invRes.data || []
+    const exact = invItems.find(s => s.medication_name?.toLowerCase() === q.toLowerCase())
+    existingStock.value = exact || null
+  } catch { /* swallow */ } finally {
+    catalogLoading.value = false
+  }
+}
+
+// ── Category / Unit mapping from Medication catalog ──
+const MEDICATION_CATEGORY_LABELS = {
+  analgesic: 'Analgesic / Pain Reliever', antibiotic: 'Antibiotic', antifungal: 'Antifungal',
+  antiviral: 'Antiviral', antiparasitic: 'Antiparasitic', antimalarial: 'Antimalarial',
+  antihypertensive: 'Antihypertensive', antidiabetic: 'Antidiabetic', antihistamine: 'Antihistamine',
+  antacid: 'Antacid / GI', cardiovascular: 'Cardiovascular', respiratory: 'Respiratory',
+  cns: 'Central Nervous System', hormone: 'Hormonal', vitamin: 'Vitamin / Supplement',
+  vaccine: 'Vaccine', dermatological: 'Dermatological', ophthalmic: 'Ophthalmic',
+  oncology: 'Oncology', immunosuppressant: 'Immunosuppressant', nsaid: 'NSAID', other: 'Other',
+}
+
+function matchCategory(catalogCategory) {
+  if (!catalogCategory) return null
+  const label = (MEDICATION_CATEGORY_LABELS[catalogCategory] || catalogCategory).toLowerCase()
+  const key = catalogCategory.toLowerCase()
+  return categories.value.find(c => {
+    const n = c.name.toLowerCase()
+    return n === key || n === label || n.includes(key) || label.includes(n)
+  })?.id || null
+}
+
+function matchUnit(catalogUnit) {
+  if (!catalogUnit) return null
+  const u = catalogUnit.toLowerCase()
+  return units.value.find(x => {
+    const n = x.name.toLowerCase()
+    const a = (x.abbreviation || '').toLowerCase()
+    return n === u || a === u || n.includes(u) || u.includes(n)
+  })?.id || null
+}
+
+function onNameSelected(val, form) {
+  if (!val) {
+    form.medication_name = ''
+    existingStock.value = null
+    showNotInCatalog.value = false
+    return
+  }
+  if (typeof val === 'object' && val.generic_name) {
+    // Selected from catalog
+    form.medication_name = val.generic_name
+    showNotInCatalog.value = false
+    // Auto-fill description from catalog if empty
+    if (!form.description && val.description) form.description = val.description
+    // Auto-populate category and unit of measure from catalog
+    const cat = matchCategory(val.category)
+    if (cat) form.category = cat
+    const unit = matchUnit(val.unit || val.dosage_form)
+    if (unit) form.unit = unit
+    // Re-check inventory for this exact name
+    checkInventoryDuplicate(val.generic_name)
+  } else {
+    // Typed text not from catalog
+    const text = typeof val === 'string' ? val : val?.generic_name || String(val)
+    form.medication_name = text
+    showNotInCatalog.value = text.length >= 2 && !catalogResults.value.some(c => c.generic_name?.toLowerCase() === text.toLowerCase())
+    checkInventoryDuplicate(text)
+  }
+}
+
+async function checkInventoryDuplicate(name) {
+  if (!name || name.length < 2) { existingStock.value = null; return }
+  try {
+    const res = await $api.get('/inventory/stocks/', { params: { search: name, page_size: 5 } })
+    const items = res.data?.results || res.data || []
+    const exact = items.find(s => s.medication_name?.toLowerCase() === name.toLowerCase())
+    existingStock.value = exact || null
+  } catch { existingStock.value = null }
+}
+
+function goEditExisting() {
+  if (existingStock.value?.id) {
+    router.push(`/inventory/stocks/${existingStock.value.id}/edit`)
+  }
+}
+
+function goAdjust() {
+  if (existingStock.value?.id) {
+    router.push(`/inventory/adjustments/new?stock=${existingStock.value.id}`)
+  } else {
+    router.push('/inventory/adjustments/new')
+  }
+}
+
+function costWithTax(form) {
+  const cost = Number(form.cost_price) || 0
+  const tax = Math.min(Math.max(Number(form.tax_percent) || 0, 0), 100)
+  return cost * (1 + tax / 100)
+}
+function taxPerUnit(form) {
+  return costWithTax(form) - (Number(form.cost_price) || 0)
+}
+function taxHint(form) {
+  const tax = Number(form.tax_percent) || 0
+  if (tax > 0) return `Cost + ${tax}% tax = ${formatMoney(costWithTax(form))}`
+  return ''
+}
 function margin(form) {
-  return effectivePrice(form) - (Number(form.cost_price) || 0)
+  return effectivePrice(form) - costWithTax(form)
 }
 function effectivePrice(form) {
   const sp = Number(form.selling_price) || 0
@@ -184,7 +466,7 @@ function discountAmount(form) {
   return (Number(form.selling_price) || 0) - effectivePrice(form)
 }
 function marginPercent(form) {
-  const cost = Number(form.cost_price) || 0
+  const cost = costWithTax(form)
   if (cost <= 0) return 0
   return (margin(form) / cost) * 100
 }
@@ -294,14 +576,24 @@ function resetQty(form) {
   form.reorder_quantity = Math.round((Number(form.quantity) || 0) * 0.50)
 }
 
-const initial = { medication_name: '', barcode: '', category: null, unit: null, quantity: 0, reorder_level: 0, reorder_quantity: 0, cost_price: 0, selling_price: 0, discount_percent: 0, batch_number: '', expiry_date: '', description: '' }
+function defaultExpiry() {
+  const d = new Date()
+  d.setFullYear(d.getFullYear() + 5)
+  return d.toISOString().slice(0, 10)
+}
+const initial = { medication_name: '', barcode: '', category: null, unit: null, is_active: true, quantity: 0, reorder_level: 0, reorder_quantity: 0, cost_price: 0, tax_percent: 0, selling_price: 0, discount_percent: 0, batch_number: '', expiry_date: defaultExpiry(), description: '' }
 const categories = ref([]); const units = ref([])
+
+// Sync nameSelection when editing an existing item
+watch(loadId, (id) => { if (id) { showNotInCatalog.value = false } }, { immediate: true })
 
 // Map form fields to backend payload. Strip read-only/derived fields.
 function transformPayload(data) {
   const payload = { ...data }
   // total_quantity is server-computed and read-only
   delete payload.total_quantity
+  // Strip empty expiry_date so backend doesn't reject it
+  if (!payload.expiry_date) delete payload.expiry_date
   if (loadId.value) {
     // Capture the desired quantity for post-save adjustment, but don't send it
     desiredQty.value = Number(payload.quantity) || 0
@@ -322,3 +614,71 @@ onMounted(async () => {
   units.value = await safe('/inventory/units/')
 })
 </script>
+
+<style scoped>
+/* ── Section Layout ─────────────────────────────────── */
+.stock-section {
+  padding: 20px 0 12px;
+}
+.stock-section__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.stock-section__icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.stock-section__title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.stock-section__sub {
+  font-size: 0.78rem;
+  opacity: 0.55;
+  margin-top: 1px;
+}
+
+/* ── Stock-levels inner card ────────────────────────── */
+.inner-card {
+  background: rgba(var(--v-theme-surface-variant), 0.2);
+  border: 1px solid rgba(var(--v-theme-outline), 0.08);
+}
+
+/* ── Profit Analysis Card ───────────────────────────── */
+.profit-card {
+  transition: box-shadow 0.2s ease;
+}
+.profit-card--success { border-left: 4px solid rgb(var(--v-theme-success)); }
+.profit-card--warning { border-left: 4px solid rgb(var(--v-theme-warning)); }
+.profit-card--error   { border-left: 4px solid rgb(var(--v-theme-error)); }
+
+.profit-metric {
+  padding: 6px 0;
+}
+.profit-metric__label {
+  font-size: 0.72rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  opacity: 0.6;
+  margin-bottom: 4px;
+}
+.profit-metric__value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.profit-metric__hint {
+  font-size: 0.75rem;
+  opacity: 0.55;
+  margin-top: 2px;
+}
+</style>

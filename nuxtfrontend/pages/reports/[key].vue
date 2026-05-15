@@ -34,7 +34,20 @@
         style="min-width: 200px"
         @update:model-value="onRangeChange"
       />
-      <v-btn variant="tonal" color="primary" prepend-icon="mdi-printer" class="text-none" @click="printReport">Print</v-btn>
+      <v-select
+        v-if="branchStore.hasBranches"
+        v-model="reportBranchFilter"
+        :items="branchFilterItems"
+        item-title="name"
+        item-value="id"
+        density="compact"
+        variant="outlined"
+        rounded="lg"
+        hide-details
+        prepend-inner-icon="mdi-store-marker"
+        style="min-width: 180px"
+      />
+      <v-btn variant="tonal" color="primary" prepend-icon="mdi-printer" class="text-none" @click="printReport">{{ $t('common.print') }}</v-btn>
       <v-btn variant="tonal" color="error" prepend-icon="mdi-file-pdf-box" class="text-none" :loading="pdfLoading" @click="exportPdf">PDF</v-btn>
       <v-btn variant="flat" color="primary" prepend-icon="mdi-download" class="text-none" @click="exportCsv">CSV</v-btn>
     </div>
@@ -49,7 +62,7 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" class="text-none" @click="customDialog = false">Cancel</v-btn>
+          <v-btn variant="text" class="text-none" @click="customDialog = false">{{ $t('common.cancel') }}</v-btn>
           <v-btn color="primary" variant="flat" class="text-none" :disabled="!customStart || !customEnd" @click="applyCustom">Apply</v-btn>
         </v-card-actions>
       </v-card>
@@ -182,20 +195,27 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { formatMoney, formatDate, formatDateTime } from '~/utils/format'
 import { REPORT_CATALOG, RANGE_OPTIONS, resolveRange, startOfDay, addDays } from '~/utils/reportsCatalog'
+import { useBranchStore } from '~/stores/branch'
 import defaultLogoUrl from '~/assets/images/hos_default.png'
+import adhereMedLogoUrl from '~/assets/images/logo.png'
 
 const route = useRoute()
 const router = useRouter()
 const { $api } = useNuxtApp()
 const runtimeConfig = useRuntimeConfig()
+const branchStore = useBranchStore()
 
 // --- pharmacy info for PDF header ---
-const DEFAULT_PHARMACY = { name: 'AfyaOne Pharmacy', email: 'info@example.com', location: 'Kenya', logo: null }
+const DEFAULT_PHARMACY = { name: 'Tenant Name', email: 'info@example.com', location: 'Kenya', logo: null }
 const pharmacy = ref({ ...DEFAULT_PHARMACY })
 const pharmacyLogoData = ref(null)
+const adhereMedLogoData = ref(null)
 
 // --- which report ---
 const routeKey = computed(() => String(route.params.key || ''))
@@ -215,6 +235,13 @@ const now = ref(new Date())
 const captureRoot = ref(null)
 const pdfMode = ref(false)
 const pdfLoading = ref(false)
+const reportBranchFilter = ref(null) // null = All Branches
+
+const branchFilterItems = computed(() => {
+  const items = branchStore.activeBranches.map(b => ({ id: b.id, name: b.name }))
+  items.unshift({ id: null, name: 'All Branches' })
+  return items
+})
 
 // --- range picker ---
 const rangeOptions = RANGE_OPTIONS
@@ -270,7 +297,9 @@ function goBack() {
 function inRangeTx() {
   return txAll.value.filter(t => {
     const d = new Date(t.created_at || 0)
-    return d >= rangeStart.value && d < rangeEnd.value
+    if (d < rangeStart.value || d >= rangeEnd.value) return false
+    if (reportBranchFilter.value != null && t.branch !== reportBranchFilter.value) return false
+    return true
   })
 }
 function isCompleted(t) { return (t.status || 'completed').toLowerCase() === 'completed' }
@@ -289,7 +318,7 @@ const numCell = (v) => v == null ? '—' : Number(v).toLocaleString()
 const intCell = (v) => v == null ? '—' : Math.round(Number(v)).toLocaleString()
 const pctCell = (v) => v == null ? '—' : `${Number(v).toFixed(1)}%`
 const textCell = (v) => v == null ? '—' : escapeHtml(v)
-const totalLabel = (v) => v === 'Total' ? '<strong>Total</strong>' : escapeHtml(v)
+const totalLabel = (v) => v === 'Total' ? `<strong>${t('common.total')}</strong>` : escapeHtml(v)
 const dateCell = (v) => v ? escapeHtml(formatDate(v)) : '—'
 const dateTimeCell = (v) => v ? escapeHtml(formatDateTime(v)) : '—'
 const statusCell = (v) => v == null ? '—' : `<span class="status-pill status-${String(v).toLowerCase()}">${escapeHtml(v)}</span>`
@@ -320,7 +349,7 @@ function buildSalesSummary() {
   return {
     rows, totals,
     columns: [
-      { key: 'date', label: 'Date', formatter: (v) => v === 'Total' ? '<strong>Total</strong>' : dateCell(v) },
+      { key: 'date', label: 'Date', formatter: (v) => v === 'Total' ? `<strong>${t('common.total')}</strong>` : dateCell(v) },
       { key: 'orders', label: 'Orders', align: 'right', formatter: numCell },
       { key: 'items', label: 'Items', align: 'right', formatter: numCell },
       { key: 'gross', label: 'Gross', align: 'right', formatter: moneyCell },
@@ -352,34 +381,96 @@ function buildSalesByProduct() {
     }
   }
   const total = [...map.values()].reduce((s, r) => s + r.revenue, 0) || 1
-  const rows = [...map.values()].map(r => ({
-    product: r.product, category: r.category, qty: r.qty,
-    orders: r.orders.size, revenue: r.revenue,
-    avg_price: r.qty ? r.revenue / r.qty : 0,
-    share: (r.revenue / total) * 100
-  }))
+
+  // Build stock lookup for enrichment
+  const stockLookup = new Map()
+  for (const s of stocksAll.value) {
+    const key = (s.medication_name || '').toLowerCase()
+    if (key) stockLookup.set(key, s)
+  }
+  const soldNames = new Set([...map.keys()].map(n => n.toLowerCase()))
+
+  // ABC analysis
+  const sorted = [...map.values()].sort((a, b) => b.revenue - a.revenue)
+  let cumulative = 0
+  const rows = sorted.map(r => {
+    cumulative += r.revenue
+    const cumulativePct = (cumulative / total) * 100
+    let grade = 'C'
+    if (cumulativePct <= 80) grade = 'A'
+    else if (cumulativePct <= 95) grade = 'B'
+
+    const stock = stockLookup.get(r.product.toLowerCase())
+    const stockQty = stock ? Number(stock.total_quantity || 0) : 0
+
+    return {
+      product: r.product, category: r.category, qty: r.qty,
+      orders: r.orders.size, revenue: r.revenue,
+      avg_price: r.qty ? r.revenue / r.qty : 0,
+      share: (r.revenue / total) * 100,
+      grade,
+      stock_on_hand: stockQty,
+    }
+  })
+
+  // Slow moving & dead stock counts (from analytics page logic)
+  const rangeDays = Math.max(1, Math.round((rangeEnd.value - rangeStart.value) / 86400000))
+  let slowCount = 0, deadCount = 0, deadValue = 0
+  for (const s of stocksAll.value) {
+    const qty = Number(s.total_quantity || 0)
+    if (qty <= 0) continue
+    const name = (s.medication_name || '').toLowerCase()
+    const sold = map.get([...map.keys()].find(k => k.toLowerCase() === name) || '')
+    const qtySold = sold ? sold.qty : 0
+    if (qtySold === 0) { deadCount++; deadValue += qty * Number(s.cost_price || 0) }
+    else if (qtySold <= 3) { slowCount++ }
+  }
+  // Never sold (all time)
+  const allTimeSold = new Set()
+  for (const t of txAll.value) {
+    for (const it of (t.items || [])) {
+      const n = it.medication_name || it.stock_name || ''
+      if (n) allTimeSold.add(n.toLowerCase())
+    }
+  }
+  const neverSold = stocksAll.value.filter(s => !allTimeSold.has((s.medication_name || '').toLowerCase()))
+
+  const abcCounts = { A: 0, B: 0, C: 0 }
+  rows.forEach(r => { abcCounts[r.grade]++ })
+
   const totals = rows.reduce((a, r) => ({
     product: 'Total', qty: a.qty + r.qty, orders: a.orders + r.orders,
     revenue: a.revenue + r.revenue
   }), { qty: 0, orders: 0, revenue: 0 })
   totals.share = 100
+
   return {
     rows, totals,
     columns: [
       { key: 'product', label: 'Product', formatter: totalLabel },
       { key: 'category', label: 'Category', formatter: textCell },
+      { key: 'grade', label: 'ABC', formatter: (v) => v ? `<span class="status-pill status-grade-${v.toLowerCase()}">${v}</span>` : '' },
       { key: 'qty', label: 'Qty sold', align: 'right', formatter: numCell },
       { key: 'orders', label: 'Orders', align: 'right', formatter: numCell },
       { key: 'avg_price', label: 'Avg price', align: 'right', formatter: moneyCell },
       { key: 'revenue', label: 'Revenue', align: 'right', formatter: moneyCell },
-      { key: 'share', label: 'Share', align: 'right', formatter: pctCell }
+      { key: 'share', label: 'Share', align: 'right', formatter: pctCell },
+      { key: 'stock_on_hand', label: 'Stock', align: 'right', formatter: intCell },
     ],
     kpis: [
       { label: 'Products sold', value: rows.length },
       { label: 'Units', value: totals.qty.toLocaleString() },
       { label: 'Revenue', value: formatMoney(totals.revenue) },
-      { label: 'Avg / product', value: formatMoney(rows.length ? totals.revenue / rows.length : 0) }
-    ]
+      { label: 'Avg / product', value: formatMoney(rows.length ? totals.revenue / rows.length : 0) },
+      { label: 'Slow moving', value: slowCount },
+      { label: 'Dead stock', value: deadCount, sub: formatMoney(deadValue) },
+    ],
+    // Extra data for charts & insights
+    _abc: abcCounts,
+    _slowCount: slowCount,
+    _deadCount: deadCount,
+    _deadValue: deadValue,
+    _neverSoldCount: neverSold.length,
   }
 }
 
@@ -457,6 +548,40 @@ function buildSalesByCashier() {
   }
 }
 
+function buildSalesByBranch() {
+  const tx = inRangeTx().filter(isCompleted)
+  const map = new Map()
+  for (const t of tx) {
+    const name = t.branch_name || 'Unassigned'
+    const cur = map.get(name) || { branch: name, orders: 0, items: 0, revenue: 0 }
+    cur.orders += 1
+    cur.items += itemsCount(t)
+    cur.revenue += Number(t.total || 0)
+    map.set(name, cur)
+  }
+  const rows = [...map.values()].map(r => ({ ...r, aov: r.orders ? r.revenue / r.orders : 0 }))
+  const totals = rows.reduce((a, r) => ({
+    branch: 'Total', orders: a.orders + r.orders, items: a.items + r.items,
+    revenue: a.revenue + r.revenue
+  }), { orders: 0, items: 0, revenue: 0 })
+  totals.aov = totals.orders ? totals.revenue / totals.orders : 0
+  return {
+    rows, totals,
+    columns: [
+      { key: 'branch', label: 'Branch', formatter: totalLabel },
+      { key: 'orders', label: 'Transactions', align: 'right', formatter: numCell },
+      { key: 'items', label: 'Items', align: 'right', formatter: numCell },
+      { key: 'revenue', label: 'Revenue', align: 'right', formatter: moneyCell },
+      { key: 'aov', label: 'AOV', align: 'right', formatter: moneyCell }
+    ],
+    kpis: [
+      { label: 'Branches', value: rows.length },
+      { label: 'Total orders', value: totals.orders },
+      { label: 'Total revenue', value: formatMoney(totals.revenue) }
+    ]
+  }
+}
+
 function buildPaymentMethods() {
   const tx = inRangeTx().filter(isCompleted)
   const map = new Map()
@@ -512,7 +637,7 @@ function buildTaxReport() {
   return {
     rows, totals,
     columns: [
-      { key: 'date', label: 'Date', formatter: (v) => v === 'Total' ? '<strong>Total</strong>' : dateCell(v) },
+      { key: 'date', label: 'Date', formatter: (v) => v === 'Total' ? `<strong>${t('common.total')}</strong>` : dateCell(v) },
       { key: 'orders', label: 'Orders', align: 'right', formatter: numCell },
       { key: 'gross', label: 'Gross', align: 'right', formatter: moneyCell },
       { key: 'discount', label: 'Discount', align: 'right', formatter: moneyCell },
@@ -755,6 +880,7 @@ const builders = {
   sales_by_product: buildSalesByProduct,
   sales_by_category: buildSalesByCategory,
   sales_by_cashier: buildSalesByCashier,
+  sales_by_branch: buildSalesByBranch,
   payment_methods: buildPaymentMethods,
   tax_report: buildTaxReport,
   voided_refunded: buildVoidedRefunded,
@@ -886,6 +1012,9 @@ function printReport() {
       .status-low, .status-critical { background: #fef3c7; color: #92400e; }
       .status-ok { background: #d1fae5; color: #065f46; }
       .status-soon { background: #dbeafe; color: #1e40af; }
+      .status-grade-a { background: #d1fae5; color: #065f46; }
+      .status-grade-b { background: #fef3c7; color: #92400e; }
+      .status-grade-c { background: #fee2e2; color: #991b1b; }
     </style></head><body>
       <h1>${escapeHtml(report.value.label)}</h1>
       <div class="meta">${escapeHtml(rangeLabel.value)} · generated ${escapeHtml(formatDateTime(new Date()))}</div>
@@ -938,13 +1067,25 @@ const chartBlocks = computed(() => {
 
   if (key === 'sales_by_product') {
     const top = [...rows].filter(r => r.product !== 'Total').sort((a, b) => b.revenue - a.revenue).slice(0, 10)
-    return [{
-      type: 'bar', title: 'Top 10 products by revenue', span: 12, height: 280,
-      values: top.map(r => r.revenue),
-      labels: top.map(r => r.product.length > 18 ? r.product.slice(0, 16) + '…' : r.product),
-      colors: top.map((_, i) => CHART_PALETTE[i % CHART_PALETTE.length]),
-      moneyAxis: true, rotateLabels: true
-    }]
+    const abc = built.value._abc || { A: 0, B: 0, C: 0 }
+    const abcTotal = abc.A + abc.B + abc.C || 1
+    return [
+      {
+        type: 'bar', title: 'Top 10 Products by Revenue', span: 7, height: 280,
+        values: top.map(r => r.revenue),
+        labels: top.map(r => r.product.length > 18 ? r.product.slice(0, 16) + '…' : r.product),
+        colors: top.map((_, i) => CHART_PALETTE[i % CHART_PALETTE.length]),
+        moneyAxis: true, rotateLabels: true
+      },
+      {
+        type: 'donut', title: 'ABC Classification', span: 5,
+        segments: [
+          { value: abc.A, color: '#22c55e', label: `A — ${abc.A} products (${(abc.A / abcTotal * 100).toFixed(0)}%)` },
+          { value: abc.B, color: '#f59e0b', label: `B — ${abc.B} products (${(abc.B / abcTotal * 100).toFixed(0)}%)` },
+          { value: abc.C, color: '#ef4444', label: `C — ${abc.C} products (${(abc.C / abcTotal * 100).toFixed(0)}%)` },
+        ]
+      },
+    ]
   }
 
   if (key === 'sales_by_category') {
@@ -963,6 +1104,23 @@ const chartBlocks = computed(() => {
       labels: data.map(r => r.cashier),
       colors: data.map((_, i) => CHART_PALETTE[i % CHART_PALETTE.length]),
       moneyAxis: true, rotateLabels: data.length > 6
+    }]
+  }
+
+  if (key === 'sales_by_branch') {
+    const data = [...rows].filter(r => r.branch !== 'Total').sort((a, b) => b.revenue - a.revenue)
+    return [{
+      type: 'bar', title: 'Revenue by branch', span: 7, height: 260,
+      values: data.map(r => r.revenue),
+      labels: data.map(r => r.branch.length > 18 ? r.branch.slice(0, 16) + '…' : r.branch),
+      colors: data.map((_, i) => CHART_PALETTE[i % CHART_PALETTE.length]),
+      moneyAxis: true, rotateLabels: data.length > 6
+    }, {
+      type: 'donut', title: 'Revenue share by branch', span: 5,
+      segments: data.map((r, i) => {
+        const total = data.reduce((s, x) => s + x.revenue, 0) || 1
+        return { value: r.revenue, color: CHART_PALETTE[i % CHART_PALETTE.length], label: r.branch, pct: Math.round((r.revenue / total) * 100) }
+      })
     }]
   }
 
@@ -1025,12 +1183,28 @@ const insights = computed(() => {
     if (top[0]) out.push(`Best seller: ${top[0].product} — ${formatMoney(top[0].revenue)} (${top[0].share.toFixed(1)}% of revenue).`)
     const top5Share = top.slice(0, 5).reduce((s, r) => s + r.share, 0)
     if (top.length >= 5) out.push(`Top 5 products contribute ${top5Share.toFixed(1)}% of total revenue.`)
+
+    const d = built.value
+    const abc = d._abc || {}
+    if (abc.A) out.push(`ABC Analysis: ${abc.A} Class A products (top 80% revenue), ${abc.B || 0} Class B, ${abc.C || 0} Class C.`)
+    if (d._slowCount) out.push(`${d._slowCount} slow-moving products (≤ 3 units sold) — consider promotions or bundling.`)
+    if (d._deadCount) out.push(`${d._deadCount} dead stock items (in stock, zero sales) — idle capital: ${formatMoney(d._deadValue || 0)}.`)
+    if (d._neverSoldCount) out.push(`${d._neverSoldCount} catalog items have never been sold (all time).`)
   } else if (key === 'sales_by_category') {
     const top = [...rows].filter(r => r.category !== 'Total').sort((a, b) => b.revenue - a.revenue)
     if (top[0]) out.push(`Leading category: ${top[0].category} (${top[0].share.toFixed(1)}% of revenue).`)
   } else if (key === 'sales_by_cashier') {
     const top = [...rows].filter(r => r.cashier !== 'Total').sort((a, b) => b.revenue - a.revenue)
     if (top[0]) out.push(`Top cashier: ${top[0].cashier} — ${formatMoney(top[0].revenue)} from ${top[0].orders} transactions (AOV ${formatMoney(top[0].aov)}).`)
+  } else if (key === 'sales_by_branch') {
+    const top = [...rows].filter(r => r.branch !== 'Total').sort((a, b) => b.revenue - a.revenue)
+    if (top[0]) out.push(`Top branch: ${top[0].branch} — ${formatMoney(top[0].revenue)} from ${top[0].orders} transactions.`)
+    const bestAov = [...rows].filter(r => r.branch !== 'Total' && r.orders >= 3).sort((a, b) => b.aov - a.aov)[0]
+    if (bestAov && bestAov.branch !== top[0]?.branch) out.push(`Highest AOV: ${bestAov.branch} at ${formatMoney(bestAov.aov)} per transaction.`)
+    if (top.length > 1) {
+      const totalRev = top.reduce((s, r) => s + r.revenue, 0) || 1
+      out.push(`Top branch contributes ${((top[0].revenue / totalRev) * 100).toFixed(1)}% of total revenue.`)
+    }
   } else if (key === 'payment_methods') {
     const top = [...rows].filter(r => r.method !== 'Total').sort((a, b) => b.revenue - a.revenue)
     if (top[0]) out.push(`Most-used payment: ${top[0].method} (${top[0].share.toFixed(1)}% of revenue).`)
@@ -1139,22 +1313,51 @@ async function exportPdf() {
     const pdf = new jsPDF({ orientation: 'p', unit: 'pt', format: 'a4' })
     const pageW = pdf.internal.pageSize.getWidth()
     const pageH = pdf.internal.pageSize.getHeight()
-    const margin = 36
+    const margin = 40
     let cursorY = margin
 
-    const drawHeader = () => {
-      const headerH = 78
-      // Background band
-      pdf.setFillColor(248, 250, 252)
-      pdf.rect(0, 0, pageW, headerH, 'F')
-      // Accent stripe
-      pdf.setFillColor(59, 130, 246)
-      pdf.rect(0, 0, pageW, 4, 'F')
+    // ── Color palette ──
+    const C = {
+      primary: [37, 99, 235],      // blue-600
+      primaryDark: [29, 78, 216],   // blue-700
+      accent: [16, 185, 129],       // emerald-500
+      dark: [15, 23, 42],           // slate-900
+      heading: [30, 41, 59],        // slate-800
+      body: [51, 65, 85],           // slate-600
+      muted: [100, 116, 139],       // slate-500
+      light: [148, 163, 184],       // slate-400
+      bg: [248, 250, 252],          // slate-50
+      bgCard: [241, 245, 249],      // slate-100
+      border: [226, 232, 240],      // slate-200
+      white: [255, 255, 255],
+      success: [16, 185, 129],
+      warning: [245, 158, 11],
+      error: [239, 68, 68],
+    }
 
-      const logoSize = 48
+    // ── Utility: draw rounded rect ──
+    const roundRect = (x, y, w, h, r, fillColor, strokeColor) => {
+      if (fillColor) pdf.setFillColor(...fillColor)
+      if (strokeColor) { pdf.setDrawColor(...strokeColor); pdf.setLineWidth(0.5) }
+      pdf.roundedRect(x, y, w, h, r, r, fillColor && strokeColor ? 'FD' : fillColor ? 'F' : 'S')
+    }
+
+    // ── Draw page header (called on first page) ──
+    const drawHeader = () => {
+      // Top accent bar
+      pdf.setFillColor(...C.primary)
+      pdf.rect(0, 0, pageW, 5, 'F')
+
+      // Header background
+      pdf.setFillColor(...C.bg)
+      pdf.rect(0, 5, pageW, 90, 'F')
+
+      // Left side: Tenant logo + info
+      const logoSize = 44
       const logoX = margin
-      const logoY = 14
+      const logoY = 18
       let textX = margin
+
       if (pharmacyLogoData.value) {
         try {
           pdf.addImage(pharmacyLogoData.value, 'PNG', logoX, logoY, logoSize, logoSize, undefined, 'FAST')
@@ -1162,78 +1365,133 @@ async function exportPdf() {
         } catch (_) { /* ignore bad image */ }
       }
 
-      // Pharmacy name
-      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(14); pdf.setTextColor(17, 24, 39)
+      // Tenant name
+      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(13); pdf.setTextColor(...C.dark)
       pdf.text(pharmacy.value.name, textX, logoY + 14)
-      // Contact line
-      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9); pdf.setTextColor(75, 85, 99)
-      const contactBits = []
-      if (pharmacy.value.location) contactBits.push(pharmacy.value.location)
-      if (pharmacy.value.email) contactBits.push(pharmacy.value.email)
-      if (pharmacy.value.phone) contactBits.push(pharmacy.value.phone)
-      pdf.text(contactBits.join('  ·  '), textX, logoY + 28)
 
-      // Right side: report meta
-      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(13); pdf.setTextColor(30, 41, 59)
-      pdf.text(report.value.label, pageW - margin, logoY + 14, { align: 'right' })
-      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8); pdf.setTextColor(100, 116, 139)
-      pdf.text(rangeLabel.value, pageW - margin, logoY + 26, { align: 'right' })
-      pdf.text('Generated ' + formatDateTime(now.value), pageW - margin, logoY + 36, { align: 'right' })
+      // Tenant contact details
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8); pdf.setTextColor(...C.body)
+      const contactParts = []
+      if (pharmacy.value.location) contactParts.push(pharmacy.value.location)
+      if (pharmacy.value.email) contactParts.push(pharmacy.value.email)
+      if (pharmacy.value.phone) contactParts.push(pharmacy.value.phone)
+      pdf.text(contactParts.join('  |  '), textX, logoY + 28)
 
-      // Divider under header
-      pdf.setDrawColor(226, 232, 240); pdf.setLineWidth(0.5)
-      pdf.line(0, headerH, pageW, headerH)
-      cursorY = headerH + 18
+      // Right side: AdhereMed branding (mirrored layout)
+      const amLogoSize = logoSize
+      const amTextRight = pageW - margin
+      const amLogoX = amTextRight - amLogoSize
+      const amLogoY = logoY
+      if (adhereMedLogoData.value) {
+        try {
+          pdf.addImage(adhereMedLogoData.value, 'PNG', amLogoX, amLogoY, amLogoSize, amLogoSize, undefined, 'FAST')
+        } catch (_) { /* ignore */ }
+      }
+      // AdhereMed name (right-aligned to left of logo)
+      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(13); pdf.setTextColor(...C.dark)
+      pdf.text('AdhereMed', amLogoX - 12, amLogoY + 14, { align: 'right' })
+      // AdhereMed contact (right-aligned to left of logo)
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8); pdf.setTextColor(...C.body)
+      pdf.text('info@adheremed.com  |  Kenya', amLogoX - 12, amLogoY + 28, { align: 'right' })
+
+      // Separator line
+      pdf.setDrawColor(...C.border); pdf.setLineWidth(1)
+      pdf.line(margin, 95, pageW - margin, 95)
+
+      cursorY = 110
+
+      // Report title band
+      roundRect(margin, cursorY, pageW - margin * 2, 42, 6, C.primary)
+      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(14); pdf.setTextColor(...C.white)
+      pdf.text(report.value.label, margin + 16, cursorY + 18)
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9); pdf.setTextColor(220, 230, 255)
+      pdf.text(rangeLabel.value + '  |  Generated ' + formatDateTime(now.value), margin + 16, cursorY + 32)
+
+      cursorY += 58
     }
 
     const ensureSpace = (h) => {
-      if (cursorY + h > pageH - margin) { pdf.addPage(); cursorY = margin }
+      if (cursorY + h > pageH - 50) { pdf.addPage(); cursorY = margin }
     }
+
+    // ── Draw footer on every page ──
+    const drawFooter = (pageNum) => {
+      const footerY = pageH - 28
+      // Separator
+      pdf.setDrawColor(...C.border); pdf.setLineWidth(0.5)
+      pdf.line(margin, footerY - 8, pageW - margin, footerY - 8)
+      // Left: pharmacy info
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7); pdf.setTextColor(...C.light)
+      pdf.text(`${pharmacy.value.name}  |  ${pharmacy.value.email}  |  Powered by AdhereMed`, margin, footerY)
+      // Right: page number
+      pdf.text(`Page ${pageNum}`, pageW - margin, footerY, { align: 'right' })
+    }
+
+    // ══════════════════════════════════════════
+    //  BUILD DOCUMENT
+    // ══════════════════════════════════════════
 
     drawHeader()
 
+    // ── KPI Cards ──
     const kpis = activeKpis.value || []
     if (kpis.length) {
       const cols = Math.min(4, kpis.length)
-      const gap = 8
-      const w = (pageW - margin * 2 - gap * (cols - 1)) / cols
-      const h = 54
-      ensureSpace(h + 12)
+      const gap = 10
+      const cardW = (pageW - margin * 2 - gap * (cols - 1)) / cols
+      const cardH = 58
+      ensureSpace(cardH + 16)
+
       kpis.forEach((k, i) => {
         const col = i % cols
         const row = Math.floor(i / cols)
-        if (col === 0 && row > 0) { cursorY += h + gap; ensureSpace(h) }
-        const x = margin + col * (w + gap)
-        const y = cursorY + row * 0
-        pdf.setFillColor(243, 246, 252); pdf.setDrawColor(220)
-        pdf.roundedRect(x, y, w, h, 6, 6, 'FD')
-        pdf.setFontSize(8); pdf.setTextColor(110); pdf.setFont('helvetica', 'normal')
-        pdf.text(String(k.label).toUpperCase(), x + 8, y + 14)
-        pdf.setFontSize(13); pdf.setTextColor(25); pdf.setFont('helvetica', 'bold')
-        pdf.text(String(k.value), x + 8, y + 32)
+        if (col === 0 && row > 0) { cursorY += cardH + gap; ensureSpace(cardH) }
+        const x = margin + col * (cardW + gap)
+        const y = cursorY
+
+        // Card background with left accent
+        roundRect(x, y, cardW, cardH, 5, C.bgCard, C.border)
+        pdf.setFillColor(...C.primary)
+        pdf.roundedRect(x, y, 4, cardH, 2, 2, 'F')
+
+        // Label
+        pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7.5); pdf.setTextColor(...C.muted)
+        pdf.text(String(k.label).toUpperCase(), x + 14, y + 16)
+        // Value
+        pdf.setFont('helvetica', 'bold'); pdf.setFontSize(15); pdf.setTextColor(...C.dark)
+        pdf.text(String(k.value), x + 14, y + 35)
+        // Sub
         if (k.sub) {
-          pdf.setFontSize(8); pdf.setTextColor(120); pdf.setFont('helvetica', 'normal')
-          pdf.text(String(k.sub), x + 8, y + 46)
+          pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7); pdf.setTextColor(...C.light)
+          pdf.text(String(k.sub), x + 14, y + 48)
         }
       })
-      const rows = Math.ceil(kpis.length / cols)
-      cursorY += h * rows + (rows - 1) * gap + 16
+      const totalRows = Math.ceil(kpis.length / cols)
+      cursorY += cardH * totalRows + (totalRows - 1) * gap + 20
     }
 
+    // ── Key Insights ──
     if (insights.value.length) {
-      ensureSpace(40)
-      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(11); pdf.setTextColor(30)
-      pdf.text('Key insights', margin, cursorY); cursorY += 14
-      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9); pdf.setTextColor(60)
+      ensureSpace(50)
+      // Section heading
+      roundRect(margin, cursorY, pageW - margin * 2, 28, 4, [239, 246, 255])
+      pdf.setFillColor(...C.primary)
+      pdf.roundedRect(margin, cursorY, 4, 28, 2, 2, 'F')
+      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(10); pdf.setTextColor(...C.primary)
+      pdf.text('\u2728  Key Insights', margin + 14, cursorY + 18)
+      cursorY += 36
+
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9); pdf.setTextColor(...C.body)
       for (const t of insights.value) {
-        const lines = pdf.splitTextToSize('• ' + t, pageW - margin * 2)
-        ensureSpace(lines.length * 12 + 4)
-        pdf.text(lines, margin, cursorY)
-        cursorY += lines.length * 12 + 2
+        const lines = pdf.splitTextToSize('\u2022  ' + t, pageW - margin * 2 - 10)
+        ensureSpace(lines.length * 13 + 4)
+        pdf.text(lines, margin + 10, cursorY)
+        cursorY += lines.length * 13 + 3
       }
-      cursorY += 8
+      cursorY += 10
     }
 
+    // ── Charts ──
     for (const c of charts) {
       const isDonut = c.block?.type === 'donut'
       const maxW = pageW - margin * 2
@@ -1241,39 +1499,65 @@ async function exportPdf() {
       let w = maxW
       let h = w * ratio
       if (isDonut) {
-        h = Math.min(220, h)
+        h = Math.min(200, h)
         w = h / ratio
       }
-      const titleH = c.title ? 14 : 0
+      const titleH = c.title ? 20 : 0
       const legendLines = isDonut && c.block?.segments ? c.block.segments.length : 0
-      const legendH = legendLines ? legendLines * 11 + 6 : 0
-      ensureSpace(h + titleH + legendH + 16)
+      const legendH = legendLines ? legendLines * 13 + 8 : 0
+      const totalH = h + titleH + legendH + 24
+
+      ensureSpace(totalH)
+
+      // Chart container card
+      const containerH = h + titleH + legendH + 16
+      roundRect(margin, cursorY, maxW, containerH, 6, C.white, C.border)
+
       if (c.title) {
-        pdf.setFont('helvetica', 'bold'); pdf.setFontSize(10); pdf.setTextColor(30)
-        pdf.text(c.title, margin, cursorY); cursorY += 12
+        pdf.setFont('helvetica', 'bold'); pdf.setFontSize(10); pdf.setTextColor(...C.heading)
+        pdf.text(c.title, margin + 12, cursorY + 16)
+        cursorY += titleH
       }
-      const x = isDonut ? margin + (maxW - w) / 2 : margin
-      pdf.addImage(c.dataUrl, 'PNG', x, cursorY, w, h, undefined, 'FAST')
+
+      const x = isDonut ? margin + (maxW - w) / 2 : margin + 6
+      const imgW = isDonut ? w : maxW - 12
+      const imgH = isDonut ? h : imgW * ratio
+      pdf.addImage(c.dataUrl, 'PNG', x, cursorY + 4, imgW, imgH, undefined, 'FAST')
+
       if (isDonut && c.block?.segments) {
-        let ly = cursorY + h + 8
+        let ly = cursorY + imgH + 14
         const total = c.block.segments.reduce((s, x) => s + (Number(x.value) || 0), 0) || 1
         for (const seg of c.block.segments) {
           const pct = ((Number(seg.value) || 0) / total * 100).toFixed(1)
           const rgb = hexToRgb(seg.color || '#94a3b8')
           pdf.setFillColor(rgb.r, rgb.g, rgb.b)
-          pdf.rect(margin, ly - 7, 8, 8, 'F')
-          pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9); pdf.setTextColor(40)
-          pdf.text(`${seg.label}  —  ${formatMoney(seg.value)} (${pct}%)`, margin + 12, ly)
-          ly += 12
+          roundRect(margin + 12, ly - 7, 10, 10, 2, [rgb.r, rgb.g, rgb.b])
+          pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8.5); pdf.setTextColor(...C.body)
+          pdf.text(seg.label, margin + 26, ly + 1)
+          pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...C.dark)
+          pdf.text(`${formatMoney(seg.value)} (${pct}%)`, pageW - margin - 12, ly + 1, { align: 'right' })
+          ly += 13
         }
-        cursorY += h + 8 + c.block.segments.length * 12 + 6
+        cursorY += imgH + 14 + c.block.segments.length * 13 + 12
       } else {
-        cursorY += h + 14
+        cursorY += imgH + 20
       }
     }
 
+    // ── Data Table ──
     const cols = activeColumns.value
     if (cols.length && sortedRows.value.length) {
+      // Section heading
+      ensureSpace(50)
+      roundRect(margin, cursorY, pageW - margin * 2, 28, 4, C.bgCard)
+      pdf.setFillColor(...C.primary)
+      pdf.roundedRect(margin, cursorY, 4, 28, 2, 2, 'F')
+      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(10); pdf.setTextColor(...C.heading)
+      pdf.text('\uD83D\uDCCA  Detailed Data', margin + 14, cursorY + 18)
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8); pdf.setTextColor(...C.muted)
+      pdf.text(`${sortedRows.value.length} records`, pageW - margin - 8, cursorY + 18, { align: 'right' })
+      cursorY += 36
+
       const head = [cols.map(c => c.label)]
       const stripHtml = (s) => String(s ?? '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').trim()
       const cellText = (c, row) => {
@@ -1291,26 +1575,46 @@ async function exportPdf() {
           })]
         : undefined
 
-      ensureSpace(40)
       autoTable(pdf, {
         startY: cursorY,
         margin: { left: margin, right: margin },
         head, body, foot,
-        styles: { fontSize: 8, cellPadding: 4, overflow: 'linebreak' },
-        headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
-        footStyles: { fillColor: [240, 244, 252], textColor: 30, fontStyle: 'bold' },
-        alternateRowStyles: { fillColor: [250, 251, 253] },
+        styles: {
+          fontSize: 8,
+          cellPadding: { top: 5, right: 6, bottom: 5, left: 6 },
+          overflow: 'linebreak',
+          lineColor: C.border,
+          lineWidth: 0.5,
+          textColor: C.body,
+        },
+        headStyles: {
+          fillColor: C.primary,
+          textColor: C.white,
+          fontStyle: 'bold',
+          fontSize: 8,
+          cellPadding: { top: 7, right: 6, bottom: 7, left: 6 },
+        },
+        footStyles: {
+          fillColor: [237, 242, 252],
+          textColor: C.dark,
+          fontStyle: 'bold',
+          fontSize: 8.5,
+          cellPadding: { top: 6, right: 6, bottom: 6, left: 6 },
+        },
+        alternateRowStyles: { fillColor: [250, 251, 254] },
         columnStyles: cols.reduce((acc, c, i) => {
           if (c.align === 'right') acc[i] = { halign: 'right' }
           return acc
         }, {}),
-        didDrawPage: () => {
-          pdf.setFontSize(8); pdf.setTextColor(140)
-          pdf.text(`${pharmacy.value.name} \u00b7 ${pharmacy.value.email}`, margin, pageH - 12)
-          const str = `Page ${pdf.internal.getCurrentPageInfo().pageNumber}`
-          pdf.text(str, pageW - margin, pageH - 12, { align: 'right' })
-        }
+        didDrawPage: () => {} // footer handled below
       })
+    }
+
+    // ── Apply footers to all pages ──
+    const totalPages = pdf.internal.getNumberOfPages()
+    for (let i = 1; i <= totalPages; i++) {
+      pdf.setPage(i)
+      drawFooter(i)
     }
 
     pdf.save(`${routeKey.value}-${new Date().toISOString().slice(0, 10)}.pdf`)
@@ -1359,8 +1663,8 @@ async function loadImageDataUrl(url) {
 
 async function loadPharmacyInfo() {
   const [profile, branches] = await Promise.all([
-    safeList('/pharmacy_profile/profile/').then(arr => arr[0] || null).catch(() => null),
-    safeList('/pharmacy_profile/branches/')
+    safeList('/pharmacy-profile/profile/').then(arr => arr[0] || null).catch(() => null),
+    safeList('/pharmacy-profile/branches/')
   ])
   const main = branches.find(b => b.is_main) || branches[0] || null
   pharmacy.value = {
@@ -1368,13 +1672,15 @@ async function loadPharmacyInfo() {
     email: main?.email || DEFAULT_PHARMACY.email,
     location: main?.address || DEFAULT_PHARMACY.location,
     phone: main?.phone || '',
-    logo: profile?.logo ? absoluteUrl(profile.logo) : null
+    logo: profile?.logo_url || (profile?.logo ? absoluteUrl(profile.logo) : null)
   }
-  // preload logo as data URL (logo from API → fallback to default)
+  // preload tenant logo (API → fallback default)
   pharmacyLogoData.value = await loadImageDataUrl(pharmacy.value.logo)
   if (!pharmacyLogoData.value) {
     pharmacyLogoData.value = await loadImageDataUrl(defaultLogoUrl)
   }
+  // preload AdhereMed logo
+  adhereMedLogoData.value = await loadImageDataUrl(adhereMedLogoUrl)
 }
 
 async function loadAll() {
@@ -1422,6 +1728,9 @@ onMounted(loadAll)
 :deep(.status-low), :deep(.status-critical) { background: rgba(245, 158, 11, 0.15); color: rgb(146, 64, 14); }
 :deep(.status-ok) { background: rgba(34, 197, 94, 0.15); color: rgb(6, 95, 70); }
 :deep(.status-soon) { background: rgba(59, 130, 246, 0.15); color: rgb(30, 64, 175); }
+:deep(.status-grade-a) { background: rgba(34, 197, 94, 0.15); color: rgb(6, 95, 70); }
+:deep(.status-grade-b) { background: rgba(245, 158, 11, 0.15); color: rgb(146, 64, 14); }
+:deep(.status-grade-c) { background: rgba(239, 68, 68, 0.15); color: rgb(185, 28, 28); }
 
 .legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
 .insights-list { padding-left: 18px; margin: 0; }

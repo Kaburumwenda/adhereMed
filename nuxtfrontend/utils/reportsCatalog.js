@@ -4,6 +4,7 @@ export const REPORT_CATALOG = [
   { key: 'sales_by_product', label: 'Sales by Product', desc: 'Quantity sold, revenue and share per product', icon: 'mdi-pill', color: 'info', scope: 'POS' },
   { key: 'sales_by_category', label: 'Sales by Category', desc: 'Revenue grouped by product category', icon: 'mdi-shape', color: 'success', scope: 'POS' },
   { key: 'sales_by_cashier', label: 'Cashier Performance', desc: 'Transactions, revenue and AOV per cashier', icon: 'mdi-account-tie', color: 'warning', scope: 'POS' },
+  { key: 'sales_by_branch', label: 'Sales by Branch', desc: 'Revenue, orders and AOV per branch', icon: 'mdi-store-marker', color: 'cyan', scope: 'POS' },
   { key: 'payment_methods', label: 'Payments Report', desc: 'Breakdown by payment method (cash, M-Pesa…)', icon: 'mdi-credit-card-outline', color: 'pink', scope: 'POS' },
   { key: 'tax_report', label: 'Tax & Discounts', desc: 'Tax collected and discounts given', icon: 'mdi-receipt-text-check-outline', color: 'deep-purple', scope: 'POS' },
   { key: 'voided_refunded', label: 'Voids & Refunds', desc: 'Voided / refunded transactions in period', icon: 'mdi-receipt-text-remove-outline', color: 'red', scope: 'POS' },

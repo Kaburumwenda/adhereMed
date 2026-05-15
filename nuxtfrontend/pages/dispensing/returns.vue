@@ -8,7 +8,7 @@
               <v-icon color="red-darken-3" size="32">mdi-package-variant-closed-remove</v-icon>
             </v-avatar>
             <div>
-              <div class="text-h5 text-md-h4 font-weight-bold">Dispense Returns</div>
+              <div class="text-h5 text-md-h4 font-weight-bold">{{ $t('dispenseReturns.title') }}</div>
               <div class="text-body-2" style="opacity:0.9">
                 Process refunds & restock returned medications.
               </div>
@@ -17,9 +17,9 @@
         </v-col>
         <v-col cols="12" md="4" class="d-flex justify-md-end mt-3 mt-md-0" style="gap:8px">
           <v-btn color="white" variant="elevated" class="text-red-darken-3"
-                 prepend-icon="mdi-plus" @click="openCreate">New Return</v-btn>
+                 prepend-icon="mdi-plus" @click="openCreate">{{ $t('dispenseReturns.newReturn') }}</v-btn>
           <v-btn color="white" variant="outlined" prepend-icon="mdi-refresh"
-                 :loading="loading" @click="load">Refresh</v-btn>
+                 :loading="loading" @click="load">{{ $t('common.refresh') }}</v-btn>
         </v-col>
       </v-row>
       <v-row class="mt-4" dense>
@@ -114,7 +114,7 @@
                   <th class="text-right">Dispensed</th>
                   <th style="width:120px">Return qty</th>
                   <th class="text-right">Unit price</th>
-                  <th class="text-right">Refund</th>
+                  <th class="text-right">{{ $t('dispenseReturns.refund') }}</th>
                 </tr>
               </thead>
               <tbody>
@@ -160,8 +160,8 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" @click="createDialog = false">Cancel</v-btn>
-          <v-btn color="primary" :loading="saving" :disabled="!canSave" @click="save">Process Return</v-btn>
+          <v-btn variant="text" @click="createDialog = false">{{ $t('common.cancel') }}</v-btn>
+          <v-btn color="primary" :loading="saving" :disabled="!canSave" @click="save">{{ $t('dispenseReturns.processReturn') }}</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -171,6 +171,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { ref, computed, onMounted } from 'vue'
 const { $api } = useNuxtApp()
 

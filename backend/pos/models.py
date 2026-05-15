@@ -95,6 +95,74 @@ class POSTransaction(models.Model):
         return f'TXN {self.transaction_number} - KSh {self.total}'
 
 
+class CreditSale(models.Model):
+    class PartialPaymentMethod(models.TextChoices):
+        NONE = 'none', 'None'
+        CASH = 'cash', 'Cash'
+        CARD = 'card', 'Card'
+        MPESA = 'mpesa', 'M-Pesa'
+        INSURANCE = 'insurance', 'Insurance'
+
+    class Status(models.TextChoices):
+        OPEN = 'open', 'Open'
+        PARTIAL = 'partial', 'Partially Paid'
+        SETTLED = 'settled', 'Settled'
+        OVERDUE = 'overdue', 'Overdue'
+
+    transaction = models.OneToOneField(
+        POSTransaction, on_delete=models.CASCADE, related_name='credit_record'
+    )
+    customer_name = models.CharField(max_length=255)
+    customer_phone = models.CharField(max_length=20, blank=True)
+    due_date = models.DateField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    partial_paid_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    balance_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    partial_payment_method = models.CharField(
+        max_length=20,
+        choices=PartialPaymentMethod.choices,
+        default=PartialPaymentMethod.NONE,
+    )
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.OPEN)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Credit {self.transaction.transaction_number} - Bal {self.balance_amount}'
+
+
+class CreditPayment(models.Model):
+    """Individual payment recorded against a CreditSale to reduce its balance."""
+
+    class PaymentMethod(models.TextChoices):
+        CASH = 'cash', 'Cash'
+        MPESA = 'mpesa', 'M-Pesa'
+        CARD = 'card', 'Card'
+        INSURANCE = 'insurance', 'Insurance'
+
+    credit_sale = models.ForeignKey(CreditSale, on_delete=models.CASCADE, related_name='payments')
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    payment_method = models.CharField(max_length=20, choices=PaymentMethod.choices, default=PaymentMethod.CASH)
+    reference = models.CharField(max_length=100, blank=True)
+    notes = models.TextField(blank=True)
+    recorded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='credit_payments_recorded',
+    )
+    paid_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-paid_at']
+
+    def __str__(self):
+        return f'Payment {self.amount} on {self.credit_sale}'
+
+
 class TransactionItem(models.Model):
     transaction = models.ForeignKey(POSTransaction, on_delete=models.CASCADE, related_name='items')
     stock = models.ForeignKey('inventory.MedicationStock', on_delete=models.SET_NULL, null=True)

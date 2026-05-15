@@ -5,6 +5,7 @@ from . import views
 
 router = DefaultRouter()
 router.register('transactions', views.POSTransactionViewSet, basename='postransaction')
+router.register('credits', views.CreditSaleViewSet, basename='creditsale')
 router.register('customers', views.CustomerViewSet, basename='customer')
 router.register('parked-sales', views.ParkedSaleViewSet, basename='parkedsale')
 router.register('shifts', views.CashierShiftViewSet, basename='cashiershift')

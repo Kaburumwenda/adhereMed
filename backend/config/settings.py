@@ -123,8 +123,8 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django_tenants.postgresql_backend',
-        'NAME': config('DB_NAME', default='adheremeddb'),
-        'USER': config('DB_USER', default='adheremeduser'),
+        'NAME': config('DB_NAME', default='afyaone'),
+        'USER': config('DB_USER', default='postgres'),
         'PASSWORD': config('DB_PASSWORD'),
         'HOST': config('DB_HOST', default='localhost'),
         'PORT': config('DB_PORT', default='5432'),
@@ -304,7 +304,7 @@ if USE_S3:
     }
 else:
     STATIC_URL  = 'static/'
-    STATIC_ROOT = BASE_DIR / 'static'
+    STATIC_ROOT = BASE_DIR / 'staticfiles'
     MEDIA_URL   = 'media/'
     MEDIA_ROOT  = BASE_DIR / 'media'
 

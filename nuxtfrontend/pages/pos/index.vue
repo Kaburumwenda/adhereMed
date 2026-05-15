@@ -4,25 +4,25 @@
     <div class="pos-topbar d-flex align-center px-4">
       <v-icon color="primary" size="28" class="mr-2">mdi-point-of-sale</v-icon>
       <div>
-        <div class="text-subtitle-1 font-weight-bold">Point of Sale <span class="text-caption text-medium-emphasis font-weight-regular">· Walk-in / OTC sales</span></div>
-        <div class="text-caption text-medium-emphasis">{{ today }} · Cashier: {{ auth.user?.first_name || 'Staff' }}</div>
+        <div class="text-subtitle-1 font-weight-bold">{{ $t('pos.title') }}<span class="text-caption text-medium-emphasis font-weight-regular">· Walk-in / OTC sales</span></div>
+        <div class="text-caption text-medium-emphasis">{{ today }} · Cashier: {{ auth.user?.first_name || 'Staff' }}<span v-if="branchStore.currentBranchName"> · {{ branchStore.currentBranchName }}</span></div>
       </div>
       <v-spacer />
       <v-tooltip text="POS = Walk-in retail sales without prescription. For prescription-based dispensing use Dispensing." location="bottom">
         <template #activator="{ props }">
-          <v-btn v-bind="props" variant="text" prepend-icon="mdi-pill" class="text-none d-none d-md-flex" to="/dispensing">Dispensing</v-btn>
+          <v-btn v-bind="props" variant="text" prepend-icon="mdi-pill" class="text-none d-none d-md-flex" to="/dispensing">{{ $t('dispensing.title') }}</v-btn>
         </template>
       </v-tooltip>
       <v-chip prepend-icon="mdi-receipt-text" variant="tonal" color="info" class="mr-2 d-none d-sm-flex">
         Today: {{ todayStats.count }} · {{ formatMoney(todayStats.revenue) }}
       </v-chip>
-      <v-btn variant="text" prepend-icon="mdi-history" class="text-none" to="/pos/customers">Customers</v-btn>
-      <v-btn variant="text" prepend-icon="mdi-receipt-text-outline" class="text-none d-none d-sm-flex" to="/pos/history">Sales History</v-btn>
+      <v-btn variant="text" prepend-icon="mdi-history" class="text-none" to="/pos/customers">{{ $t('customers.title') }}</v-btn>
+      <v-btn variant="text" prepend-icon="mdi-receipt-text-outline" class="text-none d-none d-sm-flex" to="/pos/history">{{ $t('posHistory.title') }}</v-btn>
       <v-badge :content="parkedCount" :model-value="parkedCount > 0" color="warning" offset-x="6" offset-y="6">
         <v-btn variant="text" prepend-icon="mdi-tray-arrow-up" class="text-none" to="/pos/parked?source=pharmacy" title="Sales on hold">Hold</v-btn>
       </v-badge>
       <v-btn variant="text" prepend-icon="mdi-chart-bar" class="text-none d-none d-sm-flex" to="/analytics">Analytics</v-btn>
-      <v-btn variant="tonal" color="primary" prepend-icon="mdi-cart-variant" class="text-none ml-1" to="/pos/supermarket">Smart POS</v-btn>
+      <v-btn variant="tonal" color="primary" prepend-icon="mdi-cart-variant" class="text-none ml-1" to="/pos/supermarket">{{ $t('posSupermarket.title') }}</v-btn>
     </div>
 
     <!-- Main grid -->
@@ -141,7 +141,7 @@
         <div class="pos-cart-header pa-4 pb-3">
           <div class="d-flex align-center">
             <v-icon color="primary" class="mr-2">mdi-cart</v-icon>
-            <div class="text-subtitle-1 font-weight-bold">Current Sale</div>
+            <div class="text-subtitle-1 font-weight-bold">{{ $t('pos.currentSale') }}</div>
             <v-spacer />
             <v-chip v-if="cart.length" size="small" color="primary" variant="tonal">
               {{ itemCount }} item{{ itemCount === 1 ? '' : 's' }}
@@ -198,11 +198,11 @@
         <div class="pos-cart-footer">
           <div class="px-4 py-3">
             <div class="d-flex justify-space-between text-body-2 mb-1">
-              <span class="text-medium-emphasis">Subtotal</span>
+              <span class="text-medium-emphasis">{{ $t('common.subtotal') }}</span>
               <span>{{ formatMoney(subtotal) }}</span>
             </div>
             <div class="d-flex align-center justify-space-between text-body-2 mb-1">
-              <span class="text-medium-emphasis">Discount</span>
+              <span class="text-medium-emphasis">{{ $t('common.discount') }}</span>
               <v-text-field
                 v-model.number="discount"
                 type="number" min="0" :max="subtotal"
@@ -217,7 +217,7 @@
             </div>
             <v-divider class="mb-2" />
             <div class="d-flex justify-space-between align-baseline">
-              <span class="text-h6 font-weight-bold">Total</span>
+              <span class="text-h6 font-weight-bold">{{ $t('common.total') }}</span>
               <span class="text-h4 font-weight-bold text-primary">{{ formatMoney(total) }}</span>
             </div>
           </div>
@@ -241,49 +241,27 @@
             </v-select>
           </div>
 
-          <!-- Credit details (only when Credit is selected) -->
-          <v-expand-transition>
-            <div v-if="isCredit" class="px-4 pb-3">
-              <v-card variant="tonal" color="warning" rounded="lg" class="pa-3">
-                <div class="d-flex align-center mb-2" style="gap:8px">
-                  <v-icon size="18">mdi-account-cash</v-icon>
-                  <span class="text-subtitle-2 font-weight-bold">Credit sale details</span>
-                </div>
-                <v-text-field
-                  v-model="customerName"
-                  label="Customer name *"
-                  density="compact" variant="outlined" hide-details class="mb-2"
-                  prepend-inner-icon="mdi-account"
-                />
-                <v-text-field
-                  v-model="credit.customerPhone"
-                  label="Phone number *"
-                  density="compact" variant="outlined" hide-details class="mb-2"
-                  prepend-inner-icon="mdi-phone"
-                />
-                <v-text-field
-                  v-model="credit.dueDate"
-                  type="date" label="Due date"
-                  density="compact" variant="outlined" hide-details class="mb-2"
-                  prepend-inner-icon="mdi-calendar"
-                />
-                <v-text-field
-                  v-model="credit.reference"
-                  label="Reference / Account #"
-                  density="compact" variant="outlined" hide-details class="mb-2"
-                  prepend-inner-icon="mdi-pound"
-                />
-                <v-textarea
-                  v-model="credit.notes"
-                  label="Notes" rows="2" auto-grow
-                  density="compact" variant="outlined" hide-details
-                />
-                <div v-if="!creditValid" class="text-caption text-error mt-2">
-                  Customer name and phone are required for credit sales.
-                </div>
-              </v-card>
-            </div>
-          </v-expand-transition>
+          <div v-if="isCredit" class="px-4 pb-3">
+            <v-card variant="tonal" color="warning" rounded="lg" class="pa-3">
+              <div class="d-flex align-center" style="gap:8px">
+                <v-icon size="18">mdi-account-cash</v-icon>
+                <span class="text-subtitle-2 font-weight-bold">Credit sale details captured</span>
+                <v-spacer />
+                <v-btn size="small" variant="text" class="text-none" prepend-icon="mdi-pencil" @click="openCreditDialog">{{ $t('common.edit') }}</v-btn>
+              </div>
+              <div class="text-caption mt-2">
+                {{ customerName || 'Customer' }} · Due: {{ credit.dueDate || 'N/A' }}
+              </div>
+              <div class="text-caption text-medium-emphasis mt-1">
+                Partial paid: {{ formatMoney(Number(credit.partialPaidAmount) || 0) }}
+                <span v-if="(Number(credit.partialPaidAmount) || 0) > 0">via {{ partialPaymentMethodLabel }}</span>
+                · Balance: {{ formatMoney(creditBalance) }}
+              </div>
+              <div v-if="!creditValid" class="text-caption text-error mt-2">
+                Customer name and due date are required for credit sales.
+              </div>
+            </v-card>
+          </div>
 
           <div class="px-4 pb-4 d-flex">
             <v-btn variant="outlined" color="warning" rounded="lg" class="text-none mr-2" :disabled="!cart.length" prepend-icon="mdi-pause-circle" @click="openHold">
@@ -343,12 +321,112 @@
         <div class="d-flex align-center mt-4" style="gap:8px">
           <div class="text-caption text-medium-emphasis">{{ itemCount }} items · {{ formatMoney(total) }}</div>
           <v-spacer />
-          <v-btn variant="text" class="text-none" :disabled="holdPrompt.saving" @click="holdPrompt.show = false">Cancel</v-btn>
+          <v-btn variant="text" class="text-none" :disabled="holdPrompt.saving" @click="holdPrompt.show = false">{{ $t('common.cancel') }}</v-btn>
           <v-btn color="warning" variant="flat" rounded="lg" prepend-icon="mdi-pause-circle" class="text-none"
             :loading="holdPrompt.saving"
             :disabled="!(holdPrompt.name || '').trim()"
             @click="confirmHold">
             Hold sale
+          </v-btn>
+        </div>
+      </v-card>
+    </v-dialog>
+
+    <!-- Credit details dialog -->
+    <v-dialog v-model="creditPrompt.show" max-width="520" persistent>
+      <v-card rounded="lg" class="pa-5">
+        <div class="d-flex align-center mb-3">
+          <v-avatar color="warning" variant="tonal" rounded="lg" size="40" class="mr-3">
+            <v-icon>mdi-account-cash</v-icon>
+          </v-avatar>
+          <div>
+            <h3 class="text-h6 font-weight-bold mb-0">Credit sale details</h3>
+            <div class="text-caption text-medium-emphasis">Capture due date and partial payment</div>
+          </div>
+        </div>
+        <v-text-field
+          ref="creditNameInput"
+          v-model="creditPrompt.name"
+          label="Customer name *"
+          placeholder="e.g. John Doe"
+          variant="outlined" density="comfortable" autofocus
+          prepend-inner-icon="mdi-account"
+          :rules="[v => !!(v && v.trim()) || 'Customer name is required']"
+          @keydown.enter="confirmCredit"
+        />
+        <v-text-field
+          v-model="creditPrompt.phone"
+          label="Phone number"
+          placeholder="e.g. 0712 345 678"
+          variant="outlined" density="comfortable"
+          prepend-inner-icon="mdi-phone"
+          hide-details="auto"
+          class="mb-2"
+          @keydown.enter="confirmCredit"
+        />
+        <v-text-field
+          v-model="creditPrompt.dueDate"
+          label="Due date *"
+          type="date"
+          variant="outlined" density="comfortable"
+          prepend-inner-icon="mdi-calendar"
+          :rules="[v => !!v || 'Due date is required']"
+          :min="todayStr"
+          hide-details="auto"
+          class="mb-2"
+        />
+        <v-text-field
+          v-model.number="creditPrompt.partialPaidAmount"
+          label="Partial payment"
+          type="number"
+          min="0"
+          :max="total"
+          variant="outlined" density="comfortable"
+          prepend-inner-icon="mdi-cash-fast"
+          suffix="KES"
+          hide-details="auto"
+          class="mb-2"
+        />
+        <v-select
+          v-model="creditPrompt.partialPaymentMethod"
+          :items="partialPaymentMethods"
+          item-title="label"
+          item-value="value"
+          label="Partial payment method"
+          variant="outlined"
+          density="comfortable"
+          prepend-inner-icon="mdi-credit-card-outline"
+          hide-details="auto"
+          class="mb-2"
+          :disabled="!(Number(creditPrompt.partialPaidAmount) > 0)"
+        />
+        <v-text-field
+          v-model="creditPrompt.reference"
+          label="Reference / Account #"
+          variant="outlined"
+          density="comfortable"
+          prepend-inner-icon="mdi-pound"
+          hide-details="auto"
+          class="mb-2"
+        />
+        <v-textarea
+          v-model="creditPrompt.notes"
+          label="Notes (optional)"
+          variant="outlined" density="comfortable" rows="2" auto-grow
+          prepend-inner-icon="mdi-note-text-outline"
+          hide-details
+        />
+        <div class="d-flex align-center mt-4" style="gap:8px">
+          <div class="text-caption text-medium-emphasis">
+            Balance: {{ formatMoney(Math.max(0, total - (Number(creditPrompt.partialPaidAmount) || 0))) }}
+          </div>
+          <v-spacer />
+          <v-btn variant="text" class="text-none" @click="cancelCredit">{{ $t('common.cancel') }}</v-btn>
+          <v-btn color="warning" variant="flat" rounded="lg" prepend-icon="mdi-check" class="text-none"
+            :loading="checkingOut"
+            :disabled="!(creditPrompt.name || '').trim() || !creditPrompt.dueDate || !cart.length"
+            @click="confirmCredit(true)">
+            Save details
           </v-btn>
         </div>
       </v-card>
@@ -390,12 +468,17 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { useAuthStore } from '~/stores/auth'
+import { useBranchStore } from '~/stores/branch'
 import { formatMoney } from '~/utils/format'
 
 definePageMeta({ layout: 'default' })
 
 const auth = useAuthStore()
+const branchStore = useBranchStore()
 const { $api } = useNuxtApp()
 
 const today = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })
@@ -419,6 +502,17 @@ const receipt = reactive({ show: false, id: '', time: '', items: [], total: 0, m
 const parkedCount = ref(0)
 const holdPrompt = reactive({ show: false, name: '', phone: '', notes: '', saving: false })
 const holdNameInput = ref(null)
+const creditPrompt = reactive({
+  show: false,
+  name: '',
+  phone: '',
+  dueDate: '',
+  partialPaidAmount: 0,
+  partialPaymentMethod: 'none',
+  reference: '',
+  notes: '',
+})
+const creditNameInput = ref(null)
 
 const paymentMethods = [
   { value: 'cash', label: 'Cash', icon: 'mdi-cash' },
@@ -427,14 +521,91 @@ const paymentMethods = [
   { value: 'insurance', label: 'Insurance', icon: 'mdi-shield-account' },
   { value: 'credit', label: 'Credit', icon: 'mdi-account-cash' }
 ]
+const partialPaymentMethods = [
+  { value: 'none', label: 'None' },
+  { value: 'cash', label: 'Cash' },
+  { value: 'mpesa', label: 'M-Pesa' },
+  { value: 'card', label: 'Card' },
+  { value: 'insurance', label: 'Insurance' },
+]
 
 // Credit-sale details (only used when payment_method === 'credit')
-const credit = reactive({ customerPhone: '', dueDate: '', reference: '', notes: '' })
+const credit = reactive({
+  customerPhone: '',
+  dueDate: '',
+  partialPaidAmount: 0,
+  partialPaymentMethod: 'none',
+  reference: '',
+  notes: '',
+})
 const isCredit = computed(() => paymentMethod.value === 'credit')
 const paymentMethodIcon = computed(() => paymentMethods.find(m => m.value === paymentMethod.value)?.icon || 'mdi-cash')
+const partialPaymentMethodLabel = computed(() => partialPaymentMethods.find(m => m.value === credit.partialPaymentMethod)?.label || 'None')
+const creditBalance = computed(() => Math.max(0, total.value - (Number(credit.partialPaidAmount) || 0)))
 const creditValid = computed(() => !isCredit.value || (
-  (customerName.value || '').trim().length > 1 && (credit.customerPhone || '').trim().length >= 7
+  (customerName.value || '').trim().length > 1 && !!credit.dueDate &&
+  ((Number(credit.partialPaidAmount) || 0) <= total.value) &&
+  ((Number(credit.partialPaidAmount) || 0) === 0 || credit.partialPaymentMethod !== 'none')
 ))
+const todayStr = computed(() => new Date().toISOString().slice(0, 10))
+
+watch(paymentMethod, async (value, prev) => {
+  if (value !== 'credit') return
+  creditPrompt.name = customerName.value || creditPrompt.name || ''
+  creditPrompt.phone = credit.customerPhone || ''
+  creditPrompt.dueDate = credit.dueDate || ''
+  creditPrompt.partialPaidAmount = Number(credit.partialPaidAmount) || 0
+  creditPrompt.partialPaymentMethod = credit.partialPaymentMethod || 'none'
+  creditPrompt.reference = credit.reference || ''
+  creditPrompt.notes = credit.notes || ''
+  creditPrompt.show = true
+  await nextTick()
+  creditNameInput.value?.focus?.()
+  if (prev && prev !== 'credit') return
+})
+
+function openCreditDialog() {
+  creditPrompt.name = customerName.value || creditPrompt.name || ''
+  creditPrompt.phone = credit.customerPhone || ''
+  creditPrompt.dueDate = credit.dueDate || ''
+  creditPrompt.partialPaidAmount = Number(credit.partialPaidAmount) || 0
+  creditPrompt.partialPaymentMethod = credit.partialPaymentMethod || 'none'
+  creditPrompt.reference = credit.reference || ''
+  creditPrompt.notes = credit.notes || ''
+  creditPrompt.show = true
+}
+
+async function confirmCredit(autoCheckout = false) {
+  const name = (creditPrompt.name || '').trim()
+  if (!name) { flash('Customer name is required', 'error'); return }
+  if (!creditPrompt.dueDate) { flash('Due date is required', 'error'); return }
+  const partial = Math.max(0, Number(creditPrompt.partialPaidAmount) || 0)
+  if (partial > total.value) { flash('Partial payment cannot exceed total', 'error'); return }
+  if (partial > 0 && creditPrompt.partialPaymentMethod === 'none') {
+    flash('Select partial payment method', 'error'); return
+  }
+
+  customerName.value = name
+  credit.customerPhone = (creditPrompt.phone || '').trim()
+  credit.dueDate = creditPrompt.dueDate
+  credit.partialPaidAmount = partial
+  credit.partialPaymentMethod = partial > 0 ? creditPrompt.partialPaymentMethod : 'none'
+  credit.reference = (creditPrompt.reference || '').trim()
+  credit.notes = (creditPrompt.notes || '').trim()
+  creditPrompt.show = false
+
+  // User asked Save details to immediately commit the credit sale.
+  if (autoCheckout) {
+    await checkout()
+  }
+}
+
+function cancelCredit() {
+  creditPrompt.show = false
+  if (!credit.dueDate || !customerName.value) {
+    paymentMethod.value = 'cash'
+  }
+}
 
 function nameOf(p) { return p.medication_name || p.name || 'Unnamed' }
 function stockOf(p) { return Number(p.total_quantity ?? p.quantity ?? 0) }
@@ -459,8 +630,12 @@ const categoryOptions = computed(() =>
   categories.value.map(c => ({ title: `${c.name} (${c.count})`, value: c.name }))
 )
 
+const serverResults = ref([])
+const searching = ref(false)
+let _searchTimer = null
+
 const filtered = computed(() => {
-  let arr = products.value
+  let arr = [...products.value, ...serverResults.value.filter(sr => !products.value.some(p => p.id === sr.id))]
   if (activeCat.value) arr = arr.filter(p => (p.category_name || p.category || 'Other') === activeCat.value)
   const q = search.value.toLowerCase().trim()
   if (q) arr = arr.filter(p =>
@@ -470,6 +645,28 @@ const filtered = computed(() => {
     (p.medication_id || '').toLowerCase().includes(q)
   )
   return arr
+})
+
+watch(() => search.value, (q) => {
+  clearTimeout(_searchTimer)
+  serverResults.value = []
+  const trimmed = q.trim()
+  if (trimmed.length < 2) return
+  _searchTimer = setTimeout(async () => {
+    // Only query server if local search yields few results
+    const localCount = products.value.filter(p =>
+      nameOf(p).toLowerCase().includes(trimmed.toLowerCase()) ||
+      (p.abbreviation || '').toLowerCase().includes(trimmed.toLowerCase()) ||
+      (p.barcode || p.sku || '').toLowerCase().includes(trimmed.toLowerCase()) ||
+      (p.medication_id || '').toLowerCase().includes(trimmed.toLowerCase())
+    ).length
+    if (localCount > 3) return
+    searching.value = true
+    const results = await $api.get(`/inventory/stocks/?search=${encodeURIComponent(trimmed)}&is_active=true&page_size=20`)
+      .then(r => r.data?.results || r.data || []).catch(() => [])
+    serverResults.value = results
+    searching.value = false
+  }, 400)
 })
 
 const pageCount = computed(() => Math.max(1, Math.ceil(filtered.value.length / pageSize.value)))
@@ -511,7 +708,12 @@ function dec(i) {
 }
 function clearCart() {
   cart.value = []; customerName.value = ''; discount.value = 0
-  credit.customerPhone = ''; credit.dueDate = ''; credit.reference = ''; credit.notes = ''
+  credit.customerPhone = ''
+  credit.dueDate = ''
+  credit.partialPaidAmount = 0
+  credit.partialPaymentMethod = 'none'
+  credit.reference = ''
+  credit.notes = ''
 }
 
 async function openHold() {
@@ -571,7 +773,7 @@ function flash(text, color = 'success') {
 
 async function load() {
   loading.value = true
-  products.value = await $api.get('/inventory/stocks/?page_size=500')
+  products.value = await $api.get('/inventory/stocks/?page_size=5000&is_active=true&ordering=-created_at')
     .then(r => r.data?.results || r.data || []).catch(() => [])
   // today stats
   const tx = await $api.get('/pos/transactions/?page_size=200')
@@ -650,13 +852,21 @@ async function checkout() {
       payment_method: paymentMethod.value,
       customer_name: customerName.value || 'Walk-in',
       discount: Number(discount.value) || 0,
-      items
+      items,
+      branch_id: branchStore.currentBranchId
     }
     if (isCredit.value) {
       payload.customer_phone = credit.customerPhone
+      payload.credit_due_date = credit.dueDate || null
+      payload.credit_notes = credit.notes || ''
+      payload.partial_paid_amount = Number(credit.partialPaidAmount) || 0
+      payload.partial_payment_method = (Number(credit.partialPaidAmount) || 0) > 0 ? credit.partialPaymentMethod : 'none'
       const refBits = []
       if (credit.reference) refBits.push(`Ref: ${credit.reference}`)
       if (credit.dueDate) refBits.push(`Due: ${credit.dueDate}`)
+      if ((Number(credit.partialPaidAmount) || 0) > 0) {
+        refBits.push(`Partial: ${Number(credit.partialPaidAmount)} via ${credit.partialPaymentMethod}`)
+      }
       if (credit.notes) refBits.push(credit.notes)
       if (refBits.length) payload.payment_reference = refBits.join(' | ').slice(0, 100)
     }

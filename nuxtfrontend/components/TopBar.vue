@@ -13,14 +13,33 @@
     <v-btn icon variant="text" @click="toggleFullscreen">
       <v-icon>{{ isFullscreen ? 'mdi-fullscreen-exit' : 'mdi-fullscreen' }}</v-icon>
       <v-tooltip activator="parent" location="bottom">
-        {{ isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen' }}
+        {{ isFullscreen ? $t('topbar.exitFullscreen') : $t('topbar.fullscreen') }}
       </v-tooltip>
     </v-btn>
 
     <v-btn icon variant="text" @click="theme.cycle()">
       <v-icon>{{ themeIcon }}</v-icon>
-      <v-tooltip activator="parent" location="bottom">Theme: {{ theme.mode }}</v-tooltip>
+      <v-tooltip activator="parent" location="bottom">{{ $t('topbar.theme') }}: {{ theme.mode }}</v-tooltip>
     </v-btn>
+
+    <LanguageSwitcher />
+
+    <!-- Branch selector -->
+    <v-select
+      v-if="branchStore.hasBranches && auth.tenantType === 'pharmacy'"
+      :model-value="branchStore.currentBranchId"
+      :items="branchItems"
+      item-title="name"
+      item-value="id"
+      density="compact"
+      variant="outlined"
+      rounded="lg"
+      hide-details
+      prepend-inner-icon="mdi-store-marker"
+      style="max-width: 200px"
+      class="mx-1 d-none d-md-flex"
+      @update:model-value="branchStore.select($event)"
+    />
 
     <v-menu offset="8">
       <template #activator="{ props }">
@@ -36,12 +55,12 @@
         </v-btn>
       </template>
       <v-list density="compact" min-width="180">
-        <v-list-item prepend-icon="mdi-account" title="Profile" @click="goProfile" />
-        <v-list-item prepend-icon="mdi-cog" title="Settings" to="/settings" />
+        <v-list-item prepend-icon="mdi-account" :title="$t('common.profile')" @click="goProfile" />
+        <v-list-item prepend-icon="mdi-cog" :title="$t('common.settings')" to="/settings" />
         <v-divider />
         <v-list-item
           prepend-icon="mdi-logout"
-          title="Logout"
+          :title="$t('common.logout')"
           base-color="error"
           @click="onLogout"
         />
@@ -53,6 +72,8 @@
 <script setup>
 import { useAuthStore } from '~/stores/auth'
 import { useThemeStore } from '~/stores/theme'
+import { useBranchStore } from '~/stores/branch'
+import { ADMIN_ROLES } from '~/utils/permissions'
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 
 defineProps({
@@ -63,9 +84,19 @@ defineEmits(['toggle-drawer'])
 
 const auth = useAuthStore()
 const theme = useThemeStore()
+const branchStore = useBranchStore()
 const router = useRouter()
 
 const isFullscreen = ref(false)
+
+// Admin sees "All Branches" + each branch; staff sees only active branches
+const branchItems = computed(() => {
+  const items = branchStore.activeBranches.map(b => ({ id: b.id, name: b.name }))
+  if (ADMIN_ROLES.has(auth.role)) {
+    items.unshift({ id: null, name: 'All Branches' })
+  }
+  return items
+})
 
 function syncFullscreen() {
   if (typeof document !== 'undefined') {

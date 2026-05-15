@@ -5,7 +5,7 @@
       <div class="d-flex align-center">
         <v-btn icon="mdi-arrow-left" variant="text" to="/pos" class="mr-2" />
         <div>
-          <h1 class="text-h5 text-md-h4 font-weight-bold mb-1">Sales History</h1>
+          <h1 class="text-h5 text-md-h4 font-weight-bold mb-1">{{ $t('posHistory.title') }}</h1>
           <div class="text-body-2 text-medium-emphasis">
             {{ rangeLabel }} · {{ filteredTx.length }} transactions
             <v-chip v-if="!canViewAll" size="x-small" color="primary" variant="tonal" class="ml-2">
@@ -46,7 +46,7 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" class="text-none" @click="customDialog = false">Cancel</v-btn>
+          <v-btn variant="text" class="text-none" @click="customDialog = false">{{ $t('common.cancel') }}</v-btn>
           <v-btn color="primary" variant="flat" class="text-none" :disabled="!customStart || !customEnd" @click="applyCustom">Apply</v-btn>
         </v-card-actions>
       </v-card>
@@ -166,14 +166,14 @@
               <th style="width:32px"></th>
               <th style="width:48px" class="text-right">#</th>
               <th class="cursor-pointer" @click="setSort('created_at')">Date / Time <v-icon size="14" v-if="sortBy === 'created_at'">{{ sortDir === 'desc' ? 'mdi-arrow-down' : 'mdi-arrow-up' }}</v-icon></th>
-              <th class="cursor-pointer" @click="setSort('transaction_number')">Receipt #</th>
+              <th class="cursor-pointer" @click="setSort('transaction_number')">{{ $t('posHistory.receiptNo') }}</th>
               <th>Customer</th>
               <th>Cashier</th>
-              <th>Payment</th>
+              <th>{{ $t('posHistory.payment') }}</th>
               <th class="text-right cursor-pointer" @click="setSort('itemsCount')">Items</th>
-              <th class="text-right cursor-pointer" @click="setSort('total')">Total <v-icon size="14" v-if="sortBy === 'total'">{{ sortDir === 'desc' ? 'mdi-arrow-down' : 'mdi-arrow-up' }}</v-icon></th>
-              <th>Status</th>
-              <th class="text-right" style="width:110px">Actions</th>
+              <th class="text-right cursor-pointer" @click="setSort('total')">{{ $t('common.total') }}<v-icon size="14" v-if="sortBy === 'total'">{{ sortDir === 'desc' ? 'mdi-arrow-down' : 'mdi-arrow-up' }}</v-icon></th>
+              <th>{{ $t('common.status') }}</th>
+              <th class="text-right" style="width:110px">{{ $t('common.actions') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -222,7 +222,7 @@
                               <th>Product</th>
                               <th class="text-right">Qty</th>
                               <th class="text-right">Unit</th>
-                              <th class="text-right">Subtotal</th>
+                              <th class="text-right">{{ $t('common.subtotal') }}</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -238,11 +238,11 @@
                       </div>
                       <div style="min-width:220px">
                         <div class="text-overline text-medium-emphasis mb-1">Summary</div>
-                        <div class="d-flex justify-space-between py-1"><span>Subtotal</span><span>{{ formatMoney(t.subtotal || 0) }}</span></div>
-                        <div class="d-flex justify-space-between py-1"><span>Tax</span><span>{{ formatMoney(t.tax || 0) }}</span></div>
-                        <div class="d-flex justify-space-between py-1"><span>Discount</span><span>−{{ formatMoney(t.discount || 0) }}</span></div>
+                        <div class="d-flex justify-space-between py-1"><span>{{ $t('common.subtotal') }}</span><span>{{ formatMoney(t.subtotal || 0) }}</span></div>
+                        <div class="d-flex justify-space-between py-1"><span>{{ $t('common.tax') }}</span><span>{{ formatMoney(t.tax || 0) }}</span></div>
+                        <div class="d-flex justify-space-between py-1"><span>{{ $t('common.discount') }}</span><span>−{{ formatMoney(t.discount || 0) }}</span></div>
                         <v-divider class="my-1" />
-                        <div class="d-flex justify-space-between py-1 font-weight-bold"><span>Total</span><span class="text-primary">{{ formatMoney(t.total || 0) }}</span></div>
+                        <div class="d-flex justify-space-between py-1 font-weight-bold"><span>{{ $t('common.total') }}</span><span class="text-primary">{{ formatMoney(t.total || 0) }}</span></div>
                         <div v-if="t.payment_reference" class="text-caption text-medium-emphasis mt-2">Ref: {{ t.payment_reference }}</div>
                       </div>
                     </div>
@@ -294,11 +294,11 @@
             <div class="text-caption text-medium-emphasis">{{ it.quantity }} × {{ formatMoney(it.unit_price) }}</div>
           </div>
           <v-divider class="my-2" />
-          <div class="d-flex justify-space-between"><span>Subtotal</span><span>{{ formatMoney(receiptTx.subtotal || 0) }}</span></div>
-          <div class="d-flex justify-space-between"><span>Tax</span><span>{{ formatMoney(receiptTx.tax || 0) }}</span></div>
-          <div class="d-flex justify-space-between"><span>Discount</span><span>−{{ formatMoney(receiptTx.discount || 0) }}</span></div>
+          <div class="d-flex justify-space-between"><span>{{ $t('common.subtotal') }}</span><span>{{ formatMoney(receiptTx.subtotal || 0) }}</span></div>
+          <div class="d-flex justify-space-between"><span>{{ $t('common.tax') }}</span><span>{{ formatMoney(receiptTx.tax || 0) }}</span></div>
+          <div class="d-flex justify-space-between"><span>{{ $t('common.discount') }}</span><span>−{{ formatMoney(receiptTx.discount || 0) }}</span></div>
           <div class="d-flex justify-space-between text-h6 font-weight-bold mt-1">
-            <span>Total</span><span class="text-primary">{{ formatMoney(receiptTx.total || 0) }}</span>
+            <span>{{ $t('common.total') }}</span><span class="text-primary">{{ formatMoney(receiptTx.total || 0) }}</span>
           </div>
           <div v-if="receiptTx.payment_reference" class="text-caption text-medium-emphasis mt-2">Reference: {{ receiptTx.payment_reference }}</div>
           <div class="text-center text-caption text-medium-emphasis mt-3">Thank you for your visit!</div>
@@ -310,6 +310,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 import { ref, computed, onMounted, watch } from 'vue'
 import { formatMoney, formatDate, formatDateTime } from '~/utils/format'
 import EmptyState from '~/components/EmptyState.vue'
@@ -562,13 +565,13 @@ function printReceipt(t) {
       <hr>
       <div class="row"><span>Cashier</span><span>${escapeHtml(t.cashier_name || '—')}</span></div>
       <div class="row"><span>Customer</span><span>${escapeHtml(t.customer_name || 'Walk-in')}</span></div>
-      <div class="row"><span>Payment</span><span>${escapeHtml(formatPayment(t.payment_method))}</span></div>
+      <div class="row"><span>{{ $t('posHistory.payment') }}</span><span>${escapeHtml(formatPayment(t.payment_method))}</span></div>
       <hr>
       <table>${items}</table>
       <hr>
-      <div class="row"><span>Subtotal</span><span>${formatMoney(t.subtotal || 0)}</span></div>
-      <div class="row"><span>Tax</span><span>${formatMoney(t.tax || 0)}</span></div>
-      <div class="row"><span>Discount</span><span>−${formatMoney(t.discount || 0)}</span></div>
+      <div class="row"><span>{{ $t('common.subtotal') }}</span><span>${formatMoney(t.subtotal || 0)}</span></div>
+      <div class="row"><span>{{ $t('common.tax') }}</span><span>${formatMoney(t.tax || 0)}</span></div>
+      <div class="row"><span>{{ $t('common.discount') }}</span><span>−${formatMoney(t.discount || 0)}</span></div>
       <div class="row total"><span>TOTAL</span><span>${formatMoney(t.total || 0)}</span></div>
       ${t.payment_reference ? `<div class="row"><span>Ref</span><span>${escapeHtml(t.payment_reference)}</span></div>` : ''}
       <hr>

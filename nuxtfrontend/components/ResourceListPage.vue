@@ -1,6 +1,6 @@
 <template>
   <v-container fluid class="pa-4 pa-md-6">
-    <PageHeader v-if="showHeader" :title="title" :icon="icon" :subtitle="subtitle">
+    <PageHeader v-if="showHeader" :title="title" :icon="icon" :subtitle="subtitle" :color="color">
       <template #actions>
         <v-btn
           v-if="createPath || $slots['create-action']"
@@ -21,7 +21,7 @@
         <v-text-field
           v-model="resource.search.value"
           prepend-inner-icon="mdi-magnify"
-          placeholder="Search…"
+          :placeholder="$t('common.search') + '…'"
           variant="outlined"
           density="compact"
           hide-details
@@ -87,12 +87,12 @@
 
     <v-dialog v-model="deleteDialog" max-width="420">
       <v-card rounded="lg">
-        <v-card-title>Delete {{ singular }}?</v-card-title>
-        <v-card-text>This action cannot be undone.</v-card-text>
+        <v-card-title>{{ $t('common.delete') }} {{ singular }}?</v-card-title>
+        <v-card-text>{{ $t('common.cannotUndo') }}</v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" @click="deleteDialog = false">Cancel</v-btn>
-          <v-btn color="error" :loading="resource.saving.value" @click="doDelete">Delete</v-btn>
+          <v-btn variant="text" @click="deleteDialog = false">{{ $t('common.cancel') }}</v-btn>
+          <v-btn color="error" :loading="resource.saving.value" @click="doDelete">{{ $t('common.delete') }}</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -105,11 +105,13 @@
 
 <script setup>
 import { useSlots } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 const props = defineProps({
   title: { type: String, required: true },
   subtitle: { type: String, default: '' },
   icon: { type: String, default: '' },
+  color: { type: String, default: 'primary' },
   resource: { type: Object, required: true },
   headers: { type: Array, required: true },
   createPath: { type: String, default: '' },
@@ -125,6 +127,7 @@ const props = defineProps({
   showHeader: { type: Boolean, default: true }
 })
 
+const { t } = useI18n()
 const slots = useSlots()
 const slotNames = computed(() =>
   Object.keys(slots)
@@ -144,10 +147,10 @@ function confirmDelete(item) {
 async function doDelete() {
   try {
     await props.resource.remove(target.value.id)
-    snackbar.text = `${props.singular} deleted`
+    snackbar.text = t('common.deleted')
     snackbar.color = 'success'
   } catch (e) {
-    snackbar.text = props.resource.error.value || 'Delete failed'
+    snackbar.text = props.resource.error.value || t('common.deleteFailed')
     snackbar.color = 'error'
   }
   snackbar.show = true
