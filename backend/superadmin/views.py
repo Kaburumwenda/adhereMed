@@ -21,6 +21,13 @@ from .serializers import (
     TenantCreateSerializer,
     UserAdminSerializer,
     UserAdminUpdateSerializer,
+    CoinAllocateSerializer,
+    CoinDeductSerializer,
+    CoinPackageSerializer,
+    CoinTransactionSerializer,
+    CoinWalletSerializer,
+    ReferralAdminSerializer,
+    ReferralProfileAdminSerializer,
 )
 
 User = get_user_model()
@@ -133,6 +140,12 @@ class TenantListView(generics.ListCreateAPIView):
             role=User.Role.TENANT_ADMIN,
             tenant=tenant,
         )
+
+        # Auto-create coin wallet & grant 300 coins for pharmacies
+        from usage_billing.referral_models import ReferralProfile
+        profile, _ = ReferralProfile.objects.get_or_create(tenant=tenant)
+        if tenant.type == "pharmacy":
+            profile.credit(300, "Welcome bonus: 300 Adhere Coins on registration")
 
         return Response(
             {
@@ -428,4 +441,475 @@ def run_seed(request):
     return Response({
         "detail": f"'{info['label']}' seeded successfully (global).",
         "command": cmd_key,
+    })
+
+
+# ── Adhere Coins ─────────────────────────────────────────────────────────────────
+
+from usage_billing.referral_models import ReferralProfile, CoinTransaction as RefCoinTransaction
+from .models import CoinPackage
+
+
+class CoinPackageListView(generics.ListCreateAPIView):
+    permission_classes = [IsSuperAdmin]
+    serializer_class = CoinPackageSerializer
+    queryset = CoinPackage.objects.all()
+
+
+class CoinPackageDetailView(generics.RetrieveUpdateDestroyAPIView):
+    permission_classes = [IsSuperAdmin]
+    serializer_class = CoinPackageSerializer
+    queryset = CoinPackage.objects.all()
+
+
+class CoinWalletListView(generics.ListAPIView):
+    permission_classes = [IsSuperAdmin]
+    serializer_class = CoinWalletSerializer
+
+    def get_queryset(self):
+        qs = ReferralProfile.objects.select_related("tenant").all()
+        q = self.request.query_params.get("q", "")
+        if q:
+            qs = qs.filter(tenant__name__icontains=q)
+        return qs
+
+
+class CoinTransactionListView(generics.ListAPIView):
+    permission_classes = [IsSuperAdmin]
+    serializer_class = CoinTransactionSerializer
+
+    def get_queryset(self):
+        qs = RefCoinTransaction.objects.select_related("profile__tenant", "related_tenant").all()
+        tenant_id = self.request.query_params.get("tenant")
+        if tenant_id:
+            qs = qs.filter(profile__tenant_id=tenant_id)
+        tx_type = self.request.query_params.get("tx_type")
+        if tx_type:
+            qs = qs.filter(type=tx_type)
+        return qs
+
+
+@api_view(["GET"])
+@permission_classes([IsSuperAdmin])
+def coin_stats(request):
+    """High-level coin economy stats."""
+    from django.db.models import Sum
+
+    wallets = ReferralProfile.objects.all()
+    total_wallets = wallets.count()
+    total_balance = wallets.aggregate(s=Sum("coin_balance"))["s"] or 0
+    total_earned = wallets.aggregate(s=Sum("total_earned"))["s"] or 0
+    total_spent = wallets.aggregate(s=Sum("total_redeemed"))["s"] or 0
+
+    recent_txs = RefCoinTransaction.objects.count()
+    active_packages = CoinPackage.objects.filter(is_active=True).count()
+
+    return Response({
+        "total_wallets": total_wallets,
+        "total_balance": float(total_balance),
+        "total_earned": float(total_earned),
+        "total_spent": float(total_spent),
+        "total_transactions": recent_txs,
+        "active_packages": active_packages,
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsSuperAdmin])
+def coin_allocate(request):
+    """Credit / bonus / refund coins to a tenant wallet."""
+    serializer = CoinAllocateSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    data = serializer.validated_data
+
+    try:
+        tenant = Tenant.objects.exclude(schema_name="public").get(pk=data["tenant_id"])
+    except Tenant.DoesNotExist:
+        return Response({"detail": "Tenant not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    profile, _ = ReferralProfile.objects.get_or_create(tenant=tenant)
+    amount = data["amount"]
+    reason = data.get("description", "") or f"{data['tx_type'].title()} — {amount} coins"
+    profile.credit(amount, reason)
+
+    return Response({
+        "tenant": tenant.name,
+        "amount": amount,
+        "balance": float(profile.coin_balance),
+    }, status=status.HTTP_201_CREATED)
+
+
+@api_view(["POST"])
+@permission_classes([IsSuperAdmin])
+def coin_deduct(request):
+    """Debit coins from a tenant wallet."""
+    serializer = CoinDeductSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    data = serializer.validated_data
+
+    try:
+        tenant = Tenant.objects.exclude(schema_name="public").get(pk=data["tenant_id"])
+    except Tenant.DoesNotExist:
+        return Response({"detail": "Tenant not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    profile = ReferralProfile.objects.filter(tenant=tenant).first()
+    if not profile:
+        return Response({"detail": "Wallet not found for this tenant."}, status=status.HTTP_404_NOT_FOUND)
+
+    amount = data["amount"]
+    if profile.coin_balance < amount:
+        return Response(
+            {"detail": f"Insufficient balance. Current: {profile.coin_balance}, requested: {amount}"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    reason = data.get("description", "") or f"Deduction — {amount} coins"
+    profile.debit(amount, reason)
+
+    return Response({
+        "tenant": tenant.name,
+        "amount": amount,
+        "balance": float(profile.coin_balance),
+    }, status=status.HTTP_201_CREATED)
+
+
+@api_view(["POST"])
+@permission_classes([IsSuperAdmin])
+def coin_init_wallets(request):
+    """Create ReferralProfile wallets for all tenants that don't have one yet."""
+    tenants_without = Tenant.objects.exclude(schema_name="public").exclude(
+        referral_profile__isnull=False
+    )
+    created = []
+    for t in tenants_without:
+        ReferralProfile.objects.get_or_create(tenant=t)
+        created.append(t.name)
+    return Response({"created": len(created), "tenants": created})
+
+
+# ── Referral Management ───────────────────────────────────────────────────────
+
+from usage_billing.referral_models import Referral
+
+
+@api_view(["GET"])
+@permission_classes([IsSuperAdmin])
+def referral_admin_stats(request):
+    """Platform-wide referral statistics."""
+    from django.db.models import Sum, Avg
+
+    profiles = ReferralProfile.objects.all()
+    referrals = Referral.objects.all()
+
+    total_profiles = profiles.count()
+    total_referrals = referrals.count()
+    active_referrals = referrals.filter(status="active").count()
+    total_coins_earned = profiles.aggregate(s=Sum("total_earned"))["s"] or 0
+    total_coins_redeemed = profiles.aggregate(s=Sum("total_redeemed"))["s"] or 0
+    avg_referrals = profiles.aggregate(a=Avg("referral_count"))["a"] or 0
+
+    # Top referrers
+    top_referrers = (
+        profiles.filter(referral_count__gt=0)
+        .select_related("tenant")
+        .order_by("-referral_count")[:10]
+    )
+
+    return Response({
+        "total_profiles": total_profiles,
+        "total_referrals": total_referrals,
+        "active_referrals": active_referrals,
+        "pending_referrals": referrals.filter(status="pending").count(),
+        "expired_referrals": referrals.filter(status="expired").count(),
+        "total_coins_earned": float(total_coins_earned),
+        "total_coins_redeemed": float(total_coins_redeemed),
+        "avg_referrals_per_tenant": round(float(avg_referrals), 1),
+        "top_referrers": [
+            {
+                "tenant_name": p.tenant.name,
+                "referral_count": p.referral_count,
+                "coin_balance": float(p.coin_balance),
+                "total_earned": float(p.total_earned),
+            }
+            for p in top_referrers
+        ],
+    })
+
+
+class ReferralListView(generics.ListAPIView):
+    permission_classes = [IsSuperAdmin]
+    serializer_class = ReferralAdminSerializer
+
+    def get_queryset(self):
+        qs = Referral.objects.select_related("referrer", "referred").all()
+        q = self.request.query_params.get("q", "")
+        if q:
+            qs = qs.filter(
+                Q(referrer__name__icontains=q) | Q(referred__name__icontains=q)
+            )
+        status_filter = self.request.query_params.get("status", "")
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        return qs
+
+
+class ReferralDetailView(generics.RetrieveUpdateAPIView):
+    permission_classes = [IsSuperAdmin]
+    serializer_class = ReferralAdminSerializer
+    queryset = Referral.objects.select_related("referrer", "referred").all()
+
+
+class ReferralProfileListView(generics.ListAPIView):
+    permission_classes = [IsSuperAdmin]
+    serializer_class = ReferralProfileAdminSerializer
+
+    def get_queryset(self):
+        qs = ReferralProfile.objects.select_related("tenant").all()
+        q = self.request.query_params.get("q", "")
+        if q:
+            qs = qs.filter(
+                Q(tenant__name__icontains=q) | Q(referral_code__icontains=q)
+            )
+        return qs
+
+
+class ReferralProfileDetailView(generics.RetrieveUpdateAPIView):
+    permission_classes = [IsSuperAdmin]
+    serializer_class = ReferralProfileAdminSerializer
+    queryset = ReferralProfile.objects.select_related("tenant").all()
+
+
+@api_view(["POST"])
+@permission_classes([IsSuperAdmin])
+def regenerate_referral_code(request, pk):
+    """Regenerate the referral code for a profile."""
+    try:
+        profile = ReferralProfile.objects.get(pk=pk)
+    except ReferralProfile.DoesNotExist:
+        return Response({"detail": "Profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    import secrets as _secrets
+    import string as _string
+    chars = _string.ascii_uppercase + _string.digits
+    while True:
+        code = ''.join(_secrets.choice(chars) for _ in range(8))
+        if not ReferralProfile.objects.filter(referral_code=code).exists():
+            break
+    profile.referral_code = code
+    profile.save(update_fields=["referral_code", "updated_at"])
+    return Response({"referral_code": code, "tenant_name": profile.tenant.name})
+
+
+@api_view(["GET"])
+@permission_classes([IsSuperAdmin])
+def referral_earnings_history(request):
+    """
+    Detailed earnings history: coins earned by each referrer from their referred tenants.
+    Includes individual transaction records + aggregated per-referral summaries.
+    Optional filters: ?referrer_id=&referred_id=&months=6
+    """
+    from django.db.models import Sum, Count
+    from django.db.models.functions import TruncMonth
+
+    referrer_id = request.query_params.get("referrer_id")
+    referred_id = request.query_params.get("referred_id")
+
+    # Get all referral-related transactions (bonus + earned from usage)
+    txs = RefCoinTransaction.objects.select_related(
+        "profile__tenant", "related_tenant"
+    ).filter(
+        type__in=["earned", "bonus"]
+    ).order_by("-created_at")
+
+    if referrer_id:
+        txs = txs.filter(profile__tenant_id=referrer_id)
+    if referred_id:
+        txs = txs.filter(related_tenant_id=referred_id)
+
+    # Per-referral earnings summary (referrer -> referred -> total)
+    referral_summaries = []
+    referrals_qs = Referral.objects.select_related("referrer", "referred").all()
+    if referrer_id:
+        referrals_qs = referrals_qs.filter(referrer_id=referrer_id)
+    if referred_id:
+        referrals_qs = referrals_qs.filter(referred_id=referred_id)
+
+    for ref in referrals_qs:
+        earned_from = RefCoinTransaction.objects.filter(
+            profile__tenant=ref.referrer,
+            related_tenant=ref.referred,
+        ).aggregate(
+            total=Sum("amount"),
+            count=Count("id"),
+        )
+        referral_summaries.append({
+            "referral_id": ref.id,
+            "referrer_id": ref.referrer_id,
+            "referrer_name": ref.referrer.name,
+            "referred_id": ref.referred_id,
+            "referred_name": ref.referred.name,
+            "status": ref.status,
+            "bonus_awarded": ref.bonus_awarded,
+            "tracked_requests": ref.tracked_requests,
+            "coins_from_usage": float(ref.coins_from_usage),
+            "requests_to_next_coin": 1000 - (ref.tracked_requests % 1000) if ref.tracked_requests % 1000 != 0 else 0,
+            "total_earned_from_referred": float(earned_from["total"] or 0),
+            "transaction_count": earned_from["count"] or 0,
+            "created_at": ref.created_at.isoformat(),
+        })
+
+    # Recent transactions list (last 100)
+    recent_txs = txs[:100]
+    tx_list = [
+        {
+            "id": tx.id,
+            "referrer_name": tx.profile.tenant.name,
+            "referrer_id": tx.profile.tenant_id,
+            "referred_name": tx.related_tenant.name if tx.related_tenant else "—",
+            "referred_id": tx.related_tenant_id,
+            "type": tx.type,
+            "amount": float(tx.amount),
+            "reason": tx.reason,
+            "created_at": tx.created_at.isoformat(),
+        }
+        for tx in recent_txs
+    ]
+
+    return Response({
+        "referral_summaries": referral_summaries,
+        "recent_transactions": tx_list,
+        "total_records": txs.count(),
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsSuperAdmin])
+def referral_monthly_projections(request):
+    """
+    Monthly earning trends + projections based on historical data.
+    Returns last 12 months of actual data + 3 month forecast.
+    """
+    from django.db.models import Sum, Count
+    from django.db.models.functions import TruncMonth
+    from datetime import timedelta
+    import statistics
+
+    now = timezone.now()
+    twelve_months_ago = now - timedelta(days=365)
+
+    # Monthly aggregation of referral earnings
+    monthly_data = (
+        RefCoinTransaction.objects
+        .filter(type__in=["earned", "bonus"], created_at__gte=twelve_months_ago)
+        .annotate(month=TruncMonth("created_at"))
+        .values("month")
+        .annotate(
+            total_earned=Sum("amount"),
+            transaction_count=Count("id"),
+        )
+        .order_by("month")
+    )
+
+    # Monthly new referrals
+    monthly_referrals = (
+        Referral.objects
+        .filter(created_at__gte=twelve_months_ago)
+        .annotate(month=TruncMonth("created_at"))
+        .values("month")
+        .annotate(count=Count("id"))
+        .order_by("month")
+    )
+    referral_by_month = {item["month"]: item["count"] for item in monthly_referrals}
+
+    # Monthly new profiles (sign-ups)
+    monthly_profiles = (
+        ReferralProfile.objects
+        .filter(created_at__gte=twelve_months_ago)
+        .annotate(month=TruncMonth("created_at"))
+        .values("month")
+        .annotate(count=Count("id"))
+        .order_by("month")
+    )
+    profiles_by_month = {item["month"]: item["count"] for item in monthly_profiles}
+
+    # Build monthly history
+    history = []
+    earnings_values = []
+    for item in monthly_data:
+        month = item["month"]
+        earned = float(item["total_earned"] or 0)
+        earnings_values.append(earned)
+        history.append({
+            "month": month.strftime("%Y-%m"),
+            "month_label": month.strftime("%b %Y"),
+            "total_earned": earned,
+            "transaction_count": item["transaction_count"],
+            "new_referrals": referral_by_month.get(month, 0),
+            "new_profiles": profiles_by_month.get(month, 0),
+        })
+
+    # Projections: simple linear trend + moving average for next 3 months
+    projections = []
+    if len(earnings_values) >= 2:
+        # Use last 6 months for trend
+        recent = earnings_values[-6:] if len(earnings_values) >= 6 else earnings_values
+        avg_earning = statistics.mean(recent)
+        # Simple growth rate
+        if len(recent) >= 2 and recent[0] > 0:
+            growth_rate = (recent[-1] - recent[0]) / (len(recent) - 1) / recent[0]
+        else:
+            growth_rate = 0
+
+        for i in range(1, 4):
+            projected_month = now + timedelta(days=30 * i)
+            projected_earnings = avg_earning * (1 + growth_rate * i)
+            projections.append({
+                "month": projected_month.strftime("%Y-%m"),
+                "month_label": projected_month.strftime("%b %Y"),
+                "projected_earned": round(max(projected_earnings, 0), 2),
+                "confidence": "high" if len(recent) >= 4 else "low",
+            })
+    elif len(earnings_values) == 1:
+        for i in range(1, 4):
+            projected_month = now + timedelta(days=30 * i)
+            projections.append({
+                "month": projected_month.strftime("%Y-%m"),
+                "month_label": projected_month.strftime("%b %Y"),
+                "projected_earned": earnings_values[0],
+                "confidence": "low",
+            })
+
+    # Summary metrics
+    total_all_time = float(
+        RefCoinTransaction.objects.filter(type__in=["earned", "bonus"]).aggregate(s=Sum("amount"))["s"] or 0
+    )
+    this_month_earned = float(
+        RefCoinTransaction.objects.filter(
+            type__in=["earned", "bonus"],
+            created_at__year=now.year,
+            created_at__month=now.month,
+        ).aggregate(s=Sum("amount"))["s"] or 0
+    )
+    last_month = now - timedelta(days=30)
+    last_month_earned = float(
+        RefCoinTransaction.objects.filter(
+            type__in=["earned", "bonus"],
+            created_at__year=last_month.year,
+            created_at__month=last_month.month,
+        ).aggregate(s=Sum("amount"))["s"] or 0
+    )
+    mom_growth = None
+    if last_month_earned > 0:
+        mom_growth = round(((this_month_earned - last_month_earned) / last_month_earned) * 100, 1)
+
+    return Response({
+        "history": history,
+        "projections": projections,
+        "summary": {
+            "total_all_time_earned": total_all_time,
+            "this_month_earned": this_month_earned,
+            "last_month_earned": last_month_earned,
+            "mom_growth_percent": mom_growth,
+            "avg_monthly": round(statistics.mean(earnings_values), 2) if earnings_values else 0,
+        },
     })

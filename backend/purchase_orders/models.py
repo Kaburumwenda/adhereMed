@@ -22,6 +22,10 @@ class PurchaseOrder(models.Model):
     order_date = models.DateField(auto_now_add=True)
     expected_delivery = models.DateField(null=True, blank=True)
     notes = models.TextField(blank=True)
+    branch = models.ForeignKey(
+        'pharmacy_profile.Branch', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='purchase_orders',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

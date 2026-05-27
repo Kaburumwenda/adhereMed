@@ -2,8 +2,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-// const kApiBase = 'http://10.0.2.2:8000/api'; // Android emulator → host localhost
-const kApiBase = 'https://adheremedapi.tiktek-ex.com/api';
+const kApiBase = 'http://10.0.2.2:8000/api'; // Android emulator → host localhost
+// const kApiBase = 'https://adheremedapi.tiktek-ex.com/api';
 
 final secureStorageProvider = Provider((_) => const FlutterSecureStorage());
 

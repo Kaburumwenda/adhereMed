@@ -380,7 +380,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
     showModalBottomSheet(context: context, backgroundColor: Colors.transparent,
       builder: (_) => Container(
         decoration: BoxDecoration(color: cs.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(20))),
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        padding: const EdgeInsets.fromLTRB(10, 12, 10, 24),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
           const SizedBox(height: 16),
@@ -413,7 +413,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
     showModalBottomSheet(context: context, backgroundColor: Colors.transparent,
       builder: (_) => Container(
         decoration: BoxDecoration(color: cs.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(20))),
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        padding: const EdgeInsets.fromLTRB(10, 12, 10, 24),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
           const SizedBox(height: 16),
@@ -451,7 +451,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
     showModalBottomSheet(context: context, backgroundColor: Colors.transparent,
       builder: (_) => Container(
         decoration: BoxDecoration(color: cs.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(20))),
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        padding: const EdgeInsets.fromLTRB(10, 12, 10, 24),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
           const SizedBox(height: 16),
@@ -540,7 +540,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
           decoration: BoxDecoration(color: cs.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
           child: Column(children: [
             // Header
-            Padding(padding: const EdgeInsets.fromLTRB(20, 12, 20, 0), child: Column(children: [
+            Padding(padding: const EdgeInsets.fromLTRB(10, 12, 10, 0), child: Column(children: [
               Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
               const SizedBox(height: 16),
               Row(children: [

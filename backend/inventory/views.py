@@ -2,6 +2,7 @@ from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated, SAFE_METHODS
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Sum, F, DecimalField
 from django.db.models.functions import Coalesce
@@ -24,11 +25,36 @@ from .serializers import (
     StockTransferSerializer,
     ControlledSubstanceLogSerializer,
 )
+from config.branch_scope import BranchScopedMixin
+
+
+# Roles with full inventory CRUD access
+INVENTORY_ADMIN_ROLES = {'super_admin', 'tenant_admin', 'branch_admin'}
+# Roles with read-only inventory access
+INVENTORY_VIEW_ONLY_ROLES = {'cashier', 'pharmacist', 'pharmacy_tech'}
+
+
+class InventoryPermission(IsAuthenticated):
+    """
+    Grants full access to admin roles; read-only to view-only roles.
+    """
+    def has_permission(self, request, view):
+        if not super().has_permission(request, view):
+            return False
+        role = getattr(request.user, 'role', '')
+        if role in INVENTORY_ADMIN_ROLES:
+            return True
+        if role in INVENTORY_VIEW_ONLY_ROLES:
+            return request.method in SAFE_METHODS
+        # Other roles: read-only by default
+        return request.method in SAFE_METHODS
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
+    permission_classes = [InventoryPermission]
+    pagination_class = None
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name']
     ordering_fields = ['name', 'created_at']
@@ -37,16 +63,19 @@ class CategoryViewSet(viewsets.ModelViewSet):
 class UnitViewSet(viewsets.ModelViewSet):
     queryset = Unit.objects.all()
     serializer_class = UnitSerializer
+    permission_classes = [InventoryPermission]
+    pagination_class = None
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'abbreviation']
     ordering_fields = ['name', 'created_at']
 
 
-class MedicationStockViewSet(viewsets.ModelViewSet):
-    queryset = MedicationStock.objects.select_related('category', 'unit').prefetch_related('batches').all()
+class MedicationStockViewSet(BranchScopedMixin, viewsets.ModelViewSet):
+    queryset = MedicationStock.objects.select_related('category', 'unit', 'branch').prefetch_related('batches').all()
     serializer_class = MedicationStockSerializer
+    permission_classes = [InventoryPermission]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['is_active', 'category', 'unit']
+    filterset_fields = ['is_active', 'category', 'unit', 'branch']
     search_fields = ['medication_name', 'abbreviation', 'barcode']
     ordering_fields = ['medication_name', 'selling_price', 'created_at']
 
@@ -445,6 +474,7 @@ class MedicationStockViewSet(viewsets.ModelViewSet):
 class StockBatchViewSet(viewsets.ModelViewSet):
     queryset = StockBatch.objects.select_related('stock', 'supplier').all()
     serializer_class = StockBatchSerializer
+    permission_classes = [InventoryPermission]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['stock', 'expiry_date']
     search_fields = ['batch_number', 'stock__medication_name']
@@ -454,6 +484,7 @@ class StockBatchViewSet(viewsets.ModelViewSet):
 class StockAdjustmentViewSet(viewsets.ModelViewSet):
     queryset = StockAdjustment.objects.select_related('stock', 'batch', 'adjusted_by').all()
     serializer_class = StockAdjustmentSerializer
+    permission_classes = [InventoryPermission]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['stock', 'reason']
     search_fields = ['stock__medication_name', 'notes']
@@ -514,6 +545,7 @@ class InventoryAnalyticsView(APIView):
 class InventoryCountViewSet(viewsets.ModelViewSet):
     queryset = InventoryCount.objects.select_related('branch', 'category', 'created_by', 'completed_by').prefetch_related('lines__stock__unit').all()
     serializer_class = InventoryCountSerializer
+    permission_classes = [InventoryPermission]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['status', 'branch', 'category']
     search_fields = ['reference', 'name', 'notes']
@@ -631,6 +663,7 @@ class StockTransferViewSet(viewsets.ModelViewSet):
         'source_branch', 'dest_branch', 'requested_by', 'approved_by', 'received_by'
     ).prefetch_related('lines__stock__unit').all()
     serializer_class = StockTransferSerializer
+    permission_classes = [InventoryPermission]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['status', 'source_branch', 'dest_branch']
     search_fields = ['reference', 'notes']
@@ -733,6 +766,7 @@ class StockTransferViewSet(viewsets.ModelViewSet):
 class ControlledSubstanceLogViewSet(viewsets.ModelViewSet):
     queryset = ControlledSubstanceLog.objects.select_related('recorded_by').all()
     serializer_class = ControlledSubstanceLogSerializer
+    permission_classes = [InventoryPermission]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['action', 'medication_name', 'schedule']
     search_fields = ['medication_name', 'patient_name', 'patient_id_number',

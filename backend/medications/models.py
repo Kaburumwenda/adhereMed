@@ -46,6 +46,8 @@ class Medication(models.Model):
         OTHER = 'other', 'Other'
 
     generic_name = models.CharField(max_length=255, db_index=True)
+    product_code = models.CharField(max_length=30, blank=True, db_index=True,
+                                    help_text='KEMSA product code, e.g. PM05ASA003')
     abbreviation = models.CharField(max_length=20, blank=True, db_index=True,
                                     help_text='Short code/abbreviation, e.g. PCM, AMOX, RHZE')
     brand_names = models.JSONField(default=list, blank=True)

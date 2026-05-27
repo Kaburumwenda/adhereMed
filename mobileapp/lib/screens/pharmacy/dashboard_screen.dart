@@ -5,7 +5,9 @@ import 'package:intl/intl.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../core/api.dart';
+import '../../l10n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/locale_provider.dart';
 import '../../widgets/common.dart';
 
 final _pharmacyProfileProvider = FutureProvider.autoDispose((ref) async {
@@ -98,7 +100,8 @@ class DashboardScreen extends ConsumerWidget {
     final dash = ref.watch(_dashProvider);
     final cs = Theme.of(context).colorScheme;
     final now = DateFormat('EEEE, MMM d').format(DateTime.now());
-    final greeting = _greeting();
+    final l = AppLocalizations.of(context);
+    final greeting = _greeting(l);
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -116,8 +119,8 @@ class DashboardScreen extends ConsumerWidget {
                   end: Alignment.bottomRight,
                   colors: isDark
                       ? [
-                          const Color(0xFF202020),
-                          const Color(0xFF2D2D2D),
+                          const Color(0xFF0A0A0A),
+                          const Color(0xFF111111),
                         ]
                       : [
                           const Color(0xFFF8FAFC),
@@ -129,7 +132,7 @@ class DashboardScreen extends ConsumerWidget {
                   bottomRight: Radius.circular(32),
                 ),
                 border: Border(
-                  bottom: BorderSide(color: isDark ? cs.outlineVariant.withValues(alpha: 0.15) : cs.outlineVariant.withValues(alpha: 0.1)),
+                  bottom: BorderSide(color: isDark ? const Color(0xFF1F1F1F) : cs.outlineVariant.withValues(alpha: 0.1)),
                 ),
               ),
               child: Stack(children: [
@@ -138,21 +141,21 @@ class DashboardScreen extends ConsumerWidget {
                   width: 150, height: 150,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: isDark ? cs.primary.withValues(alpha: 0.06) : cs.primary.withValues(alpha: 0.04),
+                    color: isDark ? Colors.white.withValues(alpha: 0.02) : cs.primary.withValues(alpha: 0.04),
                   ),
                 )),
                 Positioned(left: -20, bottom: 30, child: Container(
                   width: 90, height: 90,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: isDark ? cs.tertiary.withValues(alpha: 0.05) : cs.tertiary.withValues(alpha: 0.03),
+                    color: isDark ? Colors.white.withValues(alpha: 0.015) : cs.tertiary.withValues(alpha: 0.03),
                   ),
                 )),
                 // Content
                 SafeArea(
                   bottom: false,
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+                    padding: const EdgeInsets.fromLTRB(10, 8, 10, 28),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Expanded(
@@ -186,31 +189,37 @@ class DashboardScreen extends ConsumerWidget {
                             )).animate().fadeIn(duration: 500.ms).slideX(begin: -0.03),
                           ]),
                         ),
-                        Builder(builder: (_) {
-                          final profile = ref.watch(_pharmacyProfileProvider);
-                          final logoUrl = profile.valueOrNull?['logo']?.toString() ?? '';
-                          return Container(
-                            padding: const EdgeInsets.all(3),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: isDark ? cs.primary.withValues(alpha: 0.4) : cs.primary.withValues(alpha: 0.3),
-                                width: 2,
+                        Row(mainAxisSize: MainAxisSize.min, children: [
+                          // Language selector
+                          _LanguageButton(ref: ref, isDark: isDark, cs: cs),
+                          const SizedBox(width: 8),
+                          // Pharmacy avatar
+                          Builder(builder: (_) {
+                            final profile = ref.watch(_pharmacyProfileProvider);
+                            final logoUrl = profile.valueOrNull?['logo']?.toString() ?? '';
+                            return Container(
+                              padding: const EdgeInsets.all(3),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: isDark ? cs.primary.withValues(alpha: 0.4) : cs.primary.withValues(alpha: 0.3),
+                                  width: 2,
+                                ),
                               ),
-                            ),
-                            child: CircleAvatar(
-                              radius: 22,
-                              backgroundColor: isDark ? cs.primaryContainer.withValues(alpha: 0.3) : cs.primary.withValues(alpha: 0.1),
-                              backgroundImage: logoUrl.isNotEmpty ? NetworkImage(logoUrl) : null,
-                              child: logoUrl.isNotEmpty
-                                  ? null
-                                  : Text(
-                                      auth.user?.initials ?? '?',
-                                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: cs.primary),
-                                    ),
-                            ),
-                          );
-                        }).animate().fadeIn(delay: 200.ms).scale(begin: const Offset(0.85, 0.85)),
+                              child: CircleAvatar(
+                                radius: 22,
+                                backgroundColor: isDark ? cs.primaryContainer.withValues(alpha: 0.3) : cs.primary.withValues(alpha: 0.1),
+                                backgroundImage: logoUrl.isNotEmpty ? NetworkImage(logoUrl) : null,
+                                child: logoUrl.isNotEmpty
+                                    ? null
+                                    : Text(
+                                        auth.user?.initials ?? '?',
+                                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: cs.primary),
+                                      ),
+                              ),
+                            );
+                          }).animate().fadeIn(delay: 200.ms).scale(begin: const Offset(0.85, 0.85)),
+                        ]),
                       ]),
                       const SizedBox(height: 22),
 
@@ -223,19 +232,19 @@ class DashboardScreen extends ConsumerWidget {
                         crossAxisSpacing: 10,
                         childAspectRatio: 0.82,
                         children: [
-                          _QuickAction(icon: Icons.storefront_rounded, label: 'POS', onTap: () => context.go('/pos')),
-                          _QuickAction(icon: Icons.point_of_sale_rounded, label: 'Sales', onTap: () => context.go('/sales')),
-                          _QuickAction(icon: Icons.inventory_2_rounded, label: 'Inventory', onTap: () => context.go('/inventory')),
-                          _QuickAction(icon: Icons.analytics_rounded, label: 'Analytics', onTap: () => context.go('/analytics')),
-                          _QuickAction(icon: Icons.assessment_rounded, label: 'Reports', onTap: () => context.go('/reports')),
-                          _QuickAction(icon: Icons.account_balance_rounded, label: 'Accounts', onTap: () => context.go('/accounts')),
+                          _QuickAction(icon: Icons.storefront_rounded, label: l?.pos ?? 'POS', onTap: () => context.go('/pos')),
+                          _QuickAction(icon: Icons.point_of_sale_rounded, label: l?.sales ?? 'Sales', onTap: () => context.go('/sales')),
+                          _QuickAction(icon: Icons.inventory_2_rounded, label: l?.inventory ?? 'Inventory', onTap: () => context.go('/inventory')),
+                          _QuickAction(icon: Icons.analytics_rounded, label: l?.analytics ?? 'Analytics', onTap: () => context.go('/analytics')),
+                          _QuickAction(icon: Icons.assessment_rounded, label: l?.reports ?? 'Reports', onTap: () => context.go('/reports')),
+                          _QuickAction(icon: Icons.account_balance_rounded, label: l?.billing ?? 'Accounts', onTap: () => context.go('/accounts')),
                           _QuickAction(
                             icon: Icons.credit_card_rounded,
-                            label: 'Credit',
+                            label: l?.credit ?? 'Credit',
                             onTap: () => context.go('/credits'),
                             badgeProvider: _creditCountProvider,
                           ),
-                          _QuickAction(icon: Icons.shopping_cart_rounded, label: 'Purchase\nOrders', onTap: () => context.go('/purchase-orders')),
+                          _QuickAction(icon: Icons.shopping_cart_rounded, label: l?.purchaseOrders ?? 'Purchase\nOrders', onTap: () => context.go('/purchase-orders')),
                         ],
                       ),
                     ]),
@@ -247,7 +256,7 @@ class DashboardScreen extends ConsumerWidget {
 
           // ── Body ──
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 20, 16, 100),
+            padding: const EdgeInsets.fromLTRB(10, 20, 10, 100),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
                 // ── Sales Analytics Section ──
@@ -260,29 +269,43 @@ class DashboardScreen extends ConsumerWidget {
 
                 dash.when(
                   loading: () => const LoadingShimmer(lines: 4),
-                  error: (e, _) => ErrorRetry(message: 'Failed to load dashboard', onRetry: () => ref.invalidate(_dashProvider)),
+                  error: (e, _) => ErrorRetry(message: l?.failedToLoad ?? 'Failed to load dashboard', onRetry: () => ref.invalidate(_dashProvider)),
                   data: (data) {
                     final bill = data['billing'] ?? {};
                     final refData = data['referral'] ?? {};
+                    final role = auth.user?.role ?? '';
+                    final isCashierRole = const {'cashier', 'pharmacist', 'pharmacy_tech'}.contains(role);
 
                     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       // ── Top 10 Products ──
                       _TopProductsSection(),
                       const SizedBox(height: 28),
 
-                      // ── Adhere Coins ──
-                      _SectionTitle(title: 'Adhere Coins', icon: Icons.monetization_on_outlined),
-                      const SizedBox(height: 12),
-                      _CoinCard(
-                        balance: '${refData['coin_balance'] ?? 0}',
-                        referrals: refData['referral_count'] ?? 0,
-                        totalEarned: refData['total_earned'] ?? 0,
-                        onTap: () => context.go('/referral'),
-                      ).animate().fadeIn(duration: 500.ms, delay: 200.ms).slideY(begin: 0.06),
+                      // ── Adhere Coins (non-cashier) or Catalog shortcut (cashier) ──
+                      if (isCashierRole) ...[
+                        _SectionTitle(title: l?.catalog ?? 'Catalog', icon: Icons.medication_liquid_rounded),
+                        const SizedBox(height: 12),
+                        _QuickNavCard(
+                          icon: Icons.medication_liquid_rounded,
+                          title: l?.catalog ?? 'Medication Catalog',
+                          subtitle: 'Browse & search medications',
+                          color: const Color(0xFF8B5CF6),
+                          onTap: () => context.go('/catalog'),
+                        ).animate().fadeIn(duration: 500.ms, delay: 200.ms).slideY(begin: 0.06),
+                      ] else ...[
+                        _SectionTitle(title: l?.adherCoins ?? 'Adhere Coins', icon: Icons.monetization_on_outlined),
+                        const SizedBox(height: 12),
+                        _CoinCard(
+                          balance: '${refData['coin_balance'] ?? 0}',
+                          referrals: refData['referral_count'] ?? 0,
+                          totalEarned: refData['total_earned'] ?? 0,
+                          onTap: () => context.go('/referral'),
+                        ).animate().fadeIn(duration: 500.ms, delay: 200.ms).slideY(begin: 0.06),
+                      ],
                       const SizedBox(height: 28),
 
                       // ── Activity / API ──
-                      _SectionTitle(title: 'API Usage', icon: Icons.api_rounded),
+                      _SectionTitle(title: l?.apiUsage ?? 'API Usage', icon: Icons.api_rounded),
                       const SizedBox(height: 12),
                       _ApiUsageCard(
                         requests: _fmt((bill['current_month'] ?? {})['total_requests'] ?? 0),
@@ -302,11 +325,11 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
-  String _greeting() {
+  String _greeting(AppLocalizations? l) {
     final h = DateTime.now().hour;
-    if (h < 12) return 'Good morning';
-    if (h < 17) return 'Good afternoon';
-    return 'Good evening';
+    if (h < 12) return l?.goodMorning ?? 'Good morning';
+    if (h < 17) return l?.goodAfternoon ?? 'Good afternoon';
+    return l?.goodEvening ?? 'Good evening';
   }
 
   String _fmt(dynamic n) => NumberFormat.compact().format(n is int ? n : int.tryParse('$n') ?? 0);
@@ -328,16 +351,17 @@ class _SalesAnalyticsSection extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final fmt = NumberFormat.compactCurrency(symbol: 'KSH ', decimalDigits: 0);
+    final l = AppLocalizations.of(context);
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       // Section title
-      _SectionTitle(title: 'Sales Analytics', icon: Icons.trending_up_rounded),
+      _SectionTitle(title: l?.salesAnalytics ?? 'Sales Analytics', icon: Icons.trending_up_rounded),
       const SizedBox(height: 14),
 
       // ── Today vs Yesterday ──
       compare.when(
         loading: () => const LoadingShimmer(lines: 2),
-        error: (e, _) => ErrorRetry(message: 'Failed to load sales', onRetry: () => ref.invalidate(_salesCompareProvider)),
+        error: (e, _) => ErrorRetry(message: l?.failedToLoad ?? 'Failed to load sales', onRetry: () => ref.invalidate(_salesCompareProvider)),
         data: (d) {
           final todayRev = _toDouble(d['today']?['combined_revenue']);
           final yesterdayRev = _toDouble(d['yesterday']?['combined_revenue']);
@@ -352,9 +376,9 @@ class _SalesAnalyticsSection extends ConsumerWidget {
             // Today vs Yesterday cards
             Row(children: [
               Expanded(child: _CompareCard(
-                title: 'Today',
+                title: l?.today ?? 'Today',
                 value: fmt.format(todayRev),
-                subValue: '$todayCount orders',
+                subValue: l?.orders(todayCount) ?? '$todayCount orders',
                 delta: dayDelta,
                 icon: Icons.today_rounded,
                 accentColor: cs.primary,
@@ -362,9 +386,9 @@ class _SalesAnalyticsSection extends ConsumerWidget {
               ).animate().fadeIn(duration: 400.ms).slideX(begin: -0.05)),
               const SizedBox(width: 12),
               Expanded(child: _CompareCard(
-                title: 'Yesterday',
+                title: l?.yesterday ?? 'Yesterday',
                 value: fmt.format(yesterdayRev),
-                subValue: '$yesterdayCount orders',
+                subValue: l?.orders(yesterdayCount) ?? '$yesterdayCount orders',
                 icon: Icons.history_rounded,
                 accentColor: cs.secondary,
                 isDark: isDark,
@@ -375,7 +399,7 @@ class _SalesAnalyticsSection extends ConsumerWidget {
             // Month vs Year cards
             Row(children: [
               Expanded(child: _CompareCard(
-                title: 'This Month',
+                title: l?.thisMonth ?? 'This Month',
                 value: fmt.format(monthRev),
                 icon: Icons.calendar_month_rounded,
                 accentColor: Colors.orange.shade600,
@@ -383,7 +407,7 @@ class _SalesAnalyticsSection extends ConsumerWidget {
               ).animate().fadeIn(duration: 400.ms, delay: 100.ms).slideX(begin: -0.05)),
               const SizedBox(width: 12),
               Expanded(child: _CompareCard(
-                title: 'This Year',
+                title: l?.thisYear ?? 'This Year',
                 value: fmt.format(yearRev),
                 icon: Icons.date_range_rounded,
                 accentColor: Colors.purple.shade500,
@@ -397,12 +421,12 @@ class _SalesAnalyticsSection extends ConsumerWidget {
 
       // ── Sales Trend Chart ──
       Row(children: [
-        _SectionTitle(title: 'Sales Trend', icon: Icons.show_chart_rounded),
+        _SectionTitle(title: l?.salesTrend ?? 'Sales Trend', icon: Icons.show_chart_rounded),
         const Spacer(),
         TextButton.icon(
           onPressed: () => _showCustomRange(context, ref),
           icon: const Icon(Icons.calendar_today, size: 14),
-          label: const Text('Custom', style: TextStyle(fontSize: 12)),
+          label: Text(l?.custom ?? 'Custom', style: const TextStyle(fontSize: 12)),
           style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
         ),
       ]),
@@ -450,7 +474,7 @@ class _SalesAnalyticsSection extends ConsumerWidget {
             return Card(
               elevation: 0,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.2))),
-              child: const SizedBox(height: 180, child: Center(child: Text('No sales data for this period'))),
+              child: SizedBox(height: 180, child: Center(child: Text(l?.noSalesData ?? 'No sales data for this period'))),
             );
           }
 
@@ -458,19 +482,19 @@ class _SalesAnalyticsSection extends ConsumerWidget {
             elevation: 0,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.2))),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              padding: const EdgeInsets.fromLTRB(10, 16, 10, 8),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 // Summary row
                 Row(children: [
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Total Revenue', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant, fontWeight: FontWeight.w500)),
+                    Text(l?.totalRevenue ?? 'Total Revenue', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant, fontWeight: FontWeight.w500)),
                     Text(NumberFormat.compactCurrency(symbol: 'KSH ', decimalDigits: 0).format(totalRev),
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.5)),
                   ])),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(color: cs.primaryContainer.withValues(alpha: 0.4), borderRadius: BorderRadius.circular(10)),
-                    child: Text('$totalCount orders', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: cs.primary)),
+                    child: Text(l?.orders(totalCount as int) ?? '$totalCount orders', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: cs.primary)),
                   ),
                 ]),
                 const SizedBox(height: 20),
@@ -871,9 +895,9 @@ class _CompareCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? cs.surfaceContainerHigh : cs.surface,
+        color: isDark ? const Color(0xFF141414) : cs.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: isDark ? 0.15 : 0.25)),
+        border: Border.all(color: isDark ? const Color(0xFF1F1F1F) : cs.outlineVariant.withValues(alpha: 0.25)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
@@ -1028,6 +1052,53 @@ class _CoinCard extends StatelessWidget {
   }
 }
 
+class _QuickNavCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color color;
+  final VoidCallback onTap;
+  const _QuickNavCard({required this.icon, required this.title, required this.subtitle, required this.color, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [color.withValues(alpha: 0.12), color.withValues(alpha: 0.04)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
+        ),
+        child: Row(children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: color, size: 24),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: color)),
+              const SizedBox(height: 2),
+              Text(subtitle, style: TextStyle(fontSize: 12, color: color.withValues(alpha: 0.7))),
+            ]),
+          ),
+          Icon(Icons.arrow_forward_ios_rounded, size: 16, color: color.withValues(alpha: 0.6)),
+        ]),
+      ),
+    );
+  }
+}
+
 class _ApiUsageCard extends StatelessWidget {
   final String requests;
   final String cost;
@@ -1124,7 +1195,7 @@ class _ApiWeeklyChart extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.2))),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        padding: const EdgeInsets.fromLTRB(10, 16, 10, 8),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('This Week', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: cs.onSurface)),
           const SizedBox(height: 4),
@@ -1239,6 +1310,91 @@ class _QuickAction extends ConsumerWidget {
             ), textAlign: TextAlign.center),
           ]),
         ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  LANGUAGE BUTTON (dashboard header)
+// ═══════════════════════════════════════════════════════════════════════════
+class _LanguageButton extends StatelessWidget {
+  const _LanguageButton({required this.ref, required this.isDark, required this.cs});
+  final WidgetRef ref;
+  final bool isDark;
+  final ColorScheme cs;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => _showLanguagePicker(context),
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: isDark ? cs.primary.withValues(alpha: 0.12) : cs.primary.withValues(alpha: 0.08),
+        ),
+        child: Icon(Icons.language_rounded, size: 20,
+          color: isDark ? cs.primary : cs.primary),
+      ),
+    ).animate().fadeIn(delay: 150.ms).scale(begin: const Offset(0.85, 0.85));
+  }
+
+  void _showLanguagePicker(BuildContext context) {
+    final current = ref.read(localeProvider);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        maxChildSize: 0.85,
+        minChildSize: 0.4,
+        expand: false,
+        builder: (ctx, scrollController) {
+          final sheetCs = Theme.of(ctx).colorScheme;
+          return Column(
+            children: [
+              const SizedBox(height: 8),
+              Container(width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: sheetCs.onSurfaceVariant.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2))),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  AppLocalizations.of(context)?.selectLanguage ?? 'Select Language',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView.builder(
+                  controller: scrollController,
+                  itemCount: AppLocales.supported.length,
+                  itemBuilder: (ctx, i) {
+                    final info = AppLocales.supported[i];
+                    final isSelected = current?.languageCode == info.code;
+                    return ListTile(
+                      leading: Text(info.flag, style: const TextStyle(fontSize: 24)),
+                      title: Text(info.name, style: TextStyle(
+                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500)),
+                      trailing: isSelected
+                        ? Icon(Icons.check_circle_rounded, color: sheetCs.primary)
+                        : null,
+                      selected: isSelected,
+                      onTap: () {
+                        ref.read(localeProvider.notifier).set(Locale(info.code));
+                        Navigator.pop(ctx);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }

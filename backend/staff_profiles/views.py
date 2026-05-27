@@ -12,6 +12,7 @@ from .serializers import (
     StaffProfileSerializer, StaffCreateSerializer, StaffUpdateSerializer,
     SpecializationSerializer,
 )
+from config.branch_scope import BranchScopedMixin
 
 
 class SpecializationViewSet(viewsets.ModelViewSet):
@@ -22,7 +23,7 @@ class SpecializationViewSet(viewsets.ModelViewSet):
     ordering_fields = ['name', 'created_at']
 
 
-class StaffProfileViewSet(viewsets.ModelViewSet):
+class StaffProfileViewSet(BranchScopedMixin, viewsets.ModelViewSet):
     queryset = StaffProfile.objects.select_related('user', 'department', 'specialization').all()
     serializer_class = StaffProfileSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]

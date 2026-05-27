@@ -213,7 +213,7 @@ class _ClaimsTabState extends ConsumerState<_ClaimsTab> with AutomaticKeepAliveC
 
         // ── Search + Filter ──
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+          padding: const EdgeInsets.fromLTRB(10, 0, 10, 0),
           child: Row(
             children: [
               Expanded(
@@ -268,7 +268,7 @@ class _ClaimsTabState extends ConsumerState<_ClaimsTab> with AutomaticKeepAliveC
               return RefreshIndicator(
                 onRefresh: () async { ref.invalidate(_claimsProvider); ref.invalidate(_statsProvider); },
                 child: ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 80),
                   itemCount: items.length,
                   itemBuilder: (_, i) => _ClaimCard(claim: items[i], ref: ref)
                     .animate().fadeIn(duration: 300.ms, delay: Duration(milliseconds: (40 * i).clamp(0, 400))).slideY(begin: 0.05, end: 0),
@@ -394,7 +394,7 @@ class _ProvidersTabState extends ConsumerState<_ProvidersTab> with AutomaticKeep
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          padding: const EdgeInsets.fromLTRB(10, 12, 10, 8),
           child: TextField(
             decoration: InputDecoration(
               hintText: 'Search providers...',
@@ -421,7 +421,7 @@ class _ProvidersTabState extends ConsumerState<_ProvidersTab> with AutomaticKeep
               return RefreshIndicator(
                 onRefresh: () async => ref.invalidate(_insuranceProvidersProvider),
                 child: ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 80),
                   itemCount: items.length,
                   itemBuilder: (_, i) => _ProviderCard(provider: items[i], ref: ref)
                     .animate().fadeIn(duration: 300.ms, delay: Duration(milliseconds: (40 * i).clamp(0, 400))).slideY(begin: 0.05, end: 0),
@@ -550,7 +550,7 @@ class _KpiRow extends StatelessWidget {
   final List<_Kpi> items;
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
     child: Row(
       children: items.map((k) => Expanded(
         child: Container(
@@ -638,7 +638,7 @@ void _showClaimDetail(BuildContext context, dynamic claim, WidgetRef ref) {
                   begin: Alignment.topCenter, end: Alignment.bottomCenter),
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
               ),
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+              padding: const EdgeInsets.fromLTRB(10, 12, 10, 20),
               child: Column(children: [
                 Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
                 const SizedBox(height: 16),
@@ -1105,7 +1105,7 @@ class _ClaimFormSheetState extends State<_ClaimFormSheet> {
         decoration: BoxDecoration(color: cs.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
         child: Column(children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+            padding: const EdgeInsets.fromLTRB(10, 12, 10, 0),
             child: Column(children: [
               Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
               const SizedBox(height: 16),
@@ -1361,7 +1361,7 @@ void _showProviderDetail(BuildContext context, dynamic prov, WidgetRef ref) {
                   begin: Alignment.topCenter, end: Alignment.bottomCenter),
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
               ),
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+              padding: const EdgeInsets.fromLTRB(10, 12, 10, 20),
               child: Column(children: [
                 Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
                 const SizedBox(height: 16),
@@ -1532,7 +1532,7 @@ class _ProviderFormSheetState extends State<_ProviderFormSheet> {
         decoration: BoxDecoration(color: cs.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
         child: Column(children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+            padding: const EdgeInsets.fromLTRB(10, 12, 10, 0),
             child: Column(children: [
               Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
               const SizedBox(height: 16),

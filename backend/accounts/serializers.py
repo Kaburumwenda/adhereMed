@@ -7,6 +7,8 @@ class UserSerializer(serializers.ModelSerializer):
     tenant_name = serializers.CharField(source='tenant.name', read_only=True, default=None)
     tenant_type = serializers.CharField(source='tenant.type', read_only=True, default=None)
     tenant_schema = serializers.CharField(source='tenant.schema_name', read_only=True, default=None)
+    branch_id = serializers.SerializerMethodField()
+    branch_name = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -14,8 +16,22 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'email', 'phone', 'first_name', 'last_name',
             'role', 'tenant', 'tenant_name', 'tenant_type', 'tenant_schema',
             'is_active', 'date_joined', 'pin',
+            'branch_id', 'branch_name',
         ]
         read_only_fields = ['date_joined', 'pin']
+
+    def get_branch_id(self, obj):
+        try:
+            return obj.staff_profile.branch_id
+        except Exception:
+            return None
+
+    def get_branch_name(self, obj):
+        try:
+            branch = obj.staff_profile.branch
+            return branch.name if branch else None
+        except Exception:
+            return None
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):

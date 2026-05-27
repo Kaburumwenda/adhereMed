@@ -317,7 +317,7 @@ class _MapPickerPageState extends State<MapPickerPage> {
                 top: 12, left: 0, right: 0,
                 child: Center(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     decoration: BoxDecoration(color: cs.surface, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 6)]),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
@@ -351,7 +351,7 @@ class _MapPickerPageState extends State<MapPickerPage> {
         // Bottom info + confirm
         if (_selectedPos != null)
           Container(
-            padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + bottom),
+            padding: EdgeInsets.fromLTRB(10, 12, 10, 12 + bottom),
             decoration: BoxDecoration(
               color: cs.surface,
               boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 8, offset: const Offset(0, -2))],

@@ -19,6 +19,8 @@ const cards = [
   { label: 'Tenants', icon: 'mdi-domain', color: 'primary', desc: 'Manage hospitals, pharmacies, labs', to: '/superadmin/tenants' },
   { label: 'Users', icon: 'mdi-account-multiple', color: 'info', desc: 'Manage platform users', to: '/superadmin/users' },
   { label: 'Usage Billing', icon: 'mdi-cash-multiple', color: 'success', desc: 'Per-request billing & rate control', to: '/superadmin/billing' },
+  { label: 'Adhere Coins', icon: 'mdi-circle-multiple', color: 'amber-darken-2', desc: 'Virtual currency, allocations & transactions', to: '/superadmin/coins' },
+  { label: 'Referrals', icon: 'mdi-account-arrow-right', color: 'purple', desc: 'Referral chains, profiles & leaderboard', to: '/superadmin/referrals' },
   { label: 'Clinical Catalog', icon: 'mdi-medical-bag', color: 'success', desc: 'Diagnoses, procedures, medications', to: '/superadmin/clinical-catalog' },
   { label: 'Admin Catalog', icon: 'mdi-tag-multiple', color: 'warning', desc: 'Lookups, taxonomies', to: '/superadmin/admin-catalog' },
   { label: 'Seed Data', icon: 'mdi-database-import', color: 'error', desc: 'Populate sample data', to: '/superadmin/seed' }

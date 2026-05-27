@@ -11,6 +11,7 @@ urlpatterns = [
     path('', views.MedicationListCreateView.as_view(), name='list-create'),
     path('search/', views.MedicationSearchView.as_view(), name='search'),
     path('check-interactions/', views.CheckInteractionsView.as_view(), name='check-interactions'),
+    path('delete-all/', views.delete_all_medications, name='delete-all'),
     path('', include(router.urls)),
     path('<int:pk>/', views.MedicationDetailView.as_view(), name='detail'),
 ]

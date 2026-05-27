@@ -232,7 +232,7 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             'items', 'total_cost', 'status',
             'ordered_by', 'ordered_by_name',
             'order_date', 'expected_delivery', 'notes',
-            'grns', 'created_at',
+            'branch', 'grns', 'created_at',
         ]
         read_only_fields = [
             'id', 'order_date', 'created_at', 'total_cost',

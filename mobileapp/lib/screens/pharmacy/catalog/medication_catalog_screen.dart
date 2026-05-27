@@ -86,7 +86,7 @@ class _MedicationCatalogScreenState extends ConsumerState<MedicationCatalogScree
           return Column(children: [
             // ── KPI strip ──
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
               child: SizedBox(height: 52, child: ListView(scrollDirection: Axis.horizontal, children: [
                 _KpiTile('Total', '$total', Icons.medication_rounded, cs.primary, cs),
                 _KpiTile('Active', '$active', Icons.check_circle_rounded, const Color(0xFF22C55E), cs),
@@ -97,7 +97,7 @@ class _MedicationCatalogScreenState extends ConsumerState<MedicationCatalogScree
 
             // ── Search ──
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+              padding: const EdgeInsets.fromLTRB(10, 6, 10, 0),
               child: TextField(
                 onChanged: (v) => setState(() => _search = v),
                 decoration: InputDecoration(
@@ -113,7 +113,7 @@ class _MedicationCatalogScreenState extends ConsumerState<MedicationCatalogScree
 
             // ── Filters ──
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
               child: SizedBox(height: 34, child: ListView(scrollDirection: Axis.horizontal, children: [
                 _DropdownChip(
                   label: _catFilter != null ? _pretty(_catFilter!) : 'Category',
@@ -142,7 +142,7 @@ class _MedicationCatalogScreenState extends ConsumerState<MedicationCatalogScree
                   : RefreshIndicator(
                       onRefresh: () async => ref.invalidate(_medicationsProvider),
                       child: ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
+                        padding: const EdgeInsets.fromLTRB(10, 4, 10, 80),
                         itemCount: filtered.length,
                         itemBuilder: (_, i) => _MedCard(
                           med: filtered[i], cs: cs,
@@ -453,7 +453,7 @@ class _MedFormSheetState extends ConsumerState<_MedFormSheet> {
       expand: false, initialChildSize: 0.92, maxChildSize: 0.95, minChildSize: 0.5,
       builder: (_, ctrl) => Form(
         key: _formKey,
-        child: ListView(controller: ctrl, padding: const EdgeInsets.fromLTRB(20, 12, 20, 40), children: [
+        child: ListView(controller: ctrl, padding: const EdgeInsets.fromLTRB(10, 12, 10, 40), children: [
           // Handle
           Center(child: Container(width: 36, height: 4, decoration: BoxDecoration(color: cs.outlineVariant, borderRadius: BorderRadius.circular(2)))),
           const SizedBox(height: 12),

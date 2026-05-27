@@ -12,6 +12,21 @@
         </div>
       </div>
       <v-spacer />
+      <v-select
+        v-if="branchStore.hasBranches"
+        v-model="branchFilter"
+        :items="branchFilterItems"
+        item-title="name"
+        item-value="id"
+        density="compact"
+        variant="outlined"
+        rounded="lg"
+        hide-details
+        :disabled="isBranchLocked"
+        prepend-inner-icon="mdi-store-marker"
+        style="min-width: 180px"
+        class="mr-2"
+      />
       <v-btn variant="outlined" rounded="lg" prepend-icon="mdi-refresh" :loading="loading" @click="load" size="small">{{ $t('common.refresh') }}</v-btn>
     </div>
 
@@ -458,10 +473,27 @@ import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 
 import { formatMoney } from '~/utils/format'
+import { useBranchStore } from '~/stores/branch'
+import { useAuthStore } from '~/stores/auth'
 
 definePageMeta({ layout: 'default' })
 
 const { $api } = useNuxtApp()
+const branchStore = useBranchStore()
+const auth = useAuthStore()
+
+const isBranchLocked = computed(() => auth.role === 'branch_admin')
+const branchFilter = ref(null)
+const branchFilterItems = computed(() => {
+  if (isBranchLocked.value) {
+    const b = branchStore.currentBranch
+    return b ? [{ id: b.id, name: b.name }] : []
+  }
+  const items = branchStore.activeBranches.map(b => ({ id: b.id, name: b.name }))
+  items.unshift({ id: null, name: 'All Branches' })
+  return items
+})
+
 const loading = ref(false)
 const credits = ref([])
 const summary = reactive({ count: 0, total_credit: 0, total_paid: 0, total_balance: 0, overdue_count: 0 })
@@ -582,8 +614,12 @@ function flash(text, color = 'success') {
 // Data loading
 async function load() {
   loading.value = true
+  if (isBranchLocked.value && branchStore.currentBranchId) {
+    branchFilter.value = branchStore.currentBranchId
+  }
   try {
     const params = { page_size: 500 }
+    if (branchFilter.value) params.branch = branchFilter.value
     if (statusFilter.value) params.status = statusFilter.value
     if (datePreset.value && datePreset.value !== 'all' && datePreset.value !== 'custom') {
       params.period = datePreset.value
@@ -740,6 +776,7 @@ watch(datePreset, (val) => {
   if (val === 'custom') openCustomDateDialog()
 })
 
+watch(branchFilter, () => load())
 onMounted(load)
 </script>
 

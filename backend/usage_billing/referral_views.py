@@ -230,3 +230,135 @@ def referral_performance(request):
         "top_referrals": top_referrals,
         "recent_transactions": recent_transactions,
     })
+
+
+# ─────────────────────────────────────────────────────────────────────────
+#  Redemption endpoints
+# ─────────────────────────────────────────────────────────────────────────
+
+# Conversion rate: 1 Adhere Coin = 1 KSH (configurable)
+COIN_TO_KSH = Decimal("1")
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def redeem_pay_bill(request):
+    """
+    Apply Adhere Coins to pay an outstanding API usage bill.
+
+    Payload:
+      - bill_id: int (MonthlyBill pk)
+      - amount: decimal (coins to apply; optional — defaults to full bill amount)
+    """
+    from .models import MonthlyBill
+    from django.utils import timezone
+
+    tenant = getattr(request, "tenant", None) or getattr(connection, "tenant", None)
+    if not tenant or getattr(tenant, "schema_name", None) == "public":
+        return Response({"detail": "No tenant context."}, status=400)
+
+    bill_id = request.data.get("bill_id")
+    if not bill_id:
+        return Response({"detail": "bill_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        bill = MonthlyBill.objects.get(pk=bill_id, tenant=tenant)
+    except MonthlyBill.DoesNotExist:
+        return Response({"detail": "Bill not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if bill.status != MonthlyBill.Status.ISSUED:
+        return Response({"detail": "Only issued bills can be paid."}, status=status.HTTP_400_BAD_REQUEST)
+
+    profile, _ = ReferralProfile.objects.get_or_create(tenant=tenant)
+
+    # Amount in coins to apply
+    requested = request.data.get("amount")
+    bill_amount_coins = bill.amount / COIN_TO_KSH  # convert KSH to coins
+    if requested:
+        coins_to_apply = min(Decimal(str(requested)), bill_amount_coins)
+    else:
+        coins_to_apply = bill_amount_coins
+
+    if coins_to_apply <= 0:
+        return Response({"detail": "Amount must be positive."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if profile.coin_balance < coins_to_apply:
+        return Response({
+            "detail": f"Insufficient balance. You have {profile.coin_balance} coins but need {coins_to_apply}.",
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    # Debit coins
+    profile.debit(coins_to_apply, f"API bill payment — {bill.year}-{bill.month:02d}")
+
+    # Mark bill as paid
+    ksh_paid = coins_to_apply * COIN_TO_KSH
+    bill.status = MonthlyBill.Status.PAID
+    bill.paid_at = timezone.now()
+    bill.notes = (bill.notes or "") + f"\nPaid with {coins_to_apply} Adhere Coins ({ksh_paid} KSH)."
+    bill.save(update_fields=["status", "paid_at", "notes"])
+
+    return Response({
+        "detail": f"Successfully paid bill with {coins_to_apply} Adhere Coins.",
+        "coins_applied": str(coins_to_apply),
+        "ksh_equivalent": str(ksh_paid),
+        "remaining_balance": str(profile.coin_balance),
+        "bill_status": bill.status,
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def redeem_gift_coins(request):
+    """
+    Gift Adhere Coins to another pharmacy.
+
+    Payload:
+      - recipient_code: str (referral code of the recipient pharmacy)
+      - amount: decimal (coins to send)
+      - message: str (optional greeting message)
+    """
+    tenant = getattr(request, "tenant", None) or getattr(connection, "tenant", None)
+    if not tenant or getattr(tenant, "schema_name", None) == "public":
+        return Response({"detail": "No tenant context."}, status=400)
+
+    recipient_code = (request.data.get("recipient_code") or "").strip().upper()
+    amount = request.data.get("amount")
+    message = (request.data.get("message") or "").strip()
+
+    if not recipient_code:
+        return Response({"detail": "recipient_code is required."}, status=status.HTTP_400_BAD_REQUEST)
+    if not amount or Decimal(str(amount)) <= 0:
+        return Response({"detail": "amount must be a positive number."}, status=status.HTTP_400_BAD_REQUEST)
+
+    amount = Decimal(str(amount))
+
+    # Sender profile
+    sender_profile, _ = ReferralProfile.objects.get_or_create(tenant=tenant)
+
+    # Recipient profile
+    try:
+        recipient_profile = ReferralProfile.objects.select_related("tenant").get(referral_code=recipient_code)
+    except ReferralProfile.DoesNotExist:
+        return Response({"detail": "Recipient pharmacy not found. Check the referral code."}, status=status.HTTP_404_NOT_FOUND)
+
+    if recipient_profile.tenant_id == tenant.pk:
+        return Response({"detail": "You cannot gift coins to yourself."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if sender_profile.coin_balance < amount:
+        return Response({
+            "detail": f"Insufficient balance. You have {sender_profile.coin_balance} coins.",
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    # Transfer
+    reason_send = f"Gift to {recipient_profile.tenant.name}" + (f" — {message}" if message else "")
+    reason_receive = f"Gift from {tenant.name}" + (f" — {message}" if message else "")
+
+    sender_profile.debit(amount, reason_send)
+    recipient_profile.credit(amount, reason_receive, related_tenant=tenant)
+
+    return Response({
+        "detail": f"Successfully gifted {amount} Adhere Coins to {recipient_profile.tenant.name}.",
+        "amount_sent": str(amount),
+        "recipient_name": recipient_profile.tenant.name,
+        "remaining_balance": str(sender_profile.coin_balance),
+    })

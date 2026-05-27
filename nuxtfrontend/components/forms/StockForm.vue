@@ -91,10 +91,10 @@
               </div>
             </v-alert>
           </v-col>
-          <v-col v-if="!loadId" cols="12" md="6">
-            <v-text-field v-model="form.barcode" label="SKU / Code" placeholder="Auto-generated" persistent-hint hint="Generated automatically" variant="outlined" density="comfortable" rounded="lg" :disabled="formDisabled">
+          <v-col cols="12" md="6">
+            <v-text-field v-model="form.barcode" :label="loadId ? 'Barcode / SKU' : 'SKU / Code'" :placeholder="loadId ? 'Enter barcode (optional)' : 'Auto-generated'" :persistent-hint="!loadId" :hint="loadId ? '' : 'Generated automatically'" variant="outlined" density="comfortable" rounded="lg" :disabled="formDisabled">
               <template #append-inner>
-                <v-tooltip text="Regenerate SKU" location="top">
+                <v-tooltip v-if="!loadId" text="Regenerate SKU" location="top">
                   <template #activator="{ props: tp }">
                     <v-btn v-bind="tp" icon="mdi-refresh" variant="text" density="comfortable" size="small" @click="form.barcode = generateSku()" />
                   </template>
@@ -106,7 +106,10 @@
             <v-autocomplete v-model="form.category" :items="categories" item-title="name" item-value="id" label="Category" variant="outlined" density="comfortable" rounded="lg" clearable :disabled="formDisabled" />
           </v-col>
           <v-col cols="12" md="6">
-            <v-autocomplete v-model="form.unit" :items="units" item-title="name" item-value="id" label="Unit of Measure" variant="outlined" density="comfortable" rounded="lg" clearable :disabled="formDisabled" />
+            <v-autocomplete v-model="form.unit" :items="units" item-title="name" item-value="id" label="Unit of Measure *" :rules="req" variant="outlined" density="comfortable" rounded="lg" clearable :disabled="formDisabled" />
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-autocomplete v-model="form.branch" :items="branches" item-title="name" item-value="id" label="Branch" variant="outlined" density="comfortable" rounded="lg" clearable :disabled="formDisabled || branchLocked" :readonly="branchLocked" prepend-inner-icon="mdi-store-outline" :hint="branchLocked ? 'Assigned to your branch' : 'Assign to a specific branch'" persistent-hint />
           </v-col>
           <v-col cols="12" md="6" class="d-flex align-center">
             <v-switch
@@ -306,8 +309,11 @@
 <script setup>
 import { useResource } from '~/composables/useResource'
 import { formatMoney } from '~/utils/format'
+import { useBranchStore } from '~/stores/branch'
 const route = useRoute(); const router = useRouter()
 const { $api } = useNuxtApp()
+const branchStore = useBranchStore()
+const branchLocked = computed(() => branchStore.branchLocked)
 const loadId = computed(() => route.params.id || null)
 const r = useResource('/inventory/stocks/')
 const req = [v => !!v || 'Required']
@@ -498,6 +504,10 @@ function autofill(form) {
   if (filled.value || loadId.value) return false
   if (!form.barcode) form.barcode = generateSku()
   if (!form.batch_number) form.batch_number = generateBatch()
+  // Auto-assign branch when user is locked to a branch
+  if (!form.branch && branchStore.branchLocked && branchStore.currentBranchId) {
+    form.branch = branchStore.currentBranchId
+  }
   filled.value = true
   return false
 }
@@ -513,6 +523,10 @@ function syncEdit(form) {
     const qty = Number(form.total_quantity) || 0
     form.quantity = qty
     originalQty.value = qty
+    // Populate the combobox with the loaded medication name
+    if (form.medication_name && !nameSelection.value) {
+      nameSelection.value = form.medication_name
+    }
     // Mirror latest batch info (batch_number/expiry_date are write-only on the serializer,
     // so they only come back nested under `batches`).
     const batches = Array.isArray(form.batches) ? form.batches.slice() : []
@@ -581,8 +595,8 @@ function defaultExpiry() {
   d.setFullYear(d.getFullYear() + 5)
   return d.toISOString().slice(0, 10)
 }
-const initial = { medication_name: '', barcode: '', category: null, unit: null, is_active: true, quantity: 0, reorder_level: 0, reorder_quantity: 0, cost_price: 0, tax_percent: 0, selling_price: 0, discount_percent: 0, batch_number: '', expiry_date: defaultExpiry(), description: '' }
-const categories = ref([]); const units = ref([])
+const initial = { medication_name: '', barcode: '', category: null, unit: null, branch: null, is_active: true, quantity: 0, reorder_level: 0, reorder_quantity: 0, cost_price: 0, tax_percent: 0, selling_price: 0, discount_percent: 0, batch_number: '', expiry_date: defaultExpiry(), description: '' }
+const categories = ref([]); const units = ref([]); const branches = ref([])
 
 // Sync nameSelection when editing an existing item
 watch(loadId, (id) => { if (id) { showNotInCatalog.value = false } }, { immediate: true })
@@ -612,6 +626,7 @@ onMounted(async () => {
   const safe = (p) => $api.get(p).then(r => r.data?.results || r.data || []).catch(() => [])
   categories.value = await safe('/inventory/categories/')
   units.value = await safe('/inventory/units/')
+  branches.value = await safe('/pharmacy-profile/branches/')
 })
 </script>
 

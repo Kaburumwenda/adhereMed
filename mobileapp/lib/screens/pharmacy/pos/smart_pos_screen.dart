@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/api.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../providers/branch_provider.dart';
 import '../inventory/barcode_scanner_dialog.dart';
 
 const _kSmartPosKey = 'smart_pos_state_v1';
@@ -17,10 +19,11 @@ const _kSmartPosKey = 'smart_pos_state_v1';
 //  PROVIDERS
 // ═══════════════════════════════════════════════════════════════════════════
 
-final _smartProductsProvider = FutureProvider.autoDispose((ref) async {
+final _smartProductsProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, int?>((ref, branchId) async {
   final dio = ref.read(dioProvider);
-  final res = await dio.get('/inventory/stocks/',
-      queryParameters: {'page_size': 5000, 'is_active': true});
+  final params = <String, dynamic>{'page_size': 5000, 'is_active': true};
+  if (branchId != null) params['branch'] = branchId;
+  final res = await dio.get('/inventory/stocks/', queryParameters: params);
   final data = res.data;
   final list = data is List ? data : (data?['results'] as List?) ?? [];
   return List<Map<String, dynamic>>.from(list);
@@ -52,13 +55,7 @@ final _smartParkedProvider = FutureProvider.autoDispose((ref) async {
   return 0;
 });
 
-final _smartBranchesProvider = FutureProvider.autoDispose((ref) async {
-  final dio = ref.read(dioProvider);
-  final res = await dio.get('/pharmacy-profile/branches/');
-  final data = res.data;
-  final list = data is List ? data : (data?['results'] as List?) ?? [];
-  return List<Map<String, dynamic>>.from(list);
-});
+// Branch loading is handled by branchProvider (see providers/branch_provider.dart)
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  HELPERS
@@ -119,7 +116,7 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
   String _customerName = '';
   double _discount = 0;
   bool _checkingOut = false;
-  int? _selectedBranchId;
+  bool _showLocationBanner = false;
 
   // Credit
   String _creditPhone = '';
@@ -146,6 +143,19 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
     super.initState();
     _restoreState();
     _scanCtrl.addListener(_onScanChanged);
+    // Ensure branch provider is initialized
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _ensureBranchInit();
+    });
+  }
+
+  Future<void> _ensureBranchInit() async {
+    final branchState = ref.read(branchProvider);
+    if (branchState.branches.isEmpty) {
+      final notifier = ref.read(branchProvider.notifier);
+      await notifier.load();
+      await notifier.autoAssignNearest();
+    }
   }
 
   @override
@@ -181,7 +191,6 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
             (s['creditPartialMethod'] as String?) ?? 'none';
         _creditReference = (s['creditReference'] as String?) ?? '';
         _creditNotes = (s['creditNotes'] as String?) ?? '';
-        _selectedBranchId = s['branchId'] as int?;
       });
     } catch (_) {}
   }
@@ -201,7 +210,6 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
           'creditPartialMethod': _creditPartialMethod,
           'creditReference': _creditReference,
           'creditNotes': _creditNotes,
-          'branchId': _selectedBranchId,
         }));
   }
 
@@ -247,7 +255,7 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
     }
     setState(() => _searchOpen = true);
 
-    final products = ref.read(_smartProductsProvider).valueOrNull ?? [];
+    final products = ref.read(_smartProductsProvider(ref.read(branchProvider).currentBranchId)).valueOrNull ?? [];
     final local = products.where((p) {
       final name = (p['medication_name'] ?? p['name'] ?? '').toString().toLowerCase();
       final sku = (p['sku'] ?? '').toString().toLowerCase();
@@ -267,8 +275,11 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
       _serverSearchTimer = Timer(const Duration(milliseconds: 400), () async {
         try {
           final dio = ref.read(dioProvider);
+          final branchId = ref.read(branchProvider).currentBranchId;
+          final params = <String, dynamic>{'search': q, 'page_size': 10, 'is_active': true};
+          if (branchId != null) params['branch'] = branchId;
           final res = await dio.get('/inventory/stocks/',
-              queryParameters: {'search': q, 'page_size': 10, 'is_active': true});
+              queryParameters: params);
           final data = res.data;
           final list = data is List
               ? data
@@ -293,7 +304,7 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
     final code = _scanCtrl.text.trim();
     if (code.isEmpty) return;
 
-    final products = ref.read(_smartProductsProvider).valueOrNull ?? [];
+    final products = ref.read(_smartProductsProvider(ref.read(branchProvider).currentBranchId)).valueOrNull ?? [];
 
     // Exact barcode/SKU match first
     final exact = products.where((p) {
@@ -405,7 +416,6 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
       _creditPartialMethod = 'none';
       _creditReference = '';
       _creditNotes = '';
-      _selectedBranchId = null;
     });
     _clearPersistedState();
     _scanFocus.requestFocus();
@@ -417,7 +427,7 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
       content: Text(msg),
       behavior: SnackBarBehavior.floating,
       backgroundColor: isError ? Colors.red.shade700 : null,
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      margin: const EdgeInsets.fromLTRB(10, 0, 10, 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ));
   }
@@ -445,7 +455,7 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
         'customer_name': _customerName.isEmpty ? 'Walk-in' : _customerName,
         'discount': _discount,
         'items': items,
-        if (_selectedBranchId != null) 'branch_id': _selectedBranchId,
+        if (ref.read(branchProvider).currentBranchId != null) 'branch_id': ref.read(branchProvider).currentBranchId,
       };
       if (_paymentMethod == 'credit') {
         payload['customer_phone'] = _creditPhone;
@@ -463,7 +473,7 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
       final txn = res.data as Map<String, dynamic>;
       _showReceiptDialog(txn);
       _clearCart();
-      ref.invalidate(_smartProductsProvider);
+      ref.invalidate(_smartProductsProvider(ref.read(branchProvider).currentBranchId));
       ref.invalidate(_smartStatsProvider);
       ref.invalidate(_smartParkedProvider);
     } catch (e) {
@@ -705,7 +715,7 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
                         borderRadius: BorderRadius.circular(2))),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 16),
                 child: Row(children: [
                   Container(
                     padding: const EdgeInsets.all(10),
@@ -1671,7 +1681,8 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
   //  BRANCH SELECTOR
   // ═══════════════════════════════════════════════════════════════════════
 
-  void _showBranchSelector(List<Map<String, dynamic>> branches) {
+  void _showBranchSelector(List<Map<String, dynamic>> branches, bool isSoftAssign) {
+    final branchState = ref.read(branchProvider);
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -1683,7 +1694,7 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
             borderRadius:
                 const BorderRadius.vertical(top: Radius.circular(28)),
           ),
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+          padding: const EdgeInsets.fromLTRB(10, 16, 10, 24),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Container(
                 width: 40,
@@ -1697,10 +1708,18 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
                     .textTheme
                     .titleMedium
                     ?.copyWith(fontWeight: FontWeight.w700)),
+            if (isSoftAssign)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text('Showing branches within 1km of your location',
+                    style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+              ),
             const SizedBox(height: 16),
-            _branchTile(ctx, cs, null, 'All Branches', null,
-                _selectedBranchId == null),
-            const SizedBox(height: 6),
+            if (!isSoftAssign) ...[
+              _branchTile(ctx, cs, null, 'All Branches', null,
+                  branchState.currentBranchId == null),
+              const SizedBox(height: 6),
+            ],
             ...branches
                 .where((b) => b['is_active'] == true)
                 .map((b) {
@@ -1716,7 +1735,7 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
                     id,
                     name,
                     subtitle.isNotEmpty ? subtitle : null,
-                    _selectedBranchId == id,
+                    branchState.currentBranchId == id,
                     isMain: b['is_main'] == true),
               );
             }),
@@ -1737,13 +1756,12 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
         onTap: () {
-          setState(() => _selectedBranchId = id);
-          _persistState();
+          ref.read(branchProvider.notifier).select(id);
           Navigator.pop(ctx);
         },
         child: Padding(
           padding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
           child: Row(children: [
             Container(
               padding: const EdgeInsets.all(8),
@@ -1813,17 +1831,26 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final products = ref.watch(_smartProductsProvider);
+    final branchState = ref.watch(branchProvider);
     final stats = ref.watch(_smartStatsProvider);
     final parkedCount = ref.watch(_smartParkedProvider);
-    final branches = ref.watch(_smartBranchesProvider);
     final auth = ref.watch(authProvider);
+    final role = auth.user?.role ?? '';
+    final isSoftAssign = const {'cashier', 'pharmacist', 'pharmacy_tech'}.contains(role);
+    final locationUnavailable = isSoftAssign && branchState.locationBlocked;
+
+    // For soft-assign roles: don't load products until branch is determined
+    final branchReady = !isSoftAssign || branchState.currentBranchId != null;
+    final products = branchReady
+        ? ref.watch(_smartProductsProvider(branchState.currentBranchId))
+        : const AsyncValue<List<Map<String, dynamic>>>.loading();
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF0F0F17) : const Color(0xFFF5F6FA),
       body: SafeArea(
         child: Column(children: [
-          _buildTopBar(cs, isDark, auth, stats, parkedCount, branches),
+          _buildTopBar(cs, isDark, auth, stats, parkedCount, branchState),
+          if (locationUnavailable && _showLocationBanner) _buildLocationBanner(cs, branchState),
           _buildScanBar(cs, isDark, products),
           Expanded(
             child: _cart.isEmpty
@@ -1837,6 +1864,63 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
   }
 
   // ═══════════════════════════════════════════════════════════════════════
+  //  LOCATION BANNER
+  // ═══════════════════════════════════════════════════════════════════════
+
+  Widget _buildLocationBanner(ColorScheme cs, BranchState branchState) {
+    final isDisabled = branchState.locationStatus == LocationStatus.disabled;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 6, 10, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF3C7),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.4)),
+      ),
+      child: Row(children: [
+        const Icon(Icons.location_off_rounded, size: 18, color: Color(0xFFD97706)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            isDisabled
+                ? 'Location off — locked to your branch. Enable location to switch to nearest branch.'
+                : 'Location denied — locked to your branch. Grant permission to switch to nearest branch.',
+            style: const TextStyle(fontSize: 11.5, color: Color(0xFF92400E), height: 1.3),
+          ),
+        ),
+        const SizedBox(width: 8),
+        GestureDetector(
+          onTap: () async {
+            if (isDisabled) {
+              await Geolocator.openLocationSettings();
+            } else {
+              await Geolocator.openAppSettings();
+            }
+            await Future.delayed(const Duration(seconds: 1));
+            if (mounted) {
+              ref.read(branchProvider.notifier).recheckLocation();
+            }
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF59E0B),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Text('Enable', style: TextStyle(
+                fontSize: 10, fontWeight: FontWeight.w700, color: Colors.white)),
+          ),
+        ),
+        const SizedBox(width: 6),
+        GestureDetector(
+          onTap: () => setState(() => _showLocationBanner = false),
+          child: const Icon(Icons.close_rounded, size: 16, color: Color(0xFF92400E)),
+        ),
+      ]),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
   //  TOP BAR
   // ═══════════════════════════════════════════════════════════════════════
 
@@ -1846,11 +1930,11 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
       AuthState auth,
       AsyncValue<Map<String, dynamic>> stats,
       AsyncValue<int> parkedCount,
-      AsyncValue<List<Map<String, dynamic>>> branches) {
+      BranchState branchState) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
+        color: isDark ? const Color(0xFF141414) : Colors.white,
         boxShadow: [
           BoxShadow(
               color: Colors.black.withValues(alpha: 0.06),
@@ -1946,47 +2030,52 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
             error: (_, __) => const SizedBox.shrink(),
           ),
           const Spacer(),
-          branches.when(
-            data: (bl) {
-              if (bl.length <= 1) return const SizedBox.shrink();
-              final sel =
-                  bl.where((b) => b['id'] == _selectedBranchId).firstOrNull;
-              final label = sel != null
-                  ? (sel['name'] ?? 'Branch')
-                  : 'All branches';
-              return GestureDetector(
-                onTap: () => _showBranchSelector(bl),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                      color:
-                          const Color(0xFF8B5CF6).withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(20)),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.store_rounded,
-                        size: 13, color: Color(0xFF8B5CF6)),
-                    const SizedBox(width: 5),
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 90),
-                      child: Text(label,
-                          style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF8B5CF6)),
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1),
-                    ),
+          () {
+            final role = ref.read(authProvider).user?.role ?? '';
+            final branchList = branchState.allowedBranches(role);
+            final isSoftAssign = const {'cashier', 'pharmacist', 'pharmacy_tech'}.contains(role);
+            final isLocked = isSoftAssign && branchState.branchLocked;
+            if (branchList.length <= 1 && branchState.currentBranchId != null && !isLocked) return const SizedBox.shrink();
+            final sel = branchList.where((b) => b['id'] == branchState.currentBranchId).firstOrNull
+                ?? branchState.branches.where((b) => b['id'] == branchState.currentBranchId).firstOrNull;
+            final label = sel != null
+                ? (sel['name'] ?? 'Branch')
+                : (isSoftAssign ? 'Your Branch' : 'All branches');
+            return GestureDetector(
+              onTap: isLocked
+                  ? () => setState(() => _showLocationBanner = true)
+                  : () => _showBranchSelector(branchList, isSoftAssign),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                    color: isLocked
+                        ? const Color(0xFFF59E0B).withValues(alpha: 0.12)
+                        : const Color(0xFF8B5CF6).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(20)),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(isLocked ? Icons.lock_rounded : Icons.store_rounded,
+                      size: 13, color: isLocked ? const Color(0xFFF59E0B) : const Color(0xFF8B5CF6)),
+                  const SizedBox(width: 5),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 90),
+                    child: Text(label,
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: isLocked ? const Color(0xFFF59E0B) : const Color(0xFF8B5CF6)),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1),
+                  ),
+                  if (!isLocked) ...[
                     const SizedBox(width: 2),
                     const Icon(Icons.keyboard_arrow_down_rounded,
                         size: 14, color: Color(0xFF8B5CF6)),
-                  ]),
-                ),
-              );
-            },
-            loading: () => const SizedBox.shrink(),
-            error: (_, __) => const SizedBox.shrink(),
-          ),
+                  ],
+                ]),
+              ),
+            );
+          }(),
         ]),
       ]),
     );
@@ -2015,7 +2104,7 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
   Widget _buildScanBar(
       ColorScheme cs, bool isDark, AsyncValue<List<Map<String, dynamic>>> products) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      margin: const EdgeInsets.fromLTRB(10, 12, 10, 4),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         // Scan input
         Row(children: [
@@ -2039,7 +2128,7 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
                     : null,
                 filled: true,
                 fillColor: isDark
-                    ? const Color(0xFF1E1E2E)
+                    ? const Color(0xFF1A1A1A)
                     : cs.surfaceContainerLow,
                 border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
@@ -2049,7 +2138,7 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
                   borderSide: BorderSide(color: cs.primary, width: 2),
                 ),
                 contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
               ),
               textInputAction: TextInputAction.search,
               onSubmitted: (_) => _handleScan(),
@@ -2086,7 +2175,7 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
             margin: const EdgeInsets.only(top: 4),
             constraints: const BoxConstraints(maxHeight: 280),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
+              color: isDark ? const Color(0xFF141414) : Colors.white,
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
@@ -2299,7 +2388,7 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
 
   Widget _buildCartList(ColorScheme cs, bool isDark) {
     return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
       itemCount: _cart.length,
       itemBuilder: (_, i) {
         final it = _cart[i];
@@ -2328,7 +2417,7 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
             decoration: BoxDecoration(
               color: isFlashing
                   ? const Color(0xFF10B981).withValues(alpha: 0.12)
-                  : (isDark ? const Color(0xFF1E1E2E) : Colors.white),
+                  : (isDark ? const Color(0xFF141414) : Colors.white),
               borderRadius: BorderRadius.circular(16),
               border: isFlashing
                   ? Border.all(
@@ -2417,9 +2506,9 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
 
   Widget _buildFooter(ColorScheme cs, bool isDark) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      padding: const EdgeInsets.fromLTRB(10, 12, 10, 16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
+        color: isDark ? const Color(0xFF141414) : Colors.white,
         boxShadow: [
           BoxShadow(
               color: Colors.black.withValues(alpha: 0.08),
@@ -2596,7 +2685,7 @@ class _SmartPOSScreenState extends ConsumerState<SmartPOSScreen> {
             borderRadius:
                 const BorderRadius.vertical(top: Radius.circular(28)),
           ),
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+          padding: const EdgeInsets.fromLTRB(10, 16, 10, 24),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Container(
                 width: 40,

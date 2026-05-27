@@ -160,13 +160,7 @@ export default defineNuxtConfig({
       // their own URL namespace while reusing the same page components.
       const pagesDir = resolve(__dirname, 'pages')
       const aliases = [
-        // POS
-        ['pharmacy-pos',                      '/pharmacy/pos',                            'pos/index.vue'],
-        ['pharmacy-pos-shifts',               '/pharmacy/pos/shifts',                     'pos/shifts.vue'],
-        ['pharmacy-pos-history',              '/pharmacy/pos/history',                    'pos/history.vue'],
-        ['pharmacy-pos-parked',               '/pharmacy/pos/parked',                     'pos/parked.vue'],
-        ['pharmacy-pos-loyalty',              '/pharmacy/pos/loyalty',                    'pos/loyalty.vue'],
-        ['pharmacy-pos-supermarket',          '/pharmacy/pos/supermarket',                'pos/supermarket.vue'],
+        // POS — now uses file-system routes in pages/pharmacy/pos/
         // Orders
         ['pharmacy-orders',                   '/pharmacy/orders',                         'pharmacy-orders/index.vue'],
         ['pharmacy-orders-id',                '/pharmacy/orders/:id()',                   'pharmacy-orders/[id].vue'],
@@ -250,6 +244,8 @@ export default defineNuxtConfig({
         ['pharmacy-suppliers-id-edit',        '/pharmacy/suppliers/:id()/edit',           'suppliers/[id]/edit.vue'],
         // Settings
         ['pharmacy-settings',                 '/pharmacy/settings',                       'settings/index.vue'],
+        // Setup / Seed
+        ['pharmacy-setup',                    '/pharmacy/setup',                          'setup/index.vue'],
         // Branches
         ['pharmacy-branches',                 '/pharmacy/branches',                       'branches/index.vue'],
         ['pharmacy-branches-new',             '/pharmacy/branches/new',                   'branches/new.vue'],

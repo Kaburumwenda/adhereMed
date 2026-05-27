@@ -7,6 +7,21 @@
         <div class="text-caption text-medium-emphasis">On-hold sales waiting to be resumed</div>
       </div>
       <v-spacer />
+      <v-select
+        v-if="branchStore.hasBranches"
+        v-model="branchFilter"
+        :items="branchFilterItems"
+        item-title="name"
+        item-value="id"
+        density="compact"
+        variant="outlined"
+        rounded="lg"
+        hide-details
+        :disabled="isBranchLocked"
+        prepend-inner-icon="mdi-store-marker"
+        style="min-width: 180px"
+        class="mr-2"
+      />
       <v-btn-toggle v-model="filter" mandatory density="compact" rounded="lg" variant="outlined" class="mr-2">
         <v-btn value="all" class="text-none">All</v-btn>
         <v-btn value="mine" class="text-none">Mine</v-btn>
@@ -109,15 +124,31 @@
 import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { formatMoney } from '~/utils/format'
+import { useBranchStore } from '~/stores/branch'
+import { useAuthStore } from '~/stores/auth'
 
 definePageMeta({ layout: 'default' })
 
 const { $api } = useNuxtApp()
 const router = useRouter()
 const route = useRoute()
+const branchStore = useBranchStore()
+const auth = useAuthStore()
 const sourceIsPharmacy = computed(() => (route.query?.source || '') === 'pharmacy')
+
+const isBranchLocked = computed(() => auth.role === 'branch_admin')
+const branchFilter = ref(null)
+const branchFilterItems = computed(() => {
+  if (isBranchLocked.value) {
+    const b = branchStore.currentBranch
+    return b ? [{ id: b.id, name: b.name }] : []
+  }
+  const items = branchStore.activeBranches.map(b => ({ id: b.id, name: b.name }))
+  items.unshift({ id: null, name: 'All Branches' })
+  return items
+})
 
 const items = ref([])
 const loading = ref(false)
@@ -128,11 +159,14 @@ const del = reactive({ show: false, target: null, loading: false })
 
 async function load() {
   loading.value = true
+  if (isBranchLocked.value && branchStore.currentBranchId) {
+    branchFilter.value = branchStore.currentBranchId
+  }
   try {
-    const url = filter.value === 'mine'
-      ? '/pos/parked-sales/?mine=1&page_size=200'
-      : '/pos/parked-sales/?page_size=200'
-    const res = await $api.get(url)
+    const params = new URLSearchParams({ page_size: '200' })
+    if (filter.value === 'mine') params.set('mine', '1')
+    if (branchFilter.value) params.set('branch', branchFilter.value)
+    const res = await $api.get(`/pos/parked-sales/?${params.toString()}`)
     items.value = res.data?.results || res.data || []
   } catch (e) {
     items.value = []
@@ -143,6 +177,7 @@ async function load() {
 }
 onMounted(load)
 watch(filter, load)
+watch(branchFilter, load)
 
 const filtered = computed(() => {
   const q = search.value.toLowerCase().trim()

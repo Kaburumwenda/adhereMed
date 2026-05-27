@@ -5,8 +5,8 @@ import '../../../widgets/common.dart';
 
 final _catsProvider = FutureProvider.autoDispose((ref) async {
   final dio = ref.read(dioProvider);
-  final res = await dio.get('/inventory/categories/', queryParameters: {'page_size': 100});
-  return (res.data['results'] as List?) ?? [];
+  final res = await dio.get('/inventory/categories/');
+  return res.data is List ? res.data as List : (res.data['results'] as List?) ?? [];
 });
 
 class CategoriesScreen extends ConsumerWidget {

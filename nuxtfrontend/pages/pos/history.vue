@@ -151,6 +151,19 @@
           style="min-width: 180px; max-width: 240px"
           prepend-inner-icon="mdi-account-tie"
         />
+        <v-select
+          v-if="branchStore.hasBranches"
+          v-model="branchFilter"
+          :items="branchFilterItems"
+          item-title="name"
+          item-value="id"
+          density="compact"
+          variant="outlined"
+          hide-details
+          :disabled="isBranchLocked"
+          prepend-inner-icon="mdi-store-marker"
+          style="min-width: 180px; max-width: 220px"
+        />
         <v-spacer />
         <div class="text-body-2 text-medium-emphasis">{{ filteredTx.length }} of {{ inRange.length }}</div>
       </div>
@@ -317,12 +330,25 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { formatMoney, formatDate, formatDateTime } from '~/utils/format'
 import EmptyState from '~/components/EmptyState.vue'
 import { useAuthStore } from '~/stores/auth'
+import { useBranchStore } from '~/stores/branch'
 
 const { $api } = useNuxtApp()
 
 const auth = useAuthStore()
+const branchStore = useBranchStore()
 const ADMIN_ROLES = ['super_admin', 'tenant_admin', 'pharmacist']
-const canViewAll = computed(() => ADMIN_ROLES.includes(auth.role))
+const canViewAll = computed(() => ADMIN_ROLES.includes(auth.role) || auth.role === 'branch_admin')
+const isBranchLocked = computed(() => auth.role === 'branch_admin')
+const branchFilter = ref(null)
+const branchFilterItems = computed(() => {
+  if (isBranchLocked.value) {
+    const b = branchStore.currentBranch
+    return b ? [{ id: b.id, name: b.name }] : []
+  }
+  const items = branchStore.activeBranches.map(b => ({ id: b.id, name: b.name }))
+  items.unshift({ id: null, name: 'All Branches' })
+  return items
+})
 const tenantName = computed(() => auth.tenantName || 'Pharmacy')
 
 const loading = ref(false)
@@ -616,13 +642,20 @@ function exportCsv() {
 
 async function load() {
   loading.value = true
+  // Lock branch_admin to their branch
+  if (isBranchLocked.value && branchStore.currentBranchId) {
+    branchFilter.value = branchStore.currentBranchId
+  }
+  const params = new URLSearchParams({ page_size: '2000' })
+  if (branchFilter.value) params.set('branch', branchFilter.value)
   try {
-    const r = await $api.get('/pos/transactions/?page_size=2000')
+    const r = await $api.get(`/pos/transactions/?${params.toString()}`)
     txAll.value = r.data?.results || (Array.isArray(r.data) ? r.data : [])
   } catch { txAll.value = [] }
   loading.value = false
 }
 
+watch(branchFilter, () => load())
 onMounted(load)
 </script>
 

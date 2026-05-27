@@ -22,4 +22,24 @@ urlpatterns = [
     # Seed data
     path("seed/", views.seed_catalog, name="seed-catalog"),
     path("seed/run/", views.run_seed, name="seed-run"),
+
+    # Adhere Coins
+    path("coins/stats/", views.coin_stats, name="coin-stats"),
+    path("coins/packages/", views.CoinPackageListView.as_view(), name="coin-package-list"),
+    path("coins/packages/<int:pk>/", views.CoinPackageDetailView.as_view(), name="coin-package-detail"),
+    path("coins/wallets/", views.CoinWalletListView.as_view(), name="coin-wallet-list"),
+    path("coins/transactions/", views.CoinTransactionListView.as_view(), name="coin-transaction-list"),
+    path("coins/allocate/", views.coin_allocate, name="coin-allocate"),
+    path("coins/deduct/", views.coin_deduct, name="coin-deduct"),
+    path("coins/init-wallets/", views.coin_init_wallets, name="coin-init-wallets"),
+
+    # Referral Management
+    path("referrals/stats/", views.referral_admin_stats, name="referral-admin-stats"),
+    path("referrals/", views.ReferralListView.as_view(), name="referral-list"),
+    path("referrals/<int:pk>/", views.ReferralDetailView.as_view(), name="referral-detail"),
+    path("referrals/profiles/", views.ReferralProfileListView.as_view(), name="referral-profile-list"),
+    path("referrals/profiles/<int:pk>/", views.ReferralProfileDetailView.as_view(), name="referral-profile-detail"),
+    path("referrals/profiles/<int:pk>/regenerate-code/", views.regenerate_referral_code, name="referral-regenerate-code"),
+    path("referrals/earnings-history/", views.referral_earnings_history, name="referral-earnings-history"),
+    path("referrals/monthly-projections/", views.referral_monthly_projections, name="referral-monthly-projections"),
 ]

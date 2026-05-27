@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/api.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../providers/branch_provider.dart';
 import '../../../widgets/common.dart';
 
 const _kPosStateKey = 'pos_cart_state_v1';
@@ -17,11 +19,12 @@ const _kPosStateKey = 'pos_cart_state_v1';
 //  PROVIDERS
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// All active inventory stock items
-final _productsProvider = FutureProvider.autoDispose((ref) async {
+/// All active inventory stock items (filtered by branch when set)
+final _productsProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, int?>((ref, branchId) async {
   final dio = ref.read(dioProvider);
-  final res = await dio.get('/inventory/stocks/',
-      queryParameters: {'page_size': 5000, 'is_active': true, 'ordering': '-created_at'});
+  final params = <String, dynamic>{'page_size': 5000, 'is_active': true, 'ordering': '-created_at'};
+  if (branchId != null) params['branch'] = branchId;
+  final res = await dio.get('/inventory/stocks/', queryParameters: params);
   final data = res.data;
   final list = data is List ? data : (data?['results'] as List?) ?? [];
   return List<Map<String, dynamic>>.from(list);
@@ -50,14 +53,7 @@ final _parkedCountProvider = FutureProvider.autoDispose((ref) async {
   return 0;
 });
 
-/// Pharmacy branches
-final _branchesProvider = FutureProvider.autoDispose((ref) async {
-  final dio = ref.read(dioProvider);
-  final res = await dio.get('/pharmacy-profile/branches/');
-  final data = res.data;
-  final list = data is List ? data : (data?['results'] as List?) ?? [];
-  return List<Map<String, dynamic>>.from(list);
-});
+// Branch loading is handled by branchProvider (see providers/branch_provider.dart)
 
 final _searchProvider = StateProvider.autoDispose((_) => '');
 final _categoryFilter = StateProvider.autoDispose<String?>((_) => null);
@@ -124,9 +120,7 @@ class _POSScreenState extends ConsumerState<POSScreen> with TickerProviderStateM
   String _customerName = '';
   double _discount = 0;
   bool _checkingOut = false;
-
-  // Branch state
-  int? _selectedBranchId;
+  bool _showLocationBanner = false;
 
   // Credit sale state
   String _creditPhone = '';
@@ -147,6 +141,28 @@ class _POSScreenState extends ConsumerState<POSScreen> with TickerProviderStateM
     super.initState();
     _cartBounce = AnimationController(vsync: this, duration: 200.ms);
     _restoreState();
+    // Ensure branch provider is initialized (in case shell hasn't done it yet)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _ensureBranchInit();
+      _checkResumeExtra();
+    });
+  }
+
+  Future<void> _ensureBranchInit() async {
+    final branchState = ref.read(branchProvider);
+    if (branchState.branches.isEmpty) {
+      final notifier = ref.read(branchProvider.notifier);
+      await notifier.load();
+      await notifier.autoAssignNearest();
+    }
+  }
+
+  void _checkResumeExtra() {
+    final extra = GoRouterState.of(context).extra;
+    if (extra is Map<String, dynamic> && extra.containsKey('resume_parked')) {
+      final p = extra['resume_parked'] as Map<String, dynamic>;
+      _resumeParkedSale(p);
+    }
   }
 
   // ── Persistence ──
@@ -170,7 +186,6 @@ class _POSScreenState extends ConsumerState<POSScreen> with TickerProviderStateM
         _creditPartialMethod = (s['creditPartialMethod'] as String?) ?? 'none';
         _creditReference = (s['creditReference'] as String?) ?? '';
         _creditNotes = (s['creditNotes'] as String?) ?? '';
-        _selectedBranchId = s['branchId'] as int?;
       });
     } catch (_) {}
   }
@@ -188,7 +203,6 @@ class _POSScreenState extends ConsumerState<POSScreen> with TickerProviderStateM
       'creditPartialMethod': _creditPartialMethod,
       'creditReference': _creditReference,
       'creditNotes': _creditNotes,
-      'branchId': _selectedBranchId,
     }));
   }
 
@@ -289,7 +303,6 @@ class _POSScreenState extends ConsumerState<POSScreen> with TickerProviderStateM
       _creditPartialMethod = 'none';
       _creditReference = '';
       _creditNotes = '';
-      _selectedBranchId = null;
     });
     _clearPersistedState();
   }
@@ -300,7 +313,7 @@ class _POSScreenState extends ConsumerState<POSScreen> with TickerProviderStateM
       content: Text(msg),
       behavior: SnackBarBehavior.floating,
       backgroundColor: isError ? Colors.red.shade700 : null,
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      margin: const EdgeInsets.fromLTRB(10, 0, 10, 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ));
   }
@@ -355,7 +368,7 @@ class _POSScreenState extends ConsumerState<POSScreen> with TickerProviderStateM
         'customer_name': _customerName.isEmpty ? 'Walk-in' : _customerName,
         'discount': _discount,
         'items': items,
-        if (_selectedBranchId != null) 'branch_id': _selectedBranchId,
+        if (ref.read(branchProvider).currentBranchId != null) 'branch_id': ref.read(branchProvider).currentBranchId,
       };
 
       if (_isCredit) {
@@ -385,7 +398,7 @@ class _POSScreenState extends ConsumerState<POSScreen> with TickerProviderStateM
       if (!mounted) return;
       _showReceiptDialog(txn);
       _clearCart();
-      ref.invalidate(_productsProvider);
+      ref.invalidate(_productsProvider(ref.read(branchProvider).currentBranchId));
       ref.invalidate(_todayStatsProvider);
       ref.invalidate(_parkedCountProvider);
     } catch (e) {
@@ -638,7 +651,7 @@ class _POSScreenState extends ConsumerState<POSScreen> with TickerProviderStateM
                 ),
                 // Header
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 16),
                   child: Row(children: [
                     Container(
                       padding: const EdgeInsets.all(10),
@@ -1543,7 +1556,7 @@ class _POSScreenState extends ConsumerState<POSScreen> with TickerProviderStateM
             color: cs.surface,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
           ),
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+          padding: const EdgeInsets.fromLTRB(10, 16, 10, 24),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Container(
               width: 40,
@@ -1737,28 +1750,38 @@ class _POSScreenState extends ConsumerState<POSScreen> with TickerProviderStateM
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final products = ref.watch(_productsProvider);
+    final branchState = ref.watch(branchProvider);
     final todayStats = ref.watch(_todayStatsProvider);
     final parkedCount = ref.watch(_parkedCountProvider);
-    final branches = ref.watch(_branchesProvider);
     final search = ref.watch(_searchProvider);
     final catFilter = ref.watch(_categoryFilter);
     final auth = ref.watch(authProvider);
+    final role = auth.user?.role ?? '';
+    final isSoftAssign = const {'cashier', 'pharmacist', 'pharmacy_tech'}.contains(role);
+    final locationUnavailable = isSoftAssign && branchState.locationBlocked;
+
+    // For soft-assign roles: don't load products until branch is determined
+    final branchReady = !isSoftAssign || branchState.currentBranchId != null;
+    final products = branchReady
+        ? ref.watch(_productsProvider(branchState.currentBranchId))
+        : const AsyncValue<List<Map<String, dynamic>>>.loading();
 
     return Scaffold(
       body: Column(children: [
         // ── Top bar ──
-        _buildTopBar(cs, isDark, auth, todayStats, parkedCount, branches),
+        _buildTopBar(cs, isDark, auth, todayStats, parkedCount, branchState),
+        // ── Location notification banner ──
+        if (locationUnavailable && _showLocationBanner) _buildLocationBanner(cs, branchState),
         // ── Body ──
         Expanded(
           child: products.when(
-            loading: () => const Center(child: LoadingShimmer(lines: 6)),
-            error: (e, _) => ErrorRetry(
-              message: 'Failed to load products',
-              onRetry: () => ref.invalidate(_productsProvider),
+              loading: () => const Center(child: LoadingShimmer(lines: 6)),
+              error: (e, _) => ErrorRetry(
+                message: 'Failed to load products',
+                onRetry: () => ref.invalidate(_productsProvider(branchState.currentBranchId)),
+              ),
+              data: (prods) => _buildBody(prods, search, catFilter, cs, isDark),
             ),
-            data: (prods) => _buildBody(prods, search, catFilter, cs, isDark),
-          ),
         ),
       ]),
       // ── Cart FAB ──
@@ -1791,15 +1814,72 @@ class _POSScreenState extends ConsumerState<POSScreen> with TickerProviderStateM
   }
 
   // ═══════════════════════════════════════════════════════════════════════
+  //  LOCATION BANNER
+  // ═══════════════════════════════════════════════════════════════════════
+
+  Widget _buildLocationBanner(ColorScheme cs, BranchState branchState) {
+    final isDisabled = branchState.locationStatus == LocationStatus.disabled;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 6, 10, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF3C7),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.4)),
+      ),
+      child: Row(children: [
+        const Icon(Icons.location_off_rounded, size: 18, color: Color(0xFFD97706)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            isDisabled
+                ? 'Location off — locked to your branch. Enable location to switch to nearest branch.'
+                : 'Location denied — locked to your branch. Grant permission to switch to nearest branch.',
+            style: const TextStyle(fontSize: 11.5, color: Color(0xFF92400E), height: 1.3),
+          ),
+        ),
+        const SizedBox(width: 8),
+        GestureDetector(
+          onTap: () async {
+            if (isDisabled) {
+              await Geolocator.openLocationSettings();
+            } else {
+              await Geolocator.openAppSettings();
+            }
+            await Future.delayed(const Duration(seconds: 1));
+            if (mounted) {
+              ref.read(branchProvider.notifier).recheckLocation();
+            }
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF59E0B),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Text('Enable', style: TextStyle(
+                fontSize: 10, fontWeight: FontWeight.w700, color: Colors.white)),
+          ),
+        ),
+        const SizedBox(width: 6),
+        GestureDetector(
+          onTap: () => setState(() => _showLocationBanner = false),
+          child: const Icon(Icons.close_rounded, size: 16, color: Color(0xFF92400E)),
+        ),
+      ]),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
   //  TOP BAR
   // ═══════════════════════════════════════════════════════════════════════
 
   Widget _buildTopBar(ColorScheme cs, bool isDark, AuthState auth,
       AsyncValue<Map<String, dynamic>> todayStats, AsyncValue<int> parkedCount,
-      AsyncValue<List<Map<String, dynamic>>> branches) {
+      BranchState branchState) {
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
+        color: isDark ? const Color(0xFF141414) : Colors.white,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
@@ -1811,7 +1891,7 @@ class _POSScreenState extends ConsumerState<POSScreen> with TickerProviderStateM
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             // Row 1: title + actions
             Row(children: [
@@ -1912,41 +1992,51 @@ class _POSScreenState extends ConsumerState<POSScreen> with TickerProviderStateM
               ),
               const Spacer(),
               // Branch selector
-              branches.when(
-                data: (branchList) {
-                  if (branchList.length <= 1) return const SizedBox.shrink();
-                  final selected = branchList.where((b) => b['id'] == _selectedBranchId).firstOrNull;
-                  final label = selected != null ? (selected['name'] ?? 'Branch') : 'All branches';
-                  return GestureDetector(
-                    onTap: () => _showBranchSelector(branchList),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF8B5CF6).withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(20),
+              () {
+                final role = ref.read(authProvider).user?.role ?? '';
+                final branchList = branchState.allowedBranches(role);
+                final isSoftAssign = const {'cashier', 'pharmacist', 'pharmacy_tech'}.contains(role);
+                final isLocked = isSoftAssign && branchState.branchLocked;
+                if (branchList.length <= 1 && branchState.currentBranchId != null && !isLocked) return const SizedBox.shrink();
+                final selected = branchList.where((b) => b['id'] == branchState.currentBranchId).firstOrNull
+                    ?? branchState.branches.where((b) => b['id'] == branchState.currentBranchId).firstOrNull;
+                final label = selected != null
+                    ? (selected['name'] ?? 'Branch')
+                    : (isSoftAssign ? 'Your Branch' : 'All branches');
+                return GestureDetector(
+                  onTap: isLocked
+                      ? () => setState(() => _showLocationBanner = true)
+                      : () => _showBranchSelector(branchList, isSoftAssign),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: isLocked
+                          ? const Color(0xFFF59E0B).withValues(alpha: 0.12)
+                          : const Color(0xFF8B5CF6).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(isLocked ? Icons.lock_rounded : Icons.store_rounded,
+                          size: 13, color: isLocked ? const Color(0xFFF59E0B) : const Color(0xFF8B5CF6)),
+                      const SizedBox(width: 5),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 90),
+                        child: Text(label,
+                            style: TextStyle(
+                                fontSize: 11, fontWeight: FontWeight.w600,
+                                color: isLocked ? const Color(0xFFF59E0B) : const Color(0xFF8B5CF6)),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1),
                       ),
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        const Icon(Icons.store_rounded, size: 13, color: Color(0xFF8B5CF6)),
-                        const SizedBox(width: 5),
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 90),
-                          child: Text(label,
-                              style: const TextStyle(
-                                  fontSize: 11, fontWeight: FontWeight.w600,
-                                  color: Color(0xFF8B5CF6)),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1),
-                        ),
+                      if (!isLocked) ...[
                         const SizedBox(width: 2),
                         const Icon(Icons.keyboard_arrow_down_rounded,
                             size: 14, color: Color(0xFF8B5CF6)),
-                      ]),
-                    ),
-                  );
-                },
-                loading: () => const SizedBox.shrink(),
-                error: (_, __) => const SizedBox.shrink(),
-              ),
+                      ],
+                    ]),
+                  ),
+                );
+              }(),
             ]),
           ]),
         ),
@@ -1971,7 +2061,8 @@ class _POSScreenState extends ConsumerState<POSScreen> with TickerProviderStateM
     );
   }
 
-  void _showBranchSelector(List<Map<String, dynamic>> branches) {
+  void _showBranchSelector(List<Map<String, dynamic>> branches, bool isSoftAssign) {
+    final branchState = ref.read(branchProvider);
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -1982,7 +2073,7 @@ class _POSScreenState extends ConsumerState<POSScreen> with TickerProviderStateM
             color: cs.surface,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
           ),
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+          padding: const EdgeInsets.fromLTRB(10, 16, 10, 24),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Container(
               width: 40, height: 4,
@@ -1997,10 +2088,18 @@ class _POSScreenState extends ConsumerState<POSScreen> with TickerProviderStateM
                     .textTheme
                     .titleMedium
                     ?.copyWith(fontWeight: FontWeight.w700)),
+            if (isSoftAssign)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text('Showing branches within 1km of your location',
+                    style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+              ),
             const SizedBox(height: 16),
-            // "All branches" option
-            _branchTile(ctx, cs, null, 'All Branches', null, _selectedBranchId == null),
-            const SizedBox(height: 6),
+            // "All branches" option only for admins
+            if (!isSoftAssign) ...[
+              _branchTile(ctx, cs, null, 'All Branches', null, branchState.currentBranchId == null),
+              const SizedBox(height: 6),
+            ],
             ...branches.where((b) => b['is_active'] == true).map((b) {
               final id = b['id'] as int;
               final name = (b['name'] ?? 'Branch').toString();
@@ -2009,7 +2108,7 @@ class _POSScreenState extends ConsumerState<POSScreen> with TickerProviderStateM
               return Padding(
                 padding: const EdgeInsets.only(bottom: 6),
                 child: _branchTile(ctx, cs, id, name, subtitle.isNotEmpty ? subtitle : null,
-                    _selectedBranchId == id, isMain: isMain),
+                    branchState.currentBranchId == id, isMain: isMain),
               );
             }),
           ]),
@@ -2028,12 +2127,11 @@ class _POSScreenState extends ConsumerState<POSScreen> with TickerProviderStateM
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
         onTap: () {
-          setState(() => _selectedBranchId = id);
-          _persistState();
+          ref.read(branchProvider.notifier).select(id);
           Navigator.pop(ctx);
         },
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
           child: Row(children: [
             Container(
               padding: const EdgeInsets.all(8),
@@ -2140,7 +2238,7 @@ class _POSScreenState extends ConsumerState<POSScreen> with TickerProviderStateM
               borderSide: BorderSide.none,
             ),
             contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
             isDense: true,
           ),
           style: const TextStyle(fontSize: 14),
@@ -2245,7 +2343,7 @@ class _POSScreenState extends ConsumerState<POSScreen> with TickerProviderStateM
                 ),
                 // Header
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
                   child:
                       Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
                     Container(
@@ -2291,7 +2389,7 @@ class _POSScreenState extends ConsumerState<POSScreen> with TickerProviderStateM
                 ),
                 // Customer field
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
                   child: TextField(
                     onChanged: (v) =>
                         setState(() => _customerName = v),
@@ -2331,7 +2429,7 @@ class _POSScreenState extends ConsumerState<POSScreen> with TickerProviderStateM
                         )
                       : ListView.separated(
                           controller: scrollCtrl,
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
                           itemCount: _cart.length,
                           separatorBuilder: (_, __) =>
                               Divider(color: cs.outlineVariant.withValues(alpha: 0.2)),
@@ -2488,7 +2586,7 @@ class _POSScreenState extends ConsumerState<POSScreen> with TickerProviderStateM
       BuildContext ctx, ColorScheme cs, bool isDark, StateSetter setSheetState) {
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
+        color: isDark ? const Color(0xFF141414) : Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         boxShadow: [
           BoxShadow(
@@ -2498,7 +2596,7 @@ class _POSScreenState extends ConsumerState<POSScreen> with TickerProviderStateM
           ),
         ],
       ),
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+      padding: const EdgeInsets.fromLTRB(10, 14, 10, 20),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         // Subtotal
         _summaryRow('Subtotal', _fmtMoney(_subtotal), cs),
@@ -2738,8 +2836,8 @@ class _ProductCard extends StatelessWidget {
     final abbr = (product['abbreviation'] ?? '').toString();
     final category = (product['category_name'] ?? product['category'] ?? '').toString();
 
-    final cardBg = isDark ? const Color(0xFF1E1E2E) : Colors.white;
-    final headerBg = isDark ? const Color(0xFF252538) : const Color(0xFFF8F9FB);
+    final cardBg = isDark ? const Color(0xFF141414) : Colors.white;
+    final headerBg = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF8F9FB);
 
     return Material(
       color: Colors.transparent,
@@ -2759,7 +2857,7 @@ class _ProductCard extends StatelessWidget {
                 color: isOut
                     ? cs.error.withValues(alpha: 0.25)
                     : isDark
-                        ? Colors.white.withValues(alpha: 0.06)
+                        ? const Color(0xFF1F1F1F)
                         : const Color(0xFFE8ECF0),
               ),
               boxShadow: isOut

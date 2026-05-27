@@ -4,6 +4,9 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../core/api.dart';
+import '../../../l10n/app_localizations.dart';
+import '../../../providers/auth_provider.dart';
+import '../../../providers/branch_provider.dart';
 import '../../../widgets/common.dart';
 
 // ── helpers ──
@@ -12,22 +15,36 @@ final _fmt = NumberFormat.compactCurrency(symbol: 'KSH ', decimalDigits: 0);
 final _fmtFull = NumberFormat('#,##0', 'en');
 
 // ── data providers ──
+final _inventoryFiltersProvider = StateProvider.autoDispose<Map<String, dynamic>>((ref) => {});
+
 final _stocksProvider = FutureProvider.autoDispose<List>((ref) async {
   final dio = ref.read(dioProvider);
-  final res = await dio.get('/inventory/stocks/', queryParameters: {'page_size': 500});
+  final role = ref.read(authProvider).user?.role ?? '';
+  final isSoftAssign = const {'cashier', 'pharmacist', 'pharmacy_tech'}.contains(role);
+  final filters = ref.watch(_inventoryFiltersProvider);
+  final params = <String, dynamic>{'page_size': 500};
+  if (isSoftAssign) {
+    final branchId = ref.watch(branchProvider).currentBranchId;
+    if (branchId != null) params['branch'] = branchId;
+  } else {
+    if (filters['branch'] != null) params['branch'] = filters['branch'];
+    if (filters['date_from'] != null) params['created_at__gte'] = filters['date_from'];
+    if (filters['date_to'] != null) params['created_at__lte'] = filters['date_to'];
+  }
+  final res = await dio.get('/inventory/stocks/', queryParameters: params);
   return (res.data['results'] as List?) ?? [];
 });
 
 final _categoriesProvider = FutureProvider.autoDispose<List>((ref) async {
   final dio = ref.read(dioProvider);
-  final res = await dio.get('/inventory/categories/', queryParameters: {'page_size': 200});
-  return (res.data['results'] as List?) ?? [];
+  final res = await dio.get('/inventory/categories/');
+  return res.data is List ? res.data as List : (res.data['results'] as List?) ?? [];
 });
 
 final _unitsProvider = FutureProvider.autoDispose<List>((ref) async {
   final dio = ref.read(dioProvider);
-  final res = await dio.get('/inventory/units/', queryParameters: {'page_size': 200});
-  return (res.data['results'] as List?) ?? [];
+  final res = await dio.get('/inventory/units/');
+  return res.data is List ? res.data as List : (res.data['results'] as List?) ?? [];
 });
 
 final _adjustmentsProvider = FutureProvider.autoDispose<List>((ref) async {
@@ -49,6 +66,11 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> with TickerPr
   String? _categoryFilter;
   final _searchCtrl = TextEditingController();
 
+  // Admin filters
+  String _datePreset = 'all'; // all, today, yesterday, 7d, 30d, custom
+  int? _branchFilter;
+  DateTimeRange? _customRange;
+
   @override
   void initState() {
     super.initState();
@@ -69,29 +91,164 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> with TickerPr
     ref.invalidate(_adjustmentsProvider);
   }
 
+  void _applyAdminFilters() {
+    final now = DateTime.now();
+    String? dateFrom;
+    String? dateTo;
+    switch (_datePreset) {
+      case 'today':
+        dateFrom = DateFormat('yyyy-MM-dd').format(now);
+        dateTo = DateFormat('yyyy-MM-dd').format(now.add(const Duration(days: 1)));
+        break;
+      case 'yesterday':
+        final y = now.subtract(const Duration(days: 1));
+        dateFrom = DateFormat('yyyy-MM-dd').format(y);
+        dateTo = DateFormat('yyyy-MM-dd').format(now);
+        break;
+      case '7d':
+        dateFrom = DateFormat('yyyy-MM-dd').format(now.subtract(const Duration(days: 7)));
+        break;
+      case '30d':
+        dateFrom = DateFormat('yyyy-MM-dd').format(now.subtract(const Duration(days: 30)));
+        break;
+      case 'custom':
+        if (_customRange != null) {
+          dateFrom = DateFormat('yyyy-MM-dd').format(_customRange!.start);
+          dateTo = DateFormat('yyyy-MM-dd').format(_customRange!.end.add(const Duration(days: 1)));
+        }
+        break;
+    }
+    ref.read(_inventoryFiltersProvider.notifier).state = {
+      if (_branchFilter != null) 'branch': _branchFilter,
+      if (dateFrom != null) 'date_from': dateFrom,
+      if (dateTo != null) 'date_to': dateTo,
+    };
+  }
+
+  Future<void> _pickCustomRange() async {
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      initialDateRange: _customRange,
+    );
+    if (picked != null) {
+      setState(() {
+        _customRange = picked;
+        _datePreset = 'custom';
+      });
+      _applyAdminFilters();
+    }
+  }
+
+  Widget _buildAdminFilters(ColorScheme cs) {
+    final branches = ref.watch(branchProvider).branches;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+      child: Row(children: [
+        // Date filter dropdown
+        Expanded(
+          child: Container(
+            height: 34,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _datePreset,
+                isExpanded: true,
+                icon: Icon(Icons.calendar_today_rounded, size: 14, color: cs.onSurfaceVariant),
+                style: TextStyle(fontSize: 12, color: cs.onSurface, fontWeight: FontWeight.w600),
+                items: const [
+                  DropdownMenuItem(value: 'all', child: Text('All time', style: TextStyle(fontSize: 12))),
+                  DropdownMenuItem(value: 'today', child: Text('Today', style: TextStyle(fontSize: 12))),
+                  DropdownMenuItem(value: 'yesterday', child: Text('Yesterday', style: TextStyle(fontSize: 12))),
+                  DropdownMenuItem(value: '7d', child: Text('Last 7 days', style: TextStyle(fontSize: 12))),
+                  DropdownMenuItem(value: '30d', child: Text('Last 30 days', style: TextStyle(fontSize: 12))),
+                  DropdownMenuItem(value: 'custom', child: Text('Custom range', style: TextStyle(fontSize: 12))),
+                ],
+                onChanged: (v) {
+                  if (v == 'custom') {
+                    _pickCustomRange();
+                    return;
+                  }
+                  setState(() => _datePreset = v ?? 'all');
+                  _applyAdminFilters();
+                },
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        // Branch filter dropdown
+        Expanded(
+          child: Container(
+            height: 34,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<int?>(
+                value: _branchFilter,
+                isExpanded: true,
+                icon: Icon(Icons.store_rounded, size: 14, color: cs.onSurfaceVariant),
+                style: TextStyle(fontSize: 12, color: cs.onSurface, fontWeight: FontWeight.w600),
+                hint: const Text('All branches', style: TextStyle(fontSize: 12)),
+                items: [
+                  const DropdownMenuItem<int?>(value: null, child: Text('All branches', style: TextStyle(fontSize: 12))),
+                  ...branches.map((b) => DropdownMenuItem<int?>(
+                    value: b['id'] as int?,
+                    child: Text(b['name'] ?? 'Branch', style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
+                  )),
+                ],
+                onChanged: (v) {
+                  setState(() => _branchFilter = v);
+                  _applyAdminFilters();
+                },
+              ),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l = AppLocalizations.of(context);
     final stocksAsync = ref.watch(_stocksProvider);
     final categoriesAsync = ref.watch(_categoriesProvider);
     final unitsAsync = ref.watch(_unitsProvider);
     final adjustmentsAsync = ref.watch(_adjustmentsProvider);
+    final role = ref.watch(authProvider).user?.role ?? '';
+    final readOnly = const {'cashier', 'pharmacist', 'pharmacy_tech'}.contains(role);
 
     return Column(children: [
       // ── Header ──
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 8, 0),
         child: Row(children: [
-          Text('Inventory', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)),
+          Text(l?.inventory ?? 'Inventory', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)),
           const Spacer(),
           IconButton(icon: const Icon(Icons.refresh_rounded, size: 20), onPressed: _invalidateAll),
-          IconButton(
-            icon: const Icon(Icons.add_rounded, size: 22),
-            style: IconButton.styleFrom(backgroundColor: cs.primary, foregroundColor: cs.onPrimary),
-            onPressed: () => context.go('/inventory/add'),
-          ),
+          if (!readOnly)
+            IconButton(
+              icon: const Icon(Icons.add_rounded, size: 22),
+              style: IconButton.styleFrom(backgroundColor: cs.primary, foregroundColor: cs.onPrimary),
+              onPressed: () => context.push('/inventory/add'),
+            ),
         ]),
       ),
+
+      // ── Admin Filters (date + branch) ──
+      if (!readOnly) _buildAdminFilters(cs),
 
       // ── KPI Strip ──
       stocksAsync.when(
@@ -110,15 +267,15 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> with TickerPr
           final retailValue = stocks.fold<double>(0, (sum, s) => sum + _dbl(s['selling_price']) * _dbl(s['total_quantity'] ?? s['quantity']));
 
           return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
             child: SizedBox(
               height: 56,
               child: ListView(scrollDirection: Axis.horizontal, children: [
-                _KpiPill(Icons.inventory_2_rounded, '$totalSku', 'SKUs', cs.primary, cs),
-                _KpiPill(Icons.warning_amber_rounded, '$lowCount', 'Low stock', Colors.orange, cs),
-                _KpiPill(Icons.remove_shopping_cart_rounded, '$outCount', 'Out of stock', Colors.red, cs),
-                _KpiPill(Icons.schedule_rounded, '$expiringCount', 'Expiring', const Color(0xFF8B5CF6), cs),
-                _KpiPill(Icons.account_balance_wallet_rounded, _fmt.format(retailValue), 'Retail value', const Color(0xFF3B82F6), cs),
+                _KpiPill(Icons.inventory_2_rounded, '$totalSku', l?.skus ?? 'SKUs', cs.primary, cs),
+                _KpiPill(Icons.warning_amber_rounded, '$lowCount', l?.lowStockLabel ?? 'Low stock', Colors.orange, cs),
+                _KpiPill(Icons.remove_shopping_cart_rounded, '$outCount', l?.outOfStockLabel ?? 'Out of stock', Colors.red, cs),
+                _KpiPill(Icons.schedule_rounded, '$expiringCount', l?.expiring ?? 'Expiring', const Color(0xFF8B5CF6), cs),
+                _KpiPill(Icons.account_balance_wallet_rounded, _fmt.format(retailValue), l?.retailValue ?? 'Retail value', const Color(0xFF3B82F6), cs),
               ]),
             ),
           );
@@ -127,7 +284,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> with TickerPr
 
       // ── Tab Bar ──
       Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         child: Container(
           decoration: BoxDecoration(
             color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
@@ -150,12 +307,12 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> with TickerPr
             splashBorderRadius: BorderRadius.circular(10),
             isScrollable: true,
             tabAlignment: TabAlignment.start,
-            tabs: const [
-              Tab(height: 34, text: 'Stocks'),
-              Tab(height: 34, text: 'Analysis'),
-              Tab(height: 34, text: 'Categories'),
-              Tab(height: 34, text: 'Units'),
-              Tab(height: 34, text: 'Adjustments'),
+            tabs: [
+              Tab(height: 34, text: l?.stocks ?? 'Stocks'),
+              Tab(height: 34, text: l?.analysis ?? 'Analysis'),
+              Tab(height: 34, text: l?.categories ?? 'Categories'),
+              Tab(height: 34, text: l?.units ?? 'Units'),
+              Tab(height: 34, text: l?.adjustments ?? 'Adjustments'),
             ],
           ),
         ),
@@ -173,12 +330,12 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> with TickerPr
             onStatusChanged: (v) => setState(() => _statusFilter = v),
             onCategoryChanged: (v) => setState(() => _categoryFilter = v),
             onRefresh: () async => ref.invalidate(_stocksProvider),
-            onDelete: (id) => _deleteItem('/inventory/stocks/$id/', _stocksProvider),
+            onDelete: readOnly ? null : (id) => _deleteItem('/inventory/stocks/$id/', _stocksProvider),
           ),
           _AnalysisTab(stocksAsync: stocksAsync, onRefresh: _invalidateAll),
-          _CategoriesTab(categoriesAsync: categoriesAsync, stocksAsync: stocksAsync, onRefresh: () async => ref.invalidate(_categoriesProvider), onDelete: (id) => _deleteItem('/inventory/categories/$id/', _categoriesProvider), onAdd: () => _showAddCategorySheet()),
-          _UnitsTab(unitsAsync: unitsAsync, stocksAsync: stocksAsync, onRefresh: () async => ref.invalidate(_unitsProvider), onDelete: (id) => _deleteItem('/inventory/units/$id/', _unitsProvider), onAdd: () => _showAddUnitSheet()),
-          _AdjustmentsTab(adjustmentsAsync: adjustmentsAsync, onRefresh: () async => ref.invalidate(_adjustmentsProvider), onAdd: () => context.push('/inventory/adjustments/add')),
+          _CategoriesTab(categoriesAsync: categoriesAsync, stocksAsync: stocksAsync, onRefresh: () async => ref.invalidate(_categoriesProvider), onDelete: readOnly ? null : (id) => _deleteItem('/inventory/categories/$id/', _categoriesProvider), onAdd: readOnly ? null : () => _showAddCategorySheet()),
+          _UnitsTab(unitsAsync: unitsAsync, stocksAsync: stocksAsync, onRefresh: () async => ref.invalidate(_unitsProvider), onDelete: readOnly ? null : (id) => _deleteItem('/inventory/units/$id/', _unitsProvider), onAdd: readOnly ? null : () => _showAddUnitSheet()),
+          _AdjustmentsTab(adjustmentsAsync: adjustmentsAsync, onRefresh: () async => ref.invalidate(_adjustmentsProvider), onAdd: readOnly ? null : () => context.push('/inventory/adjustments/add')),
         ],
       )),
     ]);
@@ -215,16 +372,22 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> with TickerPr
     final result = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheetState) => Padding(
-          padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+          padding: EdgeInsets.fromLTRB(10, 16, 10, MediaQuery.of(ctx).viewInsets.bottom + 20),
           child: Form(
             key: formKey,
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
-              const SizedBox(height: 16),
-              Text('Add Category', style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Add Category', style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                  TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+                ],
+              ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: nameCtrl,
@@ -282,16 +445,22 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> with TickerPr
     final result = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheetState) => Padding(
-          padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+          padding: EdgeInsets.fromLTRB(10, 16, 10, MediaQuery.of(ctx).viewInsets.bottom + 20),
           child: Form(
             key: formKey,
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
-              const SizedBox(height: 16),
-              Text('Add Unit', style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Add Unit', style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                  TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+                ],
+              ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: nameCtrl,
@@ -388,13 +557,13 @@ class _StocksTab extends StatelessWidget {
   final ValueChanged<String> onStatusChanged;
   final ValueChanged<String?> onCategoryChanged;
   final Future<void> Function() onRefresh;
-  final Future<void> Function(int id) onDelete;
+  final Future<void> Function(int id)? onDelete;
 
   const _StocksTab({
     required this.stocksAsync, required this.categoriesAsync,
     required this.search, required this.statusFilter, required this.categoryFilter,
     required this.searchCtrl, required this.onSearchChanged, required this.onStatusChanged,
-    required this.onCategoryChanged, required this.onRefresh, required this.onDelete,
+    required this.onCategoryChanged, required this.onRefresh, this.onDelete,
   });
 
   @override
@@ -422,7 +591,7 @@ class _StocksTab extends StatelessWidget {
 
         return Column(children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+            padding: const EdgeInsets.fromLTRB(10, 6, 10, 0),
             child: TextField(
               controller: searchCtrl, onChanged: onSearchChanged,
               decoration: InputDecoration(
@@ -437,7 +606,7 @@ class _StocksTab extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
             child: SizedBox(
               height: 32,
               child: ListView(scrollDirection: Axis.horizontal, children: [
@@ -455,7 +624,7 @@ class _StocksTab extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             child: Text('${filtered.length} items', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
           ),
           Expanded(
@@ -464,7 +633,7 @@ class _StocksTab extends StatelessWidget {
                 : RefreshIndicator(
                     onRefresh: onRefresh,
                     child: ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 80),
+                      padding: const EdgeInsets.fromLTRB(10, 0, 10, 80),
                       itemCount: filtered.length,
                       itemBuilder: (_, i) => _StockCard(item: filtered[i], cs: cs, onDelete: onDelete),
                     ),
@@ -479,8 +648,8 @@ class _StocksTab extends StatelessWidget {
 class _StockCard extends StatelessWidget {
   final Map item;
   final ColorScheme cs;
-  final Future<void> Function(int id) onDelete;
-  const _StockCard({required this.item, required this.cs, required this.onDelete});
+  final Future<void> Function(int id)? onDelete;
+  const _StockCard({required this.item, required this.cs, this.onDelete});
 
   @override
   Widget build(BuildContext context) {
@@ -496,7 +665,7 @@ class _StockCard extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.15))),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: () => context.go('/inventory/${item['id']}'),
+        onTap: () => context.push('/inventory/${item['id']}'),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(children: [
@@ -533,13 +702,13 @@ class _StockCard extends StatelessWidget {
               padding: EdgeInsets.zero, constraints: const BoxConstraints(),
               itemBuilder: (_) => [
                 const PopupMenuItem(value: 'view', child: Row(children: [Icon(Icons.visibility_rounded, size: 16), SizedBox(width: 8), Text('View', style: TextStyle(fontSize: 13))])),
-                const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit_rounded, size: 16), SizedBox(width: 8), Text('Edit', style: TextStyle(fontSize: 13))])),
-                const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete_rounded, size: 16, color: Colors.red), SizedBox(width: 8), Text('Delete', style: TextStyle(fontSize: 13, color: Colors.red))])),
+                if (onDelete != null) const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit_rounded, size: 16), SizedBox(width: 8), Text('Edit', style: TextStyle(fontSize: 13))])),
+                if (onDelete != null) const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete_rounded, size: 16, color: Colors.red), SizedBox(width: 8), Text('Delete', style: TextStyle(fontSize: 13, color: Colors.red))])),
               ],
               onSelected: (v) {
-                if (v == 'view') context.go('/inventory/${item['id']}');
-                if (v == 'edit') context.push('/inventory/${item['id']}/edit');
-                if (v == 'delete') onDelete(item['id'] as int);
+                if (v == 'view') context.push('/inventory/${item['id']}');
+                if (v == 'edit' && onDelete != null) context.push('/inventory/${item['id']}/edit');
+                if (v == 'delete' && onDelete != null) onDelete!(item['id'] as int);
               },
             ),
           ]),
@@ -605,9 +774,9 @@ class _CategoryDropdown extends StatelessWidget {
 // ══════════════════════════════════════════
 class _CategoriesTab extends StatefulWidget {
   final AsyncValue<List> categoriesAsync; final AsyncValue<List> stocksAsync;
-  final Future<void> Function() onRefresh; final Future<void> Function(int id) onDelete;
-  final Future<void> Function() onAdd;
-  const _CategoriesTab({required this.categoriesAsync, required this.stocksAsync, required this.onRefresh, required this.onDelete, required this.onAdd});
+  final Future<void> Function() onRefresh; final Future<void> Function(int id)? onDelete;
+  final Future<void> Function()? onAdd;
+  const _CategoriesTab({required this.categoriesAsync, required this.stocksAsync, required this.onRefresh, this.onDelete, this.onAdd});
   @override
   State<_CategoriesTab> createState() => _CategoriesTabState();
 }
@@ -636,7 +805,7 @@ class _CategoriesTabState extends State<_CategoriesTab> {
 
         return Column(children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
             child: TextField(
               onChanged: (v) => setState(() => _search = v),
               decoration: InputDecoration(
@@ -650,21 +819,23 @@ class _CategoriesTabState extends State<_CategoriesTab> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 10),
             child: Row(children: [
               Text('${enriched.length} categories', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
               const Spacer(),
               Text('Total: ${_fmt.format(totalValue)}', style: TextStyle(fontSize: 11, color: cs.primary, fontWeight: FontWeight.w700)),
-              const SizedBox(width: 8),
-              SizedBox(
-                height: 28,
-                child: FilledButton.icon(
-                  onPressed: widget.onAdd,
-                  icon: const Icon(Icons.add_rounded, size: 16),
-                  label: const Text('Add', style: TextStyle(fontSize: 11)),
-                  style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10), textStyle: const TextStyle(fontSize: 11)),
+              if (widget.onAdd != null) ...[
+                const SizedBox(width: 8),
+                SizedBox(
+                  height: 28,
+                  child: FilledButton.icon(
+                    onPressed: widget.onAdd,
+                    icon: const Icon(Icons.add_rounded, size: 16),
+                    label: const Text('Add', style: TextStyle(fontSize: 11)),
+                    style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10), textStyle: const TextStyle(fontSize: 11)),
+                  ),
                 ),
-              ),
+              ],
             ]),
           ),
           const SizedBox(height: 4),
@@ -674,7 +845,7 @@ class _CategoriesTabState extends State<_CategoriesTab> {
                 : RefreshIndicator(
                     onRefresh: widget.onRefresh,
                     child: ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
+                      padding: const EdgeInsets.fromLTRB(10, 4, 10, 80),
                       itemCount: enriched.length,
                       itemBuilder: (_, i) {
                         final c = enriched[i];
@@ -693,12 +864,13 @@ class _CategoriesTabState extends State<_CategoriesTab> {
                                   Text('${c['_stockCount']} products · ${(c['_totalQty'] as double).toInt()} units', style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant)),
                                 ])),
                                 Text(_fmt.format(c['_totalValue']), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: cs.primary)),
-                                PopupMenuButton<String>(
-                                  icon: Icon(Icons.more_vert_rounded, size: 16, color: cs.onSurfaceVariant),
-                                  padding: EdgeInsets.zero, constraints: const BoxConstraints(),
-                                  itemBuilder: (_) => [const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete_rounded, size: 16, color: Colors.red), SizedBox(width: 8), Text('Delete', style: TextStyle(fontSize: 13, color: Colors.red))]))],
-                                  onSelected: (v) { if (v == 'delete') widget.onDelete(c['id'] as int); },
-                                ),
+                                if (widget.onDelete != null)
+                                  PopupMenuButton<String>(
+                                    icon: Icon(Icons.more_vert_rounded, size: 16, color: cs.onSurfaceVariant),
+                                    padding: EdgeInsets.zero, constraints: const BoxConstraints(),
+                                    itemBuilder: (_) => [const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete_rounded, size: 16, color: Colors.red), SizedBox(width: 8), Text('Delete', style: TextStyle(fontSize: 13, color: Colors.red))]))],
+                                    onSelected: (v) { if (v == 'delete') widget.onDelete!(c['id'] as int); },
+                                  ),
                               ]),
                               const SizedBox(height: 8),
                               ClipRRect(borderRadius: BorderRadius.circular(3), child: LinearProgressIndicator(value: pct, minHeight: 4, backgroundColor: cs.outlineVariant.withValues(alpha: 0.12), color: cs.primary.withValues(alpha: 0.7))),
@@ -722,9 +894,9 @@ class _CategoriesTabState extends State<_CategoriesTab> {
 // ══════════════════════════════════════════
 class _UnitsTab extends StatefulWidget {
   final AsyncValue<List> unitsAsync; final AsyncValue<List> stocksAsync;
-  final Future<void> Function() onRefresh; final Future<void> Function(int id) onDelete;
-  final Future<void> Function() onAdd;
-  const _UnitsTab({required this.unitsAsync, required this.stocksAsync, required this.onRefresh, required this.onDelete, required this.onAdd});
+  final Future<void> Function() onRefresh; final Future<void> Function(int id)? onDelete;
+  final Future<void> Function()? onAdd;
+  const _UnitsTab({required this.unitsAsync, required this.stocksAsync, required this.onRefresh, this.onDelete, this.onAdd});
   @override
   State<_UnitsTab> createState() => _UnitsTabState();
 }
@@ -753,7 +925,7 @@ class _UnitsTabState extends State<_UnitsTab> {
 
         return Column(children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
             child: TextField(
               onChanged: (v) => setState(() => _search = v),
               decoration: InputDecoration(
@@ -767,19 +939,20 @@ class _UnitsTabState extends State<_UnitsTab> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 10),
             child: Row(children: [
               Text('${enriched.length} units', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
               const Spacer(),
-              SizedBox(
-                height: 28,
-                child: FilledButton.icon(
-                  onPressed: widget.onAdd,
-                  icon: const Icon(Icons.add_rounded, size: 16),
-                  label: const Text('Add', style: TextStyle(fontSize: 11)),
-                  style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10), textStyle: const TextStyle(fontSize: 11)),
+              if (widget.onAdd != null)
+                SizedBox(
+                  height: 28,
+                  child: FilledButton.icon(
+                    onPressed: widget.onAdd,
+                    icon: const Icon(Icons.add_rounded, size: 16),
+                    label: const Text('Add', style: TextStyle(fontSize: 11)),
+                    style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10), textStyle: const TextStyle(fontSize: 11)),
+                  ),
                 ),
-              ),
             ]),
           ),
           const SizedBox(height: 4),
@@ -789,7 +962,7 @@ class _UnitsTabState extends State<_UnitsTab> {
                 : RefreshIndicator(
                     onRefresh: widget.onRefresh,
                     child: ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
+                      padding: const EdgeInsets.fromLTRB(10, 4, 10, 80),
                       itemCount: enriched.length,
                       itemBuilder: (_, i) {
                         final u = enriched[i];
@@ -816,12 +989,13 @@ class _UnitsTabState extends State<_UnitsTab> {
                                   Text('$usage products', style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant)),
                                 ]),
                               ])),
-                              PopupMenuButton<String>(
-                                icon: Icon(Icons.more_vert_rounded, size: 16, color: cs.onSurfaceVariant),
-                                padding: EdgeInsets.zero, constraints: const BoxConstraints(),
-                                itemBuilder: (_) => [const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete_rounded, size: 16, color: Colors.red), SizedBox(width: 8), Text('Delete', style: TextStyle(fontSize: 13, color: Colors.red))]))],
-                                onSelected: (v) { if (v == 'delete') widget.onDelete(u['id'] as int); },
-                              ),
+                              if (widget.onDelete != null)
+                                PopupMenuButton<String>(
+                                  icon: Icon(Icons.more_vert_rounded, size: 16, color: cs.onSurfaceVariant),
+                                  padding: EdgeInsets.zero, constraints: const BoxConstraints(),
+                                  itemBuilder: (_) => [const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete_rounded, size: 16, color: Colors.red), SizedBox(width: 8), Text('Delete', style: TextStyle(fontSize: 13, color: Colors.red))]))],
+                                  onSelected: (v) { if (v == 'delete') widget.onDelete!(u['id'] as int); },
+                                ),
                             ]),
                           ),
                         );
@@ -841,8 +1015,8 @@ class _UnitsTabState extends State<_UnitsTab> {
 class _AdjustmentsTab extends StatefulWidget {
   final AsyncValue<List> adjustmentsAsync;
   final Future<void> Function() onRefresh;
-  final VoidCallback onAdd;
-  const _AdjustmentsTab({required this.adjustmentsAsync, required this.onRefresh, required this.onAdd});
+  final VoidCallback? onAdd;
+  const _AdjustmentsTab({required this.adjustmentsAsync, required this.onRefresh, this.onAdd});
   @override
   State<_AdjustmentsTab> createState() => _AdjustmentsTabState();
 }
@@ -879,7 +1053,7 @@ class _AdjustmentsTabState extends State<_AdjustmentsTab> {
 
         return Column(children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
             child: TextField(
               onChanged: (v) => setState(() => _search = v),
               decoration: InputDecoration(
@@ -893,7 +1067,7 @@ class _AdjustmentsTabState extends State<_AdjustmentsTab> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+            padding: const EdgeInsets.fromLTRB(10, 4, 10, 4),
             child: Row(children: [
               Expanded(
                 child: SizedBox(
@@ -904,16 +1078,18 @@ class _AdjustmentsTabState extends State<_AdjustmentsTab> {
                   }).toList()),
                 ),
               ),
-              const SizedBox(width: 8),
-              SizedBox(
-                height: 28,
-                child: FilledButton.icon(
-                  onPressed: widget.onAdd,
-                  icon: const Icon(Icons.add_rounded, size: 16),
+              if (widget.onAdd != null) ...[
+                const SizedBox(width: 8),
+                SizedBox(
+                  height: 28,
+                  child: FilledButton.icon(
+                    onPressed: widget.onAdd,
+                    icon: const Icon(Icons.add_rounded, size: 16),
                   label: const Text('New', style: TextStyle(fontSize: 11)),
                   style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10), textStyle: const TextStyle(fontSize: 11)),
                 ),
-              ),
+                ),
+              ],
             ]),
           ),
           Expanded(
@@ -922,7 +1098,7 @@ class _AdjustmentsTabState extends State<_AdjustmentsTab> {
                 : RefreshIndicator(
                     onRefresh: widget.onRefresh,
                     child: ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
+                      padding: const EdgeInsets.fromLTRB(10, 4, 10, 80),
                       itemCount: filtered.length,
                       itemBuilder: (_, i) {
                         final a = filtered[i];
@@ -1021,7 +1197,7 @@ class _AnalysisTab extends StatelessWidget {
         return RefreshIndicator(
           onRefresh: () async => onRefresh(),
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 80),
             children: [
               const _SectionLabel('Inventory Valuation'),
               const SizedBox(height: 8),

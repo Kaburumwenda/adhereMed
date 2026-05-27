@@ -202,7 +202,7 @@ class _StandardRxTabState extends ConsumerState<_StandardRxTab> with AutomaticKe
       children: [
         // ── Search + Filter bar ──
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          padding: const EdgeInsets.fromLTRB(10, 12, 10, 0),
           child: Row(
             children: [
               Expanded(
@@ -272,7 +272,7 @@ class _StandardRxTabState extends ConsumerState<_StandardRxTab> with AutomaticKe
               return RefreshIndicator(
                 onRefresh: () async => ref.invalidate(_rxProvider),
                 child: ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 80),
                   itemCount: items.length,
                   itemBuilder: (_, i) => _StandardRxCard(rx: items[i], ref: ref)
                     .animate().fadeIn(duration: 300.ms, delay: Duration(milliseconds: (50 * i).clamp(0, 500))).slideY(begin: 0.05, end: 0),
@@ -458,7 +458,7 @@ class _PharmacyRxTabState extends ConsumerState<_PharmacyRxTab> with AutomaticKe
       children: [
         // ── Search + Filter ──
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          padding: const EdgeInsets.fromLTRB(10, 12, 10, 0),
           child: Row(
             children: [
               Expanded(
@@ -531,7 +531,7 @@ class _PharmacyRxTabState extends ConsumerState<_PharmacyRxTab> with AutomaticKe
               return RefreshIndicator(
                 onRefresh: () async => ref.invalidate(_pharmProvider),
                 child: ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 80),
                   itemCount: items.length,
                   itemBuilder: (_, i) => _PharmRxCard(rx: items[i], ref: ref)
                     .animate().fadeIn(duration: 300.ms, delay: Duration(milliseconds: (50 * i).clamp(0, 500))).slideY(begin: 0.05, end: 0),
@@ -658,7 +658,7 @@ class _KpiRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       child: Row(
         children: items.map((k) => Expanded(
           child: Container(
@@ -752,7 +752,7 @@ void _showRxDetail(BuildContext context, dynamic rx, WidgetRef ref) {
                 ),
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
               ),
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+              padding: const EdgeInsets.fromLTRB(10, 12, 10, 20),
               child: Column(children: [
                 Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
                 const SizedBox(height: 16),
@@ -952,7 +952,7 @@ void _showPharmRxDetail(BuildContext context, dynamic rx, WidgetRef ref) {
                 ),
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
               ),
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+              padding: const EdgeInsets.fromLTRB(10, 12, 10, 20),
               child: Column(children: [
                 Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
                 const SizedBox(height: 16),
@@ -1159,7 +1159,7 @@ class _CreateRxSheetState extends State<_CreateRxSheet> {
         child: Column(children: [
           // ── Header ──
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+            padding: const EdgeInsets.fromLTRB(10, 12, 10, 0),
             child: Column(children: [
               Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
               const SizedBox(height: 16),
@@ -1384,7 +1384,7 @@ class _CreatePharmRxSheetState extends State<_CreatePharmRxSheet> {
         decoration: BoxDecoration(color: cs.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
         child: Column(children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+            padding: const EdgeInsets.fromLTRB(10, 12, 10, 0),
             child: Column(children: [
               Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
               const SizedBox(height: 16),
@@ -1572,7 +1572,7 @@ class _EditRxSheetState extends State<_EditRxSheet> {
         decoration: BoxDecoration(color: cs.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
         child: Column(children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+            padding: const EdgeInsets.fromLTRB(10, 12, 10, 0),
             child: Column(children: [
               Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
               const SizedBox(height: 16),

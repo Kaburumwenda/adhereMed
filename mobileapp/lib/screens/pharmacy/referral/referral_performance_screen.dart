@@ -132,7 +132,7 @@ class _ReferralPerformanceScreenState extends ConsumerState<ReferralPerformanceS
               return RefreshIndicator(
                 onRefresh: () async => ref.invalidate(_perfProvider(period)),
                 child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+                  padding: const EdgeInsets.fromLTRB(10, 12, 10, 100),
                   children: [
                     // ── Summary KPIs ──
                     _SummaryKPIs(summary: summary, cs: cs).animate().fadeIn(duration: 300.ms),

@@ -85,7 +85,7 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
         ),
         // Search + filter
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+          padding: const EdgeInsets.fromLTRB(10, 0, 10, 0),
           child: Row(children: [
             Expanded(child: TextField(
               decoration: InputDecoration(hintText: 'Search suppliers...', prefixIcon: const Icon(Icons.search_rounded, size: 20),
@@ -119,7 +119,7 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
             return RefreshIndicator(
               onRefresh: () async => ref.invalidate(_suppliersProvider),
               child: ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 80),
                 itemCount: items.length,
                 itemBuilder: (_, i) => _SupplierCard(supplier: items[i], ref: ref)
                   .animate().fadeIn(duration: 300.ms, delay: Duration(milliseconds: (30 * i).clamp(0, 300))).slideY(begin: 0.05, end: 0),
@@ -218,7 +218,7 @@ void _showDetail(BuildContext context, dynamic s, WidgetRef ref) {
               gradient: LinearGradient(colors: [sc.withValues(alpha: 0.12), sc.withValues(alpha: 0.02)],
                 begin: Alignment.topCenter, end: Alignment.bottomCenter),
               borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            padding: const EdgeInsets.fromLTRB(10, 12, 10, 20),
             child: Column(children: [
               Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
               const SizedBox(height: 16),
@@ -341,7 +341,7 @@ class _SupplierFormSheetState extends State<_SupplierFormSheet> {
       builder: (_, scrollCtrl) => Container(
         decoration: BoxDecoration(color: cs.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
         child: Column(children: [
-          Padding(padding: const EdgeInsets.fromLTRB(20, 12, 20, 0), child: Column(children: [
+          Padding(padding: const EdgeInsets.fromLTRB(10, 12, 10, 0), child: Column(children: [
             Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
             const SizedBox(height: 16),
             Row(children: [
@@ -453,7 +453,7 @@ class _InfoTile extends StatelessWidget {
 class _KpiRow extends StatelessWidget {
   const _KpiRow({required this.items}); final List<_Kpi> items;
   @override Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
     child: Row(children: items.map((k) => Expanded(child: Container(
       margin: const EdgeInsets.symmetric(horizontal: 3), padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
       decoration: BoxDecoration(color: k.color.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(12),

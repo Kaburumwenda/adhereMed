@@ -47,6 +47,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final dio = _ref.read(dioProvider);
       final res = await dio.get('/auth/me/');
       final user = User.fromJson(res.data);
+      if (user.tenantSchema != null) {
+        await storage.write(key: 'tenant_schema', value: user.tenantSchema!);
+      }
       state = state.copyWith(user: user, initialized: true);
     } catch (_) {
       await storage.deleteAll();

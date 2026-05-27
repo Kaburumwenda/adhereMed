@@ -36,6 +36,11 @@ class MedicationStock(models.Model):
     )
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, related_name='stocks')
     unit = models.ForeignKey(Unit, on_delete=models.SET_NULL, null=True, blank=True, related_name='stocks')
+    branch = models.ForeignKey(
+        'pharmacy_profile.Branch', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='stocks',
+        help_text='Branch this stock item belongs to',
+    )
     selling_price = models.DecimalField(max_digits=10, decimal_places=2)
     cost_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     tax_percent = models.DecimalField(

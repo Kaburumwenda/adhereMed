@@ -5,7 +5,7 @@ from accounts.models import User
 from .models import StaffProfile, Specialization
 
 PHARMACY_ROLES = [
-    'pharmacist', 'pharmacy_tech', 'cashier',
+    'pharmacist', 'pharmacy_tech', 'cashier', 'branch_admin',
     # Lab tenant roles
     'lab_tech', 'radiologist', 'receptionist',
     # Clinical roles (allow tenant admins to create them via staff module)

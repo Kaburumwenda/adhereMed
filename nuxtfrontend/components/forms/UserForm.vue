@@ -23,10 +23,27 @@ import { useResource } from '~/composables/useResource'
 const route = useRoute(); const router = useRouter()
 const { $api } = useNuxtApp()
 const loadId = computed(() => route.params.id || null)
-const r = useResource('/accounts/users/')
+const r = useResource('/superadmin/users/')
 const req = [v => !!v || 'Required']
-const initial = { first_name: '', last_name: '', email: '', phone: '', role: 'admin', tenant: null, password: '', is_active: true }
+const initial = { first_name: '', last_name: '', email: '', phone: '', role: 'tenant_admin', tenant: null, password: '', is_active: true }
 const tenants = ref([])
-const roles = ['super_admin','admin','doctor','clinical_officer','nurse','dentist','pharmacist','lab_tech','radiologist','receptionist','cashier','patient']
-onMounted(async () => { tenants.value = await $api.get('/tenants/').then(r => r.data?.results || r.data || []).catch(() => []) })
+const roles = [
+  { title: 'Super Admin', value: 'super_admin' },
+  { title: 'Tenant Admin', value: 'tenant_admin' },
+  { title: 'Doctor', value: 'doctor' },
+  { title: 'Clinical Officer', value: 'clinical_officer' },
+  { title: 'Dentist', value: 'dentist' },
+  { title: 'Nurse', value: 'nurse' },
+  { title: 'Midwife', value: 'midwife' },
+  { title: 'Lab Tech', value: 'lab_tech' },
+  { title: 'Radiologist', value: 'radiologist' },
+  { title: 'Pharmacist', value: 'pharmacist' },
+  { title: 'Pharmacy Tech', value: 'pharmacy_tech' },
+  { title: 'Cashier', value: 'cashier' },
+  { title: 'Receptionist', value: 'receptionist' },
+  { title: 'Homecare Admin', value: 'homecare_admin' },
+  { title: 'Caregiver', value: 'caregiver' },
+  { title: 'Patient', value: 'patient' },
+]
+onMounted(async () => { tenants.value = await $api.get('/superadmin/tenants/').then(r => r.data?.results || r.data || []).catch(() => []) })
 </script>

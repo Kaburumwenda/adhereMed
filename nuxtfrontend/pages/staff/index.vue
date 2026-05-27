@@ -475,11 +475,13 @@ const pendingDelete = ref(null)
 const snack = reactive({ show: false, color: 'success', message: '' })
 
 const ROLE_LABELS = {
+  branch_admin: 'Branch Admin',
   pharmacist: 'Pharmacist',
   pharmacy_tech: 'Pharmacy Tech',
   cashier: 'Cashier',
 }
 const ROLE_COLORS = {
+  branch_admin: 'deep-purple',
   pharmacist: 'primary',
   pharmacy_tech: 'teal',
   cashier: 'amber-darken-2',

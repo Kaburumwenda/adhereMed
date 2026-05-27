@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../l10n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -128,6 +129,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
     final size = MediaQuery.of(context).size;
+    final l = AppLocalizations.of(context);
     _initNodes(size);
 
     return Scaffold(
@@ -181,7 +183,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                         const SizedBox(height: 16),
                         Text('AdhereMed', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800, color: Colors.white)),
                         const SizedBox(height: 4),
-                        Text('Sign in to your account', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white70)),
+                        Text(l?.signIn ?? 'Sign in to your account', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white70)),
                         const SizedBox(height: 28),
 
                         if (auth.error != null) ...[
@@ -200,7 +202,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                           textInputAction: TextInputAction.next,
                           style: const TextStyle(color: Colors.white),
                           decoration: InputDecoration(
-                            labelText: 'Email',
+                            labelText: l?.email ?? 'Email',
                             labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
                             prefixIcon: Icon(Icons.email_outlined, color: Colors.white.withValues(alpha: 0.7)),
                             enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3))),
@@ -208,7 +210,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                             errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.red.shade200)),
                             focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.red.shade200, width: 2)),
                           ),
-                          validator: (v) => v == null || !v.contains('@') ? 'Enter a valid email' : null,
+                          validator: (v) => v == null || !v.contains('@') ? l?.enterValidEmail ?? 'Enter a valid email' : null,
                         ),
                         const SizedBox(height: 16),
                         TextFormField(
@@ -218,7 +220,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                           onFieldSubmitted: (_) => _submit(),
                           style: const TextStyle(color: Colors.white),
                           decoration: InputDecoration(
-                            labelText: 'Password',
+                            labelText: l?.password ?? 'Password',
                             labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
                             prefixIcon: Icon(Icons.lock_outline, color: Colors.white.withValues(alpha: 0.7)),
                             suffixIcon: IconButton(
@@ -230,7 +232,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                             errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.red.shade200)),
                             focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.red.shade200, width: 2)),
                           ),
-                          validator: (v) => v == null || v.length < 6 ? 'Min 6 characters' : null,
+                          validator: (v) => v == null || v.length < 6 ? l?.minCharacters(6) ?? 'Min 6 characters' : null,
                         ),
                         const SizedBox(height: 24),
                         SizedBox(
@@ -245,7 +247,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                             ),
                             child: auth.loading
                                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0F766E)))
-                                : const Text('Sign In', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                                : Text(l?.signIn ?? 'Sign In', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                           ),
                         ),
                       ]),

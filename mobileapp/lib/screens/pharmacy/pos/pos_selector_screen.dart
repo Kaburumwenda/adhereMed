@@ -17,7 +17,7 @@ class POSSelectorScreen extends StatelessWidget {
         child: Column(children: [
           // Top bar
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            padding: const EdgeInsets.fromLTRB(10, 16, 10, 0),
             child: Row(children: [
               GestureDetector(
                 onTap: () => context.go('/'),
@@ -45,7 +45,7 @@ class POSSelectorScreen extends StatelessWidget {
           Expanded(
             child: Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
                 child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -82,7 +82,7 @@ class POSSelectorScreen extends StatelessWidget {
                           'Visual product browsing',
                           'Full product details',
                         ],
-                        onTap: () => context.go('/pos/pharmacy'),
+                        onTap: () => context.push('/pos/pharmacy'),
                       ),
                       const SizedBox(height: 16),
 
@@ -97,7 +97,7 @@ class POSSelectorScreen extends StatelessWidget {
                           'Quick name / SKU search',
                           'Optimized for speed',
                         ],
-                        onTap: () => context.go('/pos/smart'),
+                        onTap: () => context.push('/pos/smart'),
                       ),
                     ]
                         .animate(interval: 100.ms)
@@ -135,7 +135,7 @@ class _ModeCard extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Material(
-      color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
+      color: isDark ? const Color(0xFF141414) : Colors.white,
       borderRadius: BorderRadius.circular(20),
       elevation: 0,
       child: InkWell(

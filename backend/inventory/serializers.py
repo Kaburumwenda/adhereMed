@@ -45,6 +45,7 @@ class MedicationStockSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True, default=None)
     unit_name = serializers.CharField(source='unit.name', read_only=True, default=None)
     unit_abbreviation = serializers.CharField(source='unit.abbreviation', read_only=True, default=None)
+    branch_name = serializers.CharField(source='branch.name', read_only=True, default=None)
 
     # Write-only fields for creating an initial batch alongside the stock item
     initial_quantity = serializers.IntegerField(write_only=True, required=False, min_value=0)
@@ -56,6 +57,7 @@ class MedicationStockSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'medication_id', 'medication_name', 'abbreviation',
             'category', 'category_name', 'unit', 'unit_name', 'unit_abbreviation',
+            'branch', 'branch_name',
             'selling_price', 'cost_price', 'tax_percent', 'discount_percent',
             'reorder_level', 'reorder_quantity',
             'location_in_store', 'barcode', 'prescription_required', 'is_active',

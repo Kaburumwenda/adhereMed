@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/api.dart';
 import '../../core/theme_provider.dart';
+import '../../l10n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/branch_provider.dart';
 
 /// Count of stock alerts (low stock + expiring)
 final _stockAlertCountProvider = FutureProvider.autoDispose((ref) async {
@@ -30,31 +33,52 @@ class ShellScreen extends ConsumerStatefulWidget {
 
 class _ShellScreenState extends ConsumerState<ShellScreen> {
 
-  static const _tabs = [
-    _Tab(icon: Icons.dashboard_rounded, label: 'Home', path: '/'),
-    _Tab(icon: Icons.inventory_2_rounded, label: 'Inventory', path: '/inventory'),
-    _Tab(icon: Icons.analytics_rounded, label: 'Analytics', path: '/analytics'),
-    _Tab(icon: Icons.card_giftcard_rounded, label: 'Referrals', path: '/referral'),
-    _Tab(icon: Icons.more_horiz_rounded, label: 'More', path: '/more'),
-  ];
+  DateTime? _lastBackPress;
 
-  void _onTabTap(int i) {
-    if (i == 4) {
-      _showMoreMenu();
-      return;
-    }
-    context.go(_tabs[i].path);
+  @override
+  void initState() {
+    super.initState();
+    // Delay branch init to after the first frame so the Activity is fully
+    // rendered and permission dialogs can appear.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initBranches();
+    });
   }
 
-  void _showMoreMenu() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => _MoreSheet(onNavigate: (path) {
-        Navigator.pop(context);
-        context.go(path);
-      }),
-    );
+  Future<void> _initBranches() async {
+    final notifier = ref.read(branchProvider.notifier);
+    await notifier.load();
+    await notifier.autoAssignNearest();
+  }
+
+  List<_Tab> _tabs(AppLocalizations? l) {
+    final role = ref.read(authProvider).user?.role ?? '';
+    final isSoftAssign = const {'cashier', 'pharmacist', 'pharmacy_tech'}.contains(role);
+
+    if (isSoftAssign) {
+      // Restricted nav for soft-assign roles
+      return [
+        _Tab(icon: Icons.dashboard_rounded, label: l?.dashboard ?? 'Home', path: '/'),
+        _Tab(icon: Icons.inventory_2_rounded, label: l?.inventory ?? 'Inventory', path: '/inventory'),
+        _Tab(icon: Icons.people_rounded, label: 'Customers', path: '/customers'),
+        _Tab(icon: Icons.medication_liquid_rounded, label: l?.catalog ?? 'Catalog', path: '/catalog'),
+        _Tab(icon: Icons.local_shipping_rounded, label: 'Delivers', path: '/deliveries'),
+      ];
+    }
+
+    // Full nav for admin roles (branch_admin, tenant_admin, super_admin)
+    return [
+      _Tab(icon: Icons.dashboard_rounded, label: l?.dashboard ?? 'Home', path: '/'),
+      _Tab(icon: Icons.inventory_2_rounded, label: l?.inventory ?? 'Inventory', path: '/inventory'),
+      _Tab(icon: Icons.analytics_rounded, label: 'Analytics', path: '/analytics'),
+      _Tab(icon: Icons.card_giftcard_rounded, label: l?.referrals ?? 'Referrals', path: '/referral'),
+      _Tab(icon: Icons.more_horiz_rounded, label: 'More', path: '/more'),
+    ];
+  }
+
+  void _onTabTap(int i) {
+    final tabs = _tabs(AppLocalizations.of(context));
+    context.go(tabs[i].path);
   }
 
   @override
@@ -62,24 +86,63 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
     final auth = ref.watch(authProvider);
     final cs = Theme.of(context).colorScheme;
     final loc = GoRouterState.of(context).matchedLocation;
+    final l = AppLocalizations.of(context);
+    final tabs = _tabs(l);
 
     // Sync tab index with route
     int activeIdx = 0;
-    if (loc.startsWith('/inventory') || loc.startsWith('/categories') || loc.startsWith('/adjustments') || loc.startsWith('/stock-take') || loc.startsWith('/transfers')) {
-      activeIdx = 1;
-    } else if (loc.startsWith('/analytics')) {
-      activeIdx = 2;
-    } else if (loc.startsWith('/referral')) {
-      activeIdx = 3;
-    } else if (loc == '/') {
-      activeIdx = 0;
+    final role = auth.user?.role ?? '';
+    final isSoftAssign = const {'cashier', 'pharmacist', 'pharmacy_tech'}.contains(role);
+
+    if (isSoftAssign) {
+      if (loc.startsWith('/inventory') || loc.startsWith('/categories') || loc.startsWith('/adjustments') || loc.startsWith('/stock-take') || loc.startsWith('/transfers')) {
+        activeIdx = 1;
+      } else if (loc.startsWith('/customers')) {
+        activeIdx = 2;
+      } else if (loc.startsWith('/catalog')) {
+        activeIdx = 3;
+      } else if (loc.startsWith('/deliveries')) {
+        activeIdx = 4;
+      }
     } else {
-      activeIdx = 4;
+      if (loc.startsWith('/inventory') || loc.startsWith('/categories') || loc.startsWith('/adjustments') || loc.startsWith('/stock-take') || loc.startsWith('/transfers')) {
+        activeIdx = 1;
+      } else if (loc.startsWith('/analytics')) {
+        activeIdx = 2;
+      } else if (loc.startsWith('/referral')) {
+        activeIdx = 3;
+      } else if (loc.startsWith('/more') || loc.startsWith('/customers') || loc.startsWith('/deliveries') || loc.startsWith('/catalog')) {
+        activeIdx = 4;
+      }
     }
 
     final hideShellChrome = loc.startsWith('/pos');
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        // If not on dashboard, go back to dashboard
+        if (loc != '/') {
+          context.go('/');
+          return;
+        }
+        // On dashboard: double-back to exit
+        final now = DateTime.now();
+        if (_lastBackPress != null && now.difference(_lastBackPress!) < const Duration(seconds: 2)) {
+          SystemNavigator.pop();
+          return;
+        }
+        _lastBackPress = now;
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(const SnackBar(
+            content: Text('Press back again to exit'),
+            duration: Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ));
+      },
+      child: Scaffold(
       appBar: hideShellChrome ? null : AppBar(
         title: Row(children: [
           Container(
@@ -130,8 +193,8 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
                 Text(auth.user?.email ?? '', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
               ])),
               const PopupMenuDivider(),
-              const PopupMenuItem(value: 'settings', child: ListTile(dense: true, leading: Icon(Icons.settings), title: Text('Settings'))),
-              PopupMenuItem(value: 'logout', child: ListTile(dense: true, leading: Icon(Icons.logout, color: cs.error), title: Text('Sign Out', style: TextStyle(color: cs.error)))),
+              PopupMenuItem(value: 'settings', child: ListTile(dense: true, leading: const Icon(Icons.settings), title: Text(l?.settings ?? 'Settings'))),
+              PopupMenuItem(value: 'logout', child: ListTile(dense: true, leading: Icon(Icons.logout, color: cs.error), title: Text(l?.logout ?? 'Sign Out', style: TextStyle(color: cs.error)))),
             ],
           ),
           const SizedBox(width: 8),
@@ -141,8 +204,9 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
       bottomNavigationBar: hideShellChrome ? null : NavigationBar(
         selectedIndex: activeIdx.clamp(0, 4),
         onDestinationSelected: _onTabTap,
-        destinations: _tabs.map((t) => NavigationDestination(icon: Icon(t.icon), label: t.label)).toList(),
+        destinations: tabs.map((t) => NavigationDestination(icon: Icon(t.icon), label: t.label)).toList(),
       ),
+    ),
     );
   }
 }
@@ -152,70 +216,4 @@ class _Tab {
   final String label;
   final String path;
   const _Tab({required this.icon, required this.label, required this.path});
-}
-
-class _MoreSheet extends StatelessWidget {
-  final void Function(String path) onNavigate;
-  const _MoreSheet({required this.onNavigate});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return SafeArea(
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const SizedBox(height: 8),
-        Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.outline.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
-        const SizedBox(height: 16),
-        Text('More', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-        const SizedBox(height: 8),
-        Flexible(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: Wrap(spacing: 12, runSpacing: 12, children: [
-              _tile(context, Icons.point_of_sale, 'Sales', '/sales'),
-              _tile(context, Icons.account_balance, 'Accounts', '/accounts'),
-              _tile(context, Icons.receipt, 'Expenses', '/expenses'),
-              _tile(context, Icons.assessment, 'Reports', '/reports'),
-              _tile(context, Icons.people, 'Staff', '/staff'),
-              _tile(context, Icons.person, 'Customers', '/customers'),
-              _tile(context, Icons.local_shipping, 'Suppliers', '/suppliers'),
-              _tile(context, Icons.local_shipping_outlined, 'Deliveries', '/deliveries'),
-              _tile(context, Icons.medication, 'Prescriptions', '/prescriptions'),
-              _tile(context, Icons.shield, 'Insurance', '/insurance'),
-              _tile(context, Icons.card_giftcard, 'Referrals', '/referral'),
-              _tile(context, Icons.medication_liquid, 'Catalog', '/catalog'),
-              _tile(context, Icons.api, 'API Billing', '/billing'),
-              _tile(context, Icons.store, 'Branches', '/branches'),
-              _tile(context, Icons.shopping_cart, 'Purchase Orders', '/purchase-orders'),
-              _tile(context, Icons.compare_arrows, 'Transfers', '/transfers'),
-              _tile(context, Icons.assignment, 'Stock Take', '/stock-take'),
-              _tile(context, Icons.notifications, 'Alerts', '/alerts'),
-              _tile(context, Icons.settings, 'Settings', '/settings'),
-            ]),
-          ),
-        ),
-      ]),
-    );
-  }
-
-  Widget _tile(BuildContext ctx, IconData icon, String label, String path) {
-    final cs = Theme.of(ctx).colorScheme;
-    return InkWell(
-      onTap: () => onNavigate(path),
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        width: 100,
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, color: cs.primary, size: 28),
-          const SizedBox(height: 6),
-          Text(label, style: Theme.of(ctx).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600), textAlign: TextAlign.center),
-        ]),
-      ),
-    );
-  }
 }

@@ -812,7 +812,7 @@ void _showAssignDialog(BuildContext context, WidgetRef ref, Map<String, dynamic>
       final staff = ref.watch(_staffProvider);
 
       return Padding(
-        padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + MediaQuery.of(ctx).viewInsets.bottom),
+        padding: EdgeInsets.fromLTRB(10, 20, 10, 20 + MediaQuery.of(ctx).viewInsets.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.outlineVariant, borderRadius: BorderRadius.circular(2)))),
           const SizedBox(height: 16),

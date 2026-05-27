@@ -88,7 +88,7 @@ class _PurchaseOrdersScreenState extends ConsumerState<PurchaseOrdersScreen> {
           return Column(children: [
             // ── Stat Cards ──
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
               child: SizedBox(
                 height: 72,
                 child: ListView(scrollDirection: Axis.horizontal, children: [
@@ -102,7 +102,7 @@ class _PurchaseOrdersScreenState extends ConsumerState<PurchaseOrdersScreen> {
 
             // ── Search ──
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+              padding: const EdgeInsets.fromLTRB(10, 6, 10, 0),
               child: TextField(
                 controller: _searchCtrl, onChanged: (v) => setState(() => _search = v),
                 decoration: InputDecoration(
@@ -119,7 +119,7 @@ class _PurchaseOrdersScreenState extends ConsumerState<PurchaseOrdersScreen> {
 
             // ── Status Filters ──
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
               child: SizedBox(
                 height: 32,
                 child: ListView(scrollDirection: Axis.horizontal, children: _statuses.map((s) {
@@ -131,7 +131,7 @@ class _PurchaseOrdersScreenState extends ConsumerState<PurchaseOrdersScreen> {
 
             // ── List ──
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               child: Text('${filtered.length} orders', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
             ),
             Expanded(
@@ -140,7 +140,7 @@ class _PurchaseOrdersScreenState extends ConsumerState<PurchaseOrdersScreen> {
                   : RefreshIndicator(
                       onRefresh: () async => ref.invalidate(_posProvider),
                       child: ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
+                        padding: const EdgeInsets.fromLTRB(10, 4, 10, 80),
                         itemCount: filtered.length,
                         itemBuilder: (_, i) => _POCard(po: filtered[i], cs: cs, onAction: (action) => _handleAction(action, filtered[i])),
                       ),

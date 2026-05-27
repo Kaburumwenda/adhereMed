@@ -28,16 +28,50 @@ class AppTheme {
     final cs = base.copyWith(
       primary: const Color(0xFF2DD4BF),
       secondary: const Color(0xFF818CF8),
-      surface: const Color(0xFF2D2D2D),
-      surfaceContainerHighest: const Color(0xFF383838),
-      onSurface: const Color(0xFFE4E4E4),
-      onSurfaceVariant: const Color(0xFF9E9E9E),
-      outline: const Color(0xFF3D3D3D),
-      outlineVariant: const Color(0xFF3D3D3D),
+      surface: const Color(0xFF111111),
+      surfaceContainerHighest: const Color(0xFF1E1E1E),
+      primaryContainer: const Color(0xFF1A2E2B),
+      onSurface: const Color(0xFFE8E8E8),
+      onSurfaceVariant: const Color(0xFF9CA3AF),
+      outline: const Color(0xFF262626),
+      outlineVariant: const Color(0xFF262626),
       error: const Color(0xFFF87171),
     );
     return _build(cs).copyWith(
-      scaffoldBackgroundColor: const Color(0xFF202020),
+      scaffoldBackgroundColor: const Color(0xFF0A0A0A),
+      cardTheme: CardThemeData(
+        elevation: 0,
+        color: const Color(0xFF141414),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Color(0xFF1F1F1F), width: 1),
+        ),
+        clipBehavior: Clip.antiAlias,
+      ),
+      dialogTheme: const DialogThemeData(
+        backgroundColor: Color(0xFF141414),
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: Color(0xFF111111),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: const Color(0xFF141414),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: const Color(0xFF0E0E0E),
+        indicatorColor: cs.primaryContainer,
+        surfaceTintColor: Colors.transparent,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+      ),
+      appBarTheme: AppBarTheme(
+        centerTitle: false,
+        elevation: 0,
+        scrolledUnderElevation: 0.5,
+        backgroundColor: const Color(0xFF0E0E0E),
+        foregroundColor: cs.onSurface,
+        surfaceTintColor: Colors.transparent,
+      ),
     );
   }
 

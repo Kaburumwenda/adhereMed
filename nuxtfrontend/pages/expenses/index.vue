@@ -59,6 +59,22 @@
           v-model="dateTo" type="date" label="To" variant="solo-filled" density="comfortable"
           hide-details flat rounded="lg" bg-color="surface" style="max-width: 170px"
         />
+        <v-select
+          v-if="branchStore.hasBranches"
+          v-model="branchFilter"
+          :items="branchFilterItems"
+          item-title="name"
+          item-value="id"
+          variant="solo-filled"
+          density="comfortable"
+          hide-details
+          flat
+          rounded="lg"
+          bg-color="surface"
+          :disabled="isBranchLocked"
+          prepend-inner-icon="mdi-store-marker"
+          style="max-width: 220px; min-width: 180px"
+        />
         <v-btn-toggle v-model="viewMode" mandatory density="comfortable" rounded="lg" variant="outlined" color="primary">
           <v-btn value="table" icon="mdi-table" size="small" title="Table view" />
           <v-btn value="cards" icon="mdi-view-grid" size="small" title="Card view" />
@@ -177,11 +193,27 @@ const { t } = useI18n()
 
 import { useResource } from '~/composables/useResource'
 import { formatDate, formatMoney } from '~/utils/format'
+import { useBranchStore } from '~/stores/branch'
+import { useAuthStore } from '~/stores/auth'
 
 const { $api } = useNuxtApp()
 const router = useRouter()
+const branchStore = useBranchStore()
+const auth = useAuthStore()
 const r = useResource('/expenses/expenses/')
 const cats = useResource('/expenses/categories/')
+
+const isBranchLocked = computed(() => auth.role === 'branch_admin')
+const branchFilter = ref(null)
+const branchFilterItems = computed(() => {
+  if (isBranchLocked.value) {
+    const b = branchStore.currentBranch
+    return b ? [{ id: b.id, name: b.name }] : []
+  }
+  const items = branchStore.activeBranches.map(b => ({ id: b.id, name: b.name }))
+  items.unshift({ id: null, name: 'All Branches' })
+  return items
+})
 
 const loading = computed(() => r.loading.value)
 const items = computed(() => r.items.value)
@@ -266,7 +298,11 @@ const headers = [
 ]
 
 function goDetail(exp) { router.push(`/expenses/${exp.id}`) }
-async function reload() { await Promise.all([r.list(), cats.list()]) }
+async function reload() {
+  const params = {}
+  if (branchFilter.value) params.branch = branchFilter.value
+  await Promise.all([r.list(params), cats.list()])
+}
 
 async function quickApprove(exp) {
   try {
@@ -312,7 +348,13 @@ function exportCsv() {
   a.click(); URL.revokeObjectURL(url)
 }
 
-onMounted(reload)
+watch(branchFilter, () => reload())
+onMounted(() => {
+  if (isBranchLocked.value && branchStore.currentBranchId) {
+    branchFilter.value = branchStore.currentBranchId
+  }
+  reload()
+})
 </script>
 
 <style scoped>

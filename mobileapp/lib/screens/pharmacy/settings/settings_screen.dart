@@ -8,9 +8,11 @@ import 'package:intl/intl.dart';
 import 'package:dio/dio.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../../core/api.dart';
 import '../../../core/theme_provider.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../providers/locale_provider.dart';
 import '../../../widgets/common.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -57,12 +59,11 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTickerProviderStateMixin {
   late final TabController _tabCtrl;
-  final _tabs = const ['Profile', 'Hours', 'Services', 'Insurance', 'Security', 'About'];
 
   @override
   void initState() {
     super.initState();
-    _tabCtrl = TabController(length: _tabs.length, vsync: this);
+    _tabCtrl = TabController(length: 6, vsync: this);
   }
 
   @override
@@ -71,15 +72,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTick
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l = AppLocalizations.of(context);
+    final tabs = [
+      l?.profile ?? 'Profile',
+      l?.operatingHours ?? 'Hours',
+      l?.services ?? 'Services',
+      l?.insurance ?? 'Insurance',
+      l?.security ?? 'Security',
+      l?.about ?? 'About',
+    ];
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Settings', style: TextStyle(fontWeight: FontWeight.w700)),
+        title: Text(l?.settings ?? 'Settings', style: const TextStyle(fontWeight: FontWeight.w700)),
         bottom: TabBar(
           controller: _tabCtrl,
           isScrollable: true,
           tabAlignment: TabAlignment.start,
           labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-          tabs: _tabs.map((t) => Tab(text: t)).toList(),
+          tabs: tabs.map((t) => Tab(text: t)).toList(),
         ),
       ),
       body: TabBarView(
@@ -110,6 +120,7 @@ class _ProfileTab extends StatelessWidget {
     final auth = ref.watch(authProvider);
     final profile = ref.watch(_profileProvider);
     final themeMode = ref.watch(themeModeProvider);
+    final l = AppLocalizations.of(context);
 
     return ListView(padding: const EdgeInsets.all(16), children: [
       // User profile card
@@ -142,7 +153,7 @@ class _ProfileTab extends StatelessWidget {
       // Pharmacy info
       profile.when(
         loading: () => const LoadingShimmer(lines: 3),
-        error: (_, __) => ErrorRetry(message: 'Failed to load', onRetry: () => ref.invalidate(_profileProvider)),
+        error: (_, __) => ErrorRetry(message: l?.failedToLoad ?? 'Failed to load', onRetry: () => ref.invalidate(_profileProvider)),
         data: (d) {
           final ph = d['pharmacy'] as Map? ?? {};
           final logo = ph['logo']?.toString() ?? '';
@@ -155,9 +166,9 @@ class _ProfileTab extends StatelessWidget {
                 Row(children: [
                   const Icon(Icons.local_pharmacy_rounded, size: 20),
                   const SizedBox(width: 8),
-                  const Expanded(child: Text('Pharmacy Info', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700))),
+                  Expanded(child: Text(l?.pharmacyInfo ?? 'Pharmacy Info', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700))),
                   TextButton.icon(icon: const Icon(Icons.edit_rounded, size: 14),
-                    label: const Text('Edit', style: TextStyle(fontSize: 12)),
+                    label: Text(l?.edit ?? 'Edit', style: const TextStyle(fontSize: 12)),
                     onPressed: () => _showEditPharmacy(context, ref, ph)),
                 ]),
                 const Divider(height: 20),
@@ -166,10 +177,10 @@ class _ProfileTab extends StatelessWidget {
                     child: Image.network(logo, height: 80, errorBuilder: (_, __, ___) => const SizedBox()))),
                   const SizedBox(height: 12),
                 ],
-                _InfoRow(icon: Icons.store_rounded, label: 'Name', value: ph['name']?.toString() ?? '-'),
-                _InfoRow(icon: Icons.badge_rounded, label: 'License', value: ph['license_number']?.toString() ?? '-'),
+                _InfoRow(icon: Icons.store_rounded, label: l?.name ?? 'Name', value: ph['name']?.toString() ?? '-'),
+                _InfoRow(icon: Icons.badge_rounded, label: l?.licenseNumber ?? 'License', value: ph['license_number']?.toString() ?? '-'),
                 if ((ph['description'] ?? '').toString().isNotEmpty)
-                  _InfoRow(icon: Icons.description_rounded, label: 'About', value: ph['description']),
+                  _InfoRow(icon: Icons.description_rounded, label: l?.about ?? 'About', value: ph['description']),
               ]),
             ),
           ).animate().fadeIn(duration: 400.ms, delay: 100.ms).slideY(begin: 0.05, end: 0);
@@ -184,22 +195,105 @@ class _ProfileTab extends StatelessWidget {
             border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5))),
           child: Column(children: [
             ListTile(leading: Icon(Icons.palette_rounded, color: cs.primary),
-              title: const Text('Appearance', style: TextStyle(fontWeight: FontWeight.w700))),
-            Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              title: Text(l?.appearance ?? 'Appearance', style: const TextStyle(fontWeight: FontWeight.w700))),
+            Padding(padding: const EdgeInsets.fromLTRB(10, 0, 10, 16),
               child: SegmentedButton<ThemeMode>(
                 selected: {themeMode},
                 onSelectionChanged: (s) => ref.read(themeModeProvider.notifier).set(s.first),
-                segments: const [
-                  ButtonSegment(value: ThemeMode.system, label: Text('System'), icon: Icon(Icons.brightness_auto_rounded, size: 18)),
-                  ButtonSegment(value: ThemeMode.light, label: Text('Light'), icon: Icon(Icons.light_mode_rounded, size: 18)),
-                  ButtonSegment(value: ThemeMode.dark, label: Text('Dark'), icon: Icon(Icons.dark_mode_rounded, size: 18)),
+                segments: [
+                  ButtonSegment(value: ThemeMode.system, label: Text(l?.system ?? 'System'), icon: const Icon(Icons.brightness_auto_rounded, size: 18)),
+                  ButtonSegment(value: ThemeMode.light, label: Text(l?.light ?? 'Light'), icon: const Icon(Icons.light_mode_rounded, size: 18)),
+                  ButtonSegment(value: ThemeMode.dark, label: Text(l?.dark ?? 'Dark'), icon: const Icon(Icons.dark_mode_rounded, size: 18)),
                 ],
               ),
             ),
           ]),
         ),
       ).animate().fadeIn(duration: 400.ms, delay: 200.ms).slideY(begin: 0.05, end: 0),
+      const SizedBox(height: 16),
+
+      // Language
+      Card(elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5))),
+          child: Column(children: [
+            ListTile(
+              leading: Icon(Icons.language_rounded, color: cs.primary),
+              title: Text(AppLocalizations.of(context)?.language ?? 'Language',
+                style: const TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: Text(_currentLanguageName(ref.watch(localeProvider)),
+                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => _showLanguagePicker(context, ref),
+            ),
+          ]),
+        ),
+      ).animate().fadeIn(duration: 400.ms, delay: 300.ms).slideY(begin: 0.05, end: 0),
     ]);
+  }
+
+  String _currentLanguageName(Locale? locale) {
+    if (locale == null) return 'System';
+    for (final l in AppLocales.supported) {
+      if (l.code == locale.languageCode) return '${l.flag} ${l.name}';
+    }
+    return locale.languageCode;
+  }
+
+  void _showLanguagePicker(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    final current = ref.read(localeProvider);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        maxChildSize: 0.85,
+        minChildSize: 0.4,
+        expand: false,
+        builder: (ctx, scrollController) => Column(
+          children: [
+            const SizedBox(height: 8),
+            Container(width: 40, height: 4,
+              decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2))),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(AppLocalizations.of(context)?.selectLanguage ?? 'Select Language',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: ListView.builder(
+                controller: scrollController,
+                itemCount: AppLocales.supported.length,
+                itemBuilder: (ctx, i) {
+                  final info = AppLocales.supported[i];
+                  final isSelected = current?.languageCode == info.code;
+                  return ListTile(
+                    leading: Text(info.flag, style: const TextStyle(fontSize: 24)),
+                    title: Text(info.name, style: TextStyle(
+                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500)),
+                    trailing: isSelected
+                      ? Icon(Icons.check_circle_rounded, color: cs.primary)
+                      : null,
+                    selected: isSelected,
+                    onTap: () {
+                      ref.read(localeProvider.notifier).set(Locale(info.code));
+                      Navigator.pop(ctx);
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -400,7 +494,7 @@ class _ServicesTab extends StatelessWidget {
         final cs = Theme.of(context).colorScheme;
         return Container(
           decoration: BoxDecoration(color: cs.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
-          padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(context).viewInsets.bottom + 20),
+          padding: EdgeInsets.fromLTRB(10, 16, 10, MediaQuery.of(context).viewInsets.bottom + 20),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
             const SizedBox(height: 20),
@@ -457,7 +551,7 @@ class _InsuranceTab extends StatelessWidget {
               decoration: BoxDecoration(borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: accepts ? const Color(0xFF10B981).withValues(alpha: 0.3) : cs.outlineVariant.withValues(alpha: 0.5))),
               child: SwitchListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 secondary: Icon(accepts ? Icons.verified_rounded : Icons.cancel_rounded,
                   color: accepts ? const Color(0xFF10B981) : cs.onSurfaceVariant),
                 title: const Text('Accept Insurance', style: TextStyle(fontWeight: FontWeight.w700)),
@@ -682,7 +776,7 @@ void _showEditProfile(BuildContext context, WidgetRef ref) {
   showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
     builder: (_) => Container(
       decoration: BoxDecoration(color: cs.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
-      padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(context).viewInsets.bottom + 20),
+      padding: EdgeInsets.fromLTRB(10, 16, 10, MediaQuery.of(context).viewInsets.bottom + 20),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
         const SizedBox(height: 20),
@@ -734,7 +828,7 @@ void _showEditPharmacy(BuildContext context, WidgetRef ref, Map ph) {
       builder: (ctx, scrollCtrl) => Container(
         decoration: BoxDecoration(color: cs.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
         child: Column(children: [
-          Padding(padding: const EdgeInsets.fromLTRB(20, 12, 20, 0), child: Column(children: [
+          Padding(padding: const EdgeInsets.fromLTRB(10, 12, 10, 0), child: Column(children: [
             Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
             const SizedBox(height: 16),
             Row(children: [
@@ -810,7 +904,7 @@ void _showChangePassword(BuildContext context, WidgetRef ref) {
       bool obscureOld = true, obscureNew = true;
       return Container(
         decoration: BoxDecoration(color: cs.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
-        padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(context).viewInsets.bottom + 20),
+        padding: EdgeInsets.fromLTRB(10, 16, 10, MediaQuery.of(context).viewInsets.bottom + 20),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
           const SizedBox(height: 20),

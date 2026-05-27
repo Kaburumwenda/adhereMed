@@ -46,7 +46,7 @@ class ExpensesScreen extends ConsumerWidget {
         },
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.go('/expenses/add'),
+        onPressed: () => context.push('/expenses/add'),
         icon: const Icon(Icons.add),
         label: const Text('Add Expense'),
       ),

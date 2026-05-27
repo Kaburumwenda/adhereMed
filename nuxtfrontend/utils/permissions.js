@@ -63,6 +63,7 @@ export const ADMIN_ROLES = new Set([
   'pharmacy_admin',
   'lab_admin',
   'radiology_admin',
+  'branch_admin',
   'admin',
 ])
 
@@ -70,6 +71,35 @@ export const ADMIN_ROLES = new Set([
 // routes that start with one of these prefixes (plus the always-allowed
 // list) are accessible. Roles not listed fall back to the admin rules.
 const ROLE_ALLOWLIST = {
+  branch_admin: [
+    '/dashboard',
+    '/pharmacy',
+    '/pos',
+    '/pharmacy-orders',
+    '/pharmacy-rx',
+    '/dispensing',
+    '/customers',
+    '/billing',
+    '/invoices',
+    '/alerts',
+    '/messages',
+    '/my-profile',
+    '/notifications',
+    '/profile',
+    '/inventory',
+    '/pharmacy/inventory',
+    '/pharmacy/pos',
+    '/pharmacy/staff',
+    '/pharmacy/staff-performance',
+    '/pharmacy/reports',
+    '/pharmacy/adjustments',
+    '/pharmacy/categories',
+    '/pharmacy/units',
+    '/pharmacy/medications',
+    '/pharmacy/expenses',
+    '/pharmacy/suppliers',
+    '/pharmacy/purchase-orders',
+  ],
   cashier: [
     '/dashboard',
     '/pharmacy',
@@ -91,6 +121,13 @@ const ROLE_ALLOWLIST = {
 // Per-role deny-list of route prefixes. Checked BEFORE the allow-list so
 // you can grant a broad area (e.g. /pharmacy) but block sub-pages.
 const ROLE_DENYLIST = {
+  branch_admin: [
+    '/billing/usage',
+    '/billing/rates',
+    '/pharmacy/billing',
+    '/pharmacy/branches',
+    '/pharmacy/settings',
+  ],
   cashier: [
     '/billing/usage',     // API Billing — admin only
     '/billing/rates',
@@ -109,10 +146,23 @@ const ROLE_DENYLIST = {
     '/pharmacy/reports',
     '/pharmacy/analytics',
     '/pharmacy/inventory/stock-analysis',
+    '/pharmacy/inventory/stock-take',
+    '/pharmacy/inventory/transfers',
+    '/pharmacy/referral',
     '/pharmacy/adjustments',
     '/pharmacy/categories',
     '/pharmacy/units',
     '/pharmacy/medications',
+  ],
+  pharmacist: [
+    '/pharmacy/inventory/stock-take',
+    '/pharmacy/inventory/transfers',
+    '/pharmacy/referral',
+  ],
+  pharmacy_tech: [
+    '/pharmacy/inventory/stock-take',
+    '/pharmacy/inventory/transfers',
+    '/pharmacy/referral',
   ],
 }
 

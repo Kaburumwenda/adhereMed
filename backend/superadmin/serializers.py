@@ -2,6 +2,8 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from tenants.models import Domain, Tenant
+from .models import CoinPackage
+from usage_billing.referral_models import ReferralProfile, CoinTransaction as RefCoinTransaction, Referral
 
 User = get_user_model()
 
@@ -97,3 +99,106 @@ class UserAdminUpdateSerializer(serializers.ModelSerializer):
         if User.objects.filter(email=value).exclude(pk=user.pk).exists():
             raise serializers.ValidationError("This email is already in use.")
         return value
+
+
+# ── Adhere Coins ───────────────────────────────────────────────────────────────
+
+class CoinPackageSerializer(serializers.ModelSerializer):
+    total_coins = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = CoinPackage
+        fields = [
+            "id", "name", "coins", "bonus_coins", "total_coins",
+            "price", "currency", "is_active", "description",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = ["created_at", "updated_at"]
+
+
+class CoinWalletSerializer(serializers.ModelSerializer):
+    tenant_name = serializers.CharField(source="tenant.name", read_only=True)
+    tenant_type = serializers.CharField(source="tenant.type", read_only=True)
+    balance = serializers.DecimalField(source="coin_balance", max_digits=14, decimal_places=2, read_only=True)
+    lifetime_earned = serializers.DecimalField(source="total_earned", max_digits=14, decimal_places=2, read_only=True)
+    lifetime_spent = serializers.DecimalField(source="total_redeemed", max_digits=14, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = ReferralProfile
+        fields = [
+            "id", "tenant", "tenant_name", "tenant_type",
+            "balance", "lifetime_earned", "lifetime_spent",
+            "referral_code", "referral_count", "updated_at",
+        ]
+
+
+class CoinTransactionSerializer(serializers.ModelSerializer):
+    tenant_name = serializers.CharField(source="profile.tenant.name", read_only=True)
+    tx_type = serializers.CharField(source="type", read_only=True)
+    description = serializers.CharField(source="reason", read_only=True)
+    balance_after = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RefCoinTransaction
+        fields = [
+            "id", "tenant_name", "tx_type", "amount",
+            "balance_after", "description", "created_at",
+        ]
+
+    def get_balance_after(self, obj):
+        return None  # Not tracked per-transaction in this model
+
+
+class CoinAllocateSerializer(serializers.Serializer):
+    """Allocate coins to a tenant wallet."""
+    tenant_id = serializers.IntegerField()
+    amount = serializers.IntegerField(min_value=1)
+    tx_type = serializers.ChoiceField(
+        choices=[("credit", "Credit"), ("bonus", "Bonus"), ("refund", "Refund")],
+        default="credit",
+    )
+    description = serializers.CharField(max_length=255, required=False, default="")
+    reference = serializers.CharField(max_length=128, required=False, default="")
+    package_id = serializers.IntegerField(required=False, allow_null=True, default=None)
+
+
+class CoinDeductSerializer(serializers.Serializer):
+    """Deduct coins from a tenant wallet."""
+    tenant_id = serializers.IntegerField()
+    amount = serializers.IntegerField(min_value=1)
+    description = serializers.CharField(max_length=255, required=False, default="")
+    reference = serializers.CharField(max_length=128, required=False, default="")
+
+
+# ── Referral Management ────────────────────────────────────────────────────────
+
+class ReferralProfileAdminSerializer(serializers.ModelSerializer):
+    tenant_name = serializers.CharField(source="tenant.name", read_only=True)
+    tenant_type = serializers.CharField(source="tenant.type", read_only=True)
+    tenant_is_active = serializers.BooleanField(source="tenant.is_active", read_only=True)
+
+    class Meta:
+        model = ReferralProfile
+        fields = [
+            "id", "tenant", "tenant_name", "tenant_type", "tenant_is_active",
+            "referral_code", "coin_balance", "total_earned", "total_redeemed",
+            "referral_count", "created_at", "updated_at",
+        ]
+        read_only_fields = ["referral_code", "coin_balance", "total_earned", "total_redeemed", "created_at", "updated_at"]
+
+
+class ReferralAdminSerializer(serializers.ModelSerializer):
+    referrer_name = serializers.CharField(source="referrer.name", read_only=True)
+    referred_name = serializers.CharField(source="referred.name", read_only=True)
+    referrer_type = serializers.CharField(source="referrer.type", read_only=True)
+    referred_type = serializers.CharField(source="referred.type", read_only=True)
+
+    class Meta:
+        model = Referral
+        fields = [
+            "id", "referrer", "referrer_name", "referrer_type",
+            "referred", "referred_name", "referred_type",
+            "status", "bonus_awarded", "tracked_requests",
+            "coins_from_usage", "created_at", "updated_at",
+        ]
+        read_only_fields = ["created_at", "updated_at"]

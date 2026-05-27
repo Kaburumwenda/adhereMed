@@ -149,17 +149,13 @@
         Redeem Adhere Coins
       </v-card-title>
       <v-card-text>
-        <v-alert type="info" variant="tonal" density="compact" class="mb-4" icon="mdi-information">
-          <strong>Coming Soon!</strong> The ability to redeem Adhere Coins for cash or to settle your API usage bill
-          will be activated soon. Keep earning coins — they'll be ready to redeem when the feature launches!
-        </v-alert>
         <v-row dense>
           <v-col cols="12" sm="6" md="3">
             <v-card variant="outlined" rounded="lg" class="pa-3 text-center">
               <v-icon size="32" color="warning" class="mb-2">mdi-cash</v-icon>
               <div class="text-subtitle-2">Cash Out</div>
               <div class="text-caption text-medium-emphasis mb-2">Convert coins to KSH</div>
-              <v-btn size="small" color="warning" variant="tonal" disabled>Redeem</v-btn>
+              <v-btn size="small" color="warning" variant="tonal" disabled>Coming Soon</v-btn>
             </v-card>
           </v-col>
           <v-col cols="12" sm="6" md="3">
@@ -167,7 +163,7 @@
               <v-icon size="32" color="primary" class="mb-2">mdi-receipt-text</v-icon>
               <div class="text-subtitle-2">Pay API Bill</div>
               <div class="text-caption text-medium-emphasis mb-2">Settle usage billing</div>
-              <v-btn size="small" color="primary" variant="tonal" disabled>Apply</v-btn>
+              <v-btn size="small" color="primary" variant="tonal" @click="openPayBill">Apply</v-btn>
             </v-card>
           </v-col>
           <v-col cols="12" sm="6" md="3">
@@ -175,7 +171,7 @@
               <v-icon size="32" color="success" class="mb-2">mdi-gift</v-icon>
               <div class="text-subtitle-2">Gift Coins</div>
               <div class="text-caption text-medium-emphasis mb-2">Send to another pharmacy</div>
-              <v-btn size="small" color="success" variant="tonal" disabled>Send</v-btn>
+              <v-btn size="small" color="success" variant="tonal" @click="giftDialog = true">Send</v-btn>
             </v-card>
           </v-col>
           <v-col cols="12" sm="6" md="3">
@@ -183,12 +179,137 @@
               <v-icon size="32" color="secondary" class="mb-2">mdi-ticket-percent</v-icon>
               <div class="text-subtitle-2">Discounts</div>
               <div class="text-caption text-medium-emphasis mb-2">Unlock premium features</div>
-              <v-btn size="small" color="secondary" variant="tonal" disabled>Browse</v-btn>
+              <v-btn size="small" color="secondary" variant="tonal" disabled>Coming Soon</v-btn>
             </v-card>
           </v-col>
         </v-row>
       </v-card-text>
     </v-card>
+
+    <!-- ── Pay API Bill Dialog ── -->
+    <v-dialog v-model="payBillDialog" max-width="500" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="d-flex align-center ga-2">
+          <v-icon color="primary">mdi-receipt-text</v-icon>
+          Pay API Bill with Adhere Coins
+        </v-card-title>
+        <v-card-text>
+          <v-alert v-if="payBillError" type="error" variant="tonal" density="compact" class="mb-3" closable @click:close="payBillError = ''">{{ payBillError }}</v-alert>
+          <v-alert v-if="payBillSuccess" type="success" variant="tonal" density="compact" class="mb-3">{{ payBillSuccess }}</v-alert>
+
+          <div v-if="!outstandingBills.length && !loadingBills" class="text-center py-4">
+            <v-icon size="48" color="success" class="mb-2">mdi-check-circle</v-icon>
+            <div class="text-body-1 font-weight-medium">No outstanding bills!</div>
+            <div class="text-body-2 text-medium-emphasis">All your API usage bills are paid.</div>
+          </div>
+
+          <div v-if="loadingBills" class="text-center py-4">
+            <v-progress-circular indeterminate color="primary" />
+          </div>
+
+          <template v-if="outstandingBills.length">
+            <div class="text-body-2 text-medium-emphasis mb-3">
+              Your balance: <strong>{{ formatCoins(profile.coin_balance) }} coins</strong> (1 coin = 1 KSH)
+            </div>
+            <v-radio-group v-model="selectedBillId" class="mb-3">
+              <v-radio
+                v-for="bill in outstandingBills"
+                :key="bill.id"
+                :value="bill.id"
+                :label="`${bill.year}-${String(bill.month).padStart(2,'0')} — ${Number(bill.amount).toLocaleString()} KSH`"
+              />
+            </v-radio-group>
+            <v-text-field
+              v-model.number="payAmount"
+              type="number"
+              label="Coins to apply (leave empty for full amount)"
+              variant="outlined"
+              density="compact"
+              rounded="lg"
+              hide-details
+              class="mb-2"
+              :placeholder="selectedBillAmount"
+            />
+          </template>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="closePayBill">Cancel</v-btn>
+          <v-btn
+            color="primary"
+            variant="flat"
+            :disabled="!selectedBillId || payBillLoading"
+            :loading="payBillLoading"
+            @click="submitPayBill"
+          >Pay with Coins</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- ── Gift Coins Dialog ── -->
+    <v-dialog v-model="giftDialog" max-width="480" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="d-flex align-center ga-2">
+          <v-icon color="success">mdi-gift</v-icon>
+          Gift Adhere Coins
+        </v-card-title>
+        <v-card-text>
+          <v-alert v-if="giftError" type="error" variant="tonal" density="compact" class="mb-3" closable @click:close="giftError = ''">{{ giftError }}</v-alert>
+          <v-alert v-if="giftSuccess" type="success" variant="tonal" density="compact" class="mb-3">{{ giftSuccess }}</v-alert>
+
+          <div class="text-body-2 text-medium-emphasis mb-3">
+            Your balance: <strong>{{ formatCoins(profile.coin_balance) }} coins</strong>
+          </div>
+
+          <v-text-field
+            v-model="giftCode"
+            label="Recipient's Referral Code"
+            variant="outlined"
+            density="compact"
+            rounded="lg"
+            prepend-inner-icon="mdi-store"
+            class="mb-3"
+            :hint="giftRecipientName ? `Pharmacy: ${giftRecipientName}` : ''"
+            persistent-hint
+            @blur="validateGiftCode"
+          />
+          <v-text-field
+            v-model.number="giftAmount"
+            type="number"
+            label="Amount (coins)"
+            variant="outlined"
+            density="compact"
+            rounded="lg"
+            prepend-inner-icon="mdi-currency-usd"
+            class="mb-3"
+            :max="Number(profile.coin_balance)"
+            :rules="[v => !v || v <= Number(profile.coin_balance) || `Max ${formatCoins(profile.coin_balance)} coins`]"
+            :hint="`Available: ${formatCoins(profile.coin_balance)} coins`"
+            persistent-hint
+            @update:model-value="v => { if (v > Number(profile.coin_balance)) giftAmount = Number(profile.coin_balance) }"
+          />
+          <v-text-field
+            v-model="giftMessage"
+            label="Message (optional)"
+            variant="outlined"
+            density="compact"
+            rounded="lg"
+            prepend-inner-icon="mdi-message-text"
+          />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="closeGift">Cancel</v-btn>
+          <v-btn
+            color="success"
+            variant="flat"
+            :disabled="!giftCode || !giftAmount || giftAmount <= 0 || giftLoading"
+            :loading="giftLoading"
+            @click="submitGift"
+          >Send Coins</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <!-- ── Referred Pharmacies Table ── -->
     <v-card rounded="xl" class="mt-6">
@@ -375,6 +496,124 @@ async function shareNative() {
     } catch { /* user cancelled */ }
   } else {
     copyLink()
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Pay API Bill
+// ═══════════════════════════════════════════════════════════════════════
+const payBillDialog = ref(false)
+const loadingBills = ref(false)
+const outstandingBills = ref([])
+const selectedBillId = ref(null)
+const payAmount = ref(null)
+const payBillLoading = ref(false)
+const payBillError = ref('')
+const payBillSuccess = ref('')
+
+const selectedBillAmount = computed(() => {
+  const b = outstandingBills.value.find(x => x.id === selectedBillId.value)
+  return b ? String(Math.ceil(Number(b.amount))) : ''
+})
+
+async function openPayBill() {
+  payBillDialog.value = true
+  payBillError.value = ''
+  payBillSuccess.value = ''
+  selectedBillId.value = null
+  payAmount.value = null
+  loadingBills.value = true
+  try {
+    const { data } = await $api.get('/usage-billing/dashboard/')
+    outstandingBills.value = (data.bills || []).filter(b => b.status === 'ISSUED')
+  } catch {
+    outstandingBills.value = []
+  } finally {
+    loadingBills.value = false
+  }
+}
+
+function closePayBill() {
+  payBillDialog.value = false
+  payBillError.value = ''
+  payBillSuccess.value = ''
+}
+
+async function submitPayBill() {
+  payBillLoading.value = true
+  payBillError.value = ''
+  payBillSuccess.value = ''
+  try {
+    const payload = { bill_id: selectedBillId.value }
+    if (payAmount.value) payload.amount = payAmount.value
+    const { data } = await $api.post('/usage-billing/referral/redeem/pay-bill/', payload)
+    payBillSuccess.value = data.detail
+    profile.value.coin_balance = data.remaining_balance
+    // Remove paid bill from list
+    outstandingBills.value = outstandingBills.value.filter(b => b.id !== selectedBillId.value)
+    selectedBillId.value = null
+    payAmount.value = null
+    load() // refresh transactions
+  } catch (e) {
+    payBillError.value = e?.response?.data?.detail || 'Payment failed'
+  } finally {
+    payBillLoading.value = false
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Gift Coins
+// ═══════════════════════════════════════════════════════════════════════
+const giftDialog = ref(false)
+const giftCode = ref('')
+const giftAmount = ref(null)
+const giftMessage = ref('')
+const giftRecipientName = ref('')
+const giftLoading = ref(false)
+const giftError = ref('')
+const giftSuccess = ref('')
+
+async function validateGiftCode() {
+  giftRecipientName.value = ''
+  const code = (giftCode.value || '').trim()
+  if (code.length < 4) return
+  try {
+    const { data } = await $api.get(`/usage-billing/referral/validate/${code}/`)
+    if (data.valid) giftRecipientName.value = data.referrer_name
+  } catch { /* silent */ }
+}
+
+function closeGift() {
+  giftDialog.value = false
+  giftError.value = ''
+  giftSuccess.value = ''
+  giftCode.value = ''
+  giftAmount.value = null
+  giftMessage.value = ''
+  giftRecipientName.value = ''
+}
+
+async function submitGift() {
+  giftLoading.value = true
+  giftError.value = ''
+  giftSuccess.value = ''
+  try {
+    const { data } = await $api.post('/usage-billing/referral/redeem/gift/', {
+      recipient_code: giftCode.value.trim(),
+      amount: giftAmount.value,
+      message: giftMessage.value,
+    })
+    giftSuccess.value = data.detail
+    profile.value.coin_balance = data.remaining_balance
+    giftCode.value = ''
+    giftAmount.value = null
+    giftMessage.value = ''
+    giftRecipientName.value = ''
+    load() // refresh transactions
+  } catch (e) {
+    giftError.value = e?.response?.data?.detail || 'Gift failed'
+  } finally {
+    giftLoading.value = false
   }
 }
 

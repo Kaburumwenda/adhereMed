@@ -4,6 +4,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:intl/intl.dart';
 import '../../../core/api.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../providers/branch_provider.dart';
 import '../../../widgets/common.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -72,6 +73,7 @@ class _CreditScreenState extends ConsumerState<CreditScreen> {
   String? _error;
   DateTime? _dateFrom;
   DateTime? _dateTo;
+  int? _adminBranchFilter;
 
   @override
   void initState() {
@@ -101,6 +103,15 @@ class _CreditScreenState extends ConsumerState<CreditScreen> {
         params['period'] = period;
       }
       if (status != null) params['status'] = status;
+
+      // Restrict to branch for cashier/pharmacist/pharmacy_tech
+      final role = ref.read(authProvider).user?.role ?? '';
+      if (const {'cashier', 'pharmacist', 'pharmacy_tech'}.contains(role)) {
+        final branchId = ref.read(branchProvider).currentBranchId;
+        if (branchId != null) params['branch'] = branchId;
+      } else if (_adminBranchFilter != null) {
+        params['branch'] = _adminBranchFilter;
+      }
 
       final results = await Future.wait([
         dio.get('/pos/credits/summary/', queryParameters: params),
@@ -143,7 +154,7 @@ class _CreditScreenState extends ConsumerState<CreditScreen> {
       content: Text(msg),
       behavior: SnackBarBehavior.floating,
       backgroundColor: isError ? Colors.red.shade700 : null,
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      margin: const EdgeInsets.fromLTRB(10, 0, 10, 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ));
   }
@@ -193,7 +204,7 @@ class _CreditScreenState extends ConsumerState<CreditScreen> {
                             ),
                           )
                         : SliverPadding(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                            padding: const EdgeInsets.fromLTRB(10, 0, 10, 100),
                             sliver: SliverList.separated(
                               itemCount: _filtered.length,
                               separatorBuilder: (_, __) =>
@@ -219,7 +230,7 @@ class _CreditScreenState extends ConsumerState<CreditScreen> {
     final overdueCount = _summary['overdue_count'] ?? 0;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      padding: const EdgeInsets.fromLTRB(10, 16, 10, 8),
       child: Column(children: [
         Row(children: [
           Expanded(
@@ -322,7 +333,7 @@ class _CreditScreenState extends ConsumerState<CreditScreen> {
     ];
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
       child: Column(children: [
         // Period chips
         SizedBox(
@@ -465,7 +476,49 @@ class _CreditScreenState extends ConsumerState<CreditScreen> {
             ],
           ),
         ),
+        // Branch filter for admins
+        _buildBranchFilter(cs),
       ]),
+    );
+  }
+
+  Widget _buildBranchFilter(ColorScheme cs) {
+    final role = ref.read(authProvider).user?.role ?? '';
+    final isAdmin = const {'super_admin', 'tenant_admin', 'branch_admin'}.contains(role);
+    if (!isAdmin) return const SizedBox.shrink();
+
+    final branches = ref.watch(branchProvider).branches;
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Container(
+        height: 36,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
+        ),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<int?>(
+            value: _adminBranchFilter,
+            isExpanded: true,
+            icon: Icon(Icons.store_rounded, size: 14, color: cs.onSurfaceVariant),
+            style: TextStyle(fontSize: 12, color: cs.onSurface, fontWeight: FontWeight.w600),
+            hint: const Text('All branches', style: TextStyle(fontSize: 12)),
+            items: [
+              const DropdownMenuItem<int?>(value: null, child: Text('All branches', style: TextStyle(fontSize: 12))),
+              ...branches.map((b) => DropdownMenuItem<int?>(
+                value: b['id'] as int?,
+                child: Text(b['name'] ?? 'Branch', style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
+              )),
+            ],
+            onChanged: (v) {
+              setState(() => _adminBranchFilter = v);
+              _load();
+            },
+          ),
+        ),
+      ),
     );
   }
 
@@ -475,7 +528,7 @@ class _CreditScreenState extends ConsumerState<CreditScreen> {
 
   Widget _buildSearchBar(ColorScheme cs, bool isDark) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
       child: TextField(
         onChanged: (v) => setState(() => _search = v),
         decoration: InputDecoration(
@@ -488,7 +541,7 @@ class _CreditScreenState extends ConsumerState<CreditScreen> {
             borderSide: BorderSide.none,
           ),
           contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
           isDense: true,
         ),
         style: const TextStyle(fontSize: 14),
@@ -786,7 +839,7 @@ class _CreditScreenState extends ConsumerState<CreditScreen> {
             ),
             // Header
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 16),
               child: Row(children: [
                 Container(
                   padding: const EdgeInsets.all(10),

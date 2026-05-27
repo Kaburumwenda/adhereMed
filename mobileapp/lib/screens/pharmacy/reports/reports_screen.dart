@@ -501,7 +501,7 @@ class _SalesTab extends StatelessWidget {
 
     return RefreshIndicator(
       onRefresh: () async {},
-      child: ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 80), children: [
+      child: ListView(padding: const EdgeInsets.fromLTRB(10, 8, 10, 80), children: [
         // KPI row
         GridView.count(
           crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
@@ -593,7 +593,7 @@ class _TopProductsTab extends StatelessWidget {
     final items = (d['items'] as List?) ?? [];
     if (items.isEmpty) return const EmptyState(icon: Icons.emoji_events_rounded, title: 'No sales in this period');
 
-    return ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 80), children: [
+    return ListView(padding: const EdgeInsets.fromLTRB(10, 8, 10, 80), children: [
       _SectionHeader(icon: Icons.emoji_events_rounded, title: 'Top Selling Medications', count: items.length, color: const Color(0xFFF59E0B)),
       const SizedBox(height: 10),
       ...items.asMap().entries.map((e) {
@@ -648,7 +648,7 @@ class _CashiersTab extends StatelessWidget {
     final cashiers = (d['cashiers'] as List?) ?? [];
     if (cashiers.isEmpty) return const EmptyState(icon: Icons.badge_rounded, title: 'No cashier data');
 
-    return ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 80), children: [
+    return ListView(padding: const EdgeInsets.fromLTRB(10, 8, 10, 80), children: [
       _SectionHeader(icon: Icons.badge_rounded, title: 'Cashier Performance', count: cashiers.length, color: const Color(0xFF8B5CF6)),
       const SizedBox(height: 10),
       ...cashiers.asMap().entries.map((e) {
@@ -707,7 +707,7 @@ class _PnlTab extends StatelessWidget {
     final grossMargin = double.tryParse('${d['gross_margin_pct'] ?? 0}') ?? 0;
     final isPositive = netProfit >= 0;
 
-    return ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 80), children: [
+    return ListView(padding: const EdgeInsets.fromLTRB(10, 8, 10, 80), children: [
       // KPIs
       GridView.count(
         crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
@@ -803,7 +803,7 @@ class _InventoryTab extends StatelessWidget {
     if (d == null) return const EmptyState(icon: Icons.inventory_2_rounded, title: 'No data');
     final cats = (d['by_category'] as List?) ?? [];
 
-    return ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 80), children: [
+    return ListView(padding: const EdgeInsets.fromLTRB(10, 8, 10, 80), children: [
       GridView.count(
         crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
         mainAxisSpacing: 8, crossAxisSpacing: 8, childAspectRatio: 1.8,
@@ -860,7 +860,7 @@ class _ExpiryTab extends StatelessWidget {
     if (d == null) return const EmptyState(icon: Icons.schedule_rounded, title: 'No data');
     final batches = (d['batches'] as List?) ?? [];
 
-    return ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 80), children: [
+    return ListView(padding: const EdgeInsets.fromLTRB(10, 8, 10, 80), children: [
       // Warning banner
       Container(
         padding: const EdgeInsets.all(14),
@@ -946,7 +946,7 @@ class _LowStockTab extends StatelessWidget {
     if (d == null) return const EmptyState(icon: Icons.warning_rounded, title: 'No data');
     final items = (d['items'] as List?) ?? [];
 
-    return ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 80), children: [
+    return ListView(padding: const EdgeInsets.fromLTRB(10, 8, 10, 80), children: [
       Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(

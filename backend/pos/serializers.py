@@ -208,6 +208,12 @@ class POSCheckoutSerializer(serializers.Serializer):
         total_tax = total_tax.quantize(Decimal('0.01'))
 
         branch_id = validated_data.get('branch_id')
+        # Auto-assign branch from user's staff profile if not provided
+        if not branch_id:
+            try:
+                branch_id = cashier.staff_profile.branch_id
+            except Exception:
+                pass
 
         pos_txn = POSTransaction.objects.create(
             transaction_number=transaction_number,

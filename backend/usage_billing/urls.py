@@ -19,6 +19,8 @@ urlpatterns = [
     path("referral/stats/", referral_views.referral_stats, name="referral-stats"),
     path("referral/performance/", referral_views.referral_performance, name="referral-performance"),
     path("referral/validate/<str:code>/", referral_views.validate_referral_code, name="referral-validate"),
+    path("referral/redeem/pay-bill/", referral_views.redeem_pay_bill, name="referral-redeem-pay-bill"),
+    path("referral/redeem/gift/", referral_views.redeem_gift_coins, name="referral-redeem-gift"),
 
     # Super admin
     path("admin/rates/", views.RateListCreateView.as_view(), name="admin-rate-list"),

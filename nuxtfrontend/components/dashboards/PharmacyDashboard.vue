@@ -254,6 +254,7 @@
 <script setup>
 import { useAuthStore } from '~/stores/auth'
 import { formatMoney, formatDate } from '~/utils/format'
+import { canAccessRoute } from '~/utils/permissions'
 
 import { useI18n } from 'vue-i18n'
 
@@ -362,7 +363,7 @@ const actions = computed(() => [
   { icon: 'mdi-cart', label: t('nav.purchaseOrders'), to: '/pharmacy/purchase-orders', color: 'warning' },
   { icon: 'mdi-clipboard-check', label: t('nav.dispensing'), to: '/pharmacy/dispensing', color: 'purple' },
   { icon: 'mdi-chart-bar', label: t('nav.analytics'), to: '/pharmacy/analytics', color: 'teal' }
-])
+].filter(a => canAccessRoute(auth.role, a.to)))
 
 function formatRelative(v) {
   if (!v) return ''

@@ -110,7 +110,7 @@ class _StaffPerformanceScreenState extends ConsumerState<StaffPerformanceScreen>
                 ? leaderboard
                 : leaderboard.where((s) => '${s['name'] ?? ''}'.toLowerCase().contains(search) || '${s['email'] ?? ''}'.toLowerCase().contains(search)).toList();
 
-            return ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 80), children: [
+            return ListView(padding: const EdgeInsets.fromLTRB(10, 4, 10, 80), children: [
               // KPI cards
               GridView.count(
                 crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),

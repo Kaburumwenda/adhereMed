@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 
+from config.branch_scope import BranchScopedMixin
 from .models import PurchaseOrder, GoodsReceivedNote
 from .serializers import (
     PurchaseOrderSerializer,
@@ -11,11 +12,11 @@ from .serializers import (
 )
 
 
-class PurchaseOrderViewSet(viewsets.ModelViewSet):
-    queryset = PurchaseOrder.objects.select_related('supplier', 'ordered_by').prefetch_related('grns').all()
+class PurchaseOrderViewSet(BranchScopedMixin, viewsets.ModelViewSet):
+    queryset = PurchaseOrder.objects.select_related('supplier', 'ordered_by', 'branch').prefetch_related('grns').all()
     serializer_class = PurchaseOrderSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['status', 'supplier']
+    filterset_fields = ['status', 'supplier', 'branch']
     search_fields = ['po_number', 'supplier__name']
     ordering_fields = ['created_at', 'order_date', 'total_cost']
 

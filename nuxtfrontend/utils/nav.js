@@ -20,6 +20,8 @@ export function getNavSections(role, tenantType, t = (x) => x) {
             { icon: 'mdi-stethoscope', label: 'Doctor Commissions', path: '/superadmin/billing/doctors' }
           ]
         },
+        { icon: 'mdi-circle-multiple', label: 'Adhere Coins', path: '/superadmin/coins' },
+        { icon: 'mdi-account-arrow-right', label: 'Referrals', path: '/superadmin/referrals' },
         { icon: 'mdi-database', label: 'Seed Data', path: '/superadmin/seed' },
         { icon: 'mdi-hospital-box', label: 'Clinical Catalog', path: '/superadmin/clinical-catalog' },
         { icon: 'mdi-bookshelf', label: 'Catalog Manager', path: '/admin/catalog' },
@@ -82,7 +84,7 @@ export function getNavSections(role, tenantType, t = (x) => x) {
     sections.push({ label: 'HOSPITAL', items: hospitalItems })
   }
 
-  const pharmacyRoles = ['tenant_admin', 'pharmacy_admin', 'pharmacist', 'pharmacy_tech', 'cashier', 'admin']
+  const pharmacyRoles = ['tenant_admin', 'pharmacy_admin', 'branch_admin', 'pharmacist', 'pharmacy_tech', 'cashier', 'admin']
   if (tenantType === 'pharmacy' && pharmacyRoles.includes(role)) {
     sections.push({
       label: t('nav.pharmacy'),
@@ -155,6 +157,7 @@ export function getNavSections(role, tenantType, t = (x) => x) {
           ]
         },
         { icon: 'mdi-cog', label: t('nav.settings'), path: '/pharmacy/settings' },
+        { icon: 'mdi-database-import', label: 'Setup / Seed', path: '/pharmacy/setup' },
         {
           icon: 'mdi-gift', label: 'Referrals', path: '/pharmacy/referral',
           children: [

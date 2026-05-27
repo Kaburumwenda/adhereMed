@@ -86,6 +86,10 @@ class TenantRegistrationView(generics.CreateAPIView):
         from usage_billing.referral_models import CoinTransaction, Referral, ReferralProfile
         new_profile = ReferralProfile.objects.create(tenant=tenant)
 
+        # ── Auto-grant 300 coins for new pharmacy accounts ────────────
+        if tenant.type == 'pharmacy':
+            new_profile.credit(300, 'Welcome bonus: 300 Adhere Coins on registration')
+
         referral_code = data.get('referral_code', '').strip().upper()
         if referral_code:
             try:

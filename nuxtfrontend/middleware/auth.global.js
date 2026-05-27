@@ -7,6 +7,7 @@ const AUTH_ROUTES = new Set([
   '/login',
   '/register',
   '/register-facility',
+  '/register-pharmacy',
   '/register-doctor',
   '/forgot-password',
   '/reset-password'

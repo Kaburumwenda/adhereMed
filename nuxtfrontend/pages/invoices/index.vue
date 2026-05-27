@@ -12,6 +12,20 @@
         </div>
       </div>
       <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
+        <v-select
+          v-if="branchStore.hasBranches"
+          v-model="branchFilter"
+          :items="branchFilterItems"
+          item-title="name"
+          item-value="id"
+          density="compact"
+          variant="outlined"
+          rounded="lg"
+          hide-details
+          :disabled="isBranchLocked"
+          prepend-inner-icon="mdi-store-marker"
+          style="min-width: 180px"
+        />
         <v-btn rounded="lg" variant="flat" color="primary" prepend-icon="mdi-refresh" class="text-none"
                  :loading="loading" @click="loadAll">{{ $t('common.refresh') }}</v-btn>
       <v-btn rounded="lg" variant="flat" color="primary" prepend-icon="mdi-download" class="text-none"
@@ -388,11 +402,27 @@
 import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { formatMoney, formatDate, formatDateTime } from '~/utils/format'
 import EmptyState from '~/components/EmptyState.vue'
+import { useBranchStore } from '~/stores/branch'
+import { useAuthStore } from '~/stores/auth'
 
 const { $api } = useNuxtApp()
+const branchStore = useBranchStore()
+const auth = useAuthStore()
+
+const isBranchLocked = computed(() => auth.role === 'branch_admin')
+const branchFilter = ref(null)
+const branchFilterItems = computed(() => {
+  if (isBranchLocked.value) {
+    const b = branchStore.currentBranch
+    return b ? [{ id: b.id, name: b.name }] : []
+  }
+  const items = branchStore.activeBranches.map(b => ({ id: b.id, name: b.name }))
+  items.unshift({ id: null, name: 'All Branches' })
+  return items
+})
 
 const loading = ref(false)
 const saving = ref(false)
@@ -451,8 +481,13 @@ function applyCustom() {
 // ────── Loading
 async function loadAll() {
   loading.value = true
+  if (isBranchLocked.value && branchStore.currentBranchId) {
+    branchFilter.value = branchStore.currentBranchId
+  }
   try {
-    const { data } = await $api.get('/billing/invoices/', { params: { page_size: 500, ordering: '-created_at' } })
+    const params = { page_size: 500, ordering: '-created_at' }
+    if (branchFilter.value) params.branch = branchFilter.value
+    const { data } = await $api.get('/billing/invoices/', { params })
     invoices.value = data?.results || (Array.isArray(data) ? data : [])
   } catch (e) {
     notify('Failed to load invoices', 'error')
@@ -460,6 +495,7 @@ async function loadAll() {
     loading.value = false
   }
 }
+watch(branchFilter, () => loadAll())
 onMounted(loadAll)
 
 // ────── Helpers

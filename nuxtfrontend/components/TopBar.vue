@@ -38,6 +38,8 @@
       prepend-inner-icon="mdi-store-marker"
       style="max-width: 200px"
       class="mx-1 d-none d-md-flex"
+      :disabled="!branchStore.canSwitchBranch"
+      :readonly="!branchStore.canSwitchBranch"
       @update:model-value="branchStore.select($event)"
     />
 
@@ -89,9 +91,18 @@ const router = useRouter()
 
 const isFullscreen = ref(false)
 
-// Admin sees "All Branches" + each branch; staff sees only active branches
+// Admin sees "All Branches" + each branch; soft-assign roles see only nearby/assigned branches
+const SOFT_ROLES = new Set(['cashier', 'pharmacist', 'pharmacy_tech'])
 const branchItems = computed(() => {
-  const items = branchStore.activeBranches.map(b => ({ id: b.id, name: b.name }))
+  let source
+  if (ADMIN_ROLES.has(auth.role)) {
+    source = branchStore.activeBranches
+  } else if (SOFT_ROLES.has(auth.role)) {
+    source = branchStore.allowedBranches
+  } else {
+    source = branchStore.activeBranches
+  }
+  const items = source.map(b => ({ id: b.id, name: b.name }))
   if (ADMIN_ROLES.has(auth.role)) {
     items.unshift({ id: null, name: 'All Branches' })
   }

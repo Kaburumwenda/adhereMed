@@ -67,6 +67,22 @@
           style="max-width: 240px; min-width: 180px"
           clearable
         />
+        <v-select
+          v-if="branchStore.hasBranches"
+          v-model="branchFilter"
+          :items="branchFilterItems"
+          item-title="name"
+          item-value="id"
+          variant="solo-filled"
+          density="comfortable"
+          hide-details
+          flat
+          rounded="lg"
+          bg-color="surface"
+          :disabled="isBranchLocked"
+          prepend-inner-icon="mdi-store-marker"
+          style="max-width: 220px; min-width: 180px"
+        />
         <v-btn-toggle v-model="viewMode" mandatory density="comfortable" rounded="lg" variant="outlined" color="primary">
           <v-btn value="table" icon="mdi-table" size="small" title="Table view" />
           <v-btn value="cards" icon="mdi-view-grid" size="small" title="Card view" />
@@ -202,10 +218,26 @@
 <script setup>
 import { useResource } from '~/composables/useResource'
 import { formatDate, formatMoney } from '~/utils/format'
+import { useBranchStore } from '~/stores/branch'
+import { useAuthStore } from '~/stores/auth'
 
 const { $api } = useNuxtApp()
 const router = useRouter()
+const branchStore = useBranchStore()
+const auth = useAuthStore()
 const r = useResource('/purchase-orders/orders/')
+
+const isBranchLocked = computed(() => auth.role === 'branch_admin')
+const branchFilter = ref(null)
+const branchFilterItems = computed(() => {
+  if (isBranchLocked.value) {
+    const b = branchStore.currentBranch
+    return b ? [{ id: b.id, name: b.name }] : []
+  }
+  const items = branchStore.activeBranches.map(b => ({ id: b.id, name: b.name }))
+  items.unshift({ id: null, name: 'All Branches' })
+  return items
+})
 
 const items = computed(() => r.items.value)
 const loading = computed(() => r.loading.value)
@@ -281,7 +313,11 @@ function initials(name) {
 
 function goDetail(po) { router.push(`/purchase-orders/${po.id}`) }
 
-async function refresh() { await r.list() }
+async function refresh() {
+  const params = {}
+  if (branchFilter.value) params.branch = branchFilter.value
+  await r.list(params)
+}
 
 async function markReceived(po) {
   try {
@@ -320,7 +356,13 @@ async function doDelete() {
   }
 }
 
-onMounted(() => r.list())
+watch(branchFilter, () => refresh())
+onMounted(() => {
+  if (isBranchLocked.value && branchStore.currentBranchId) {
+    branchFilter.value = branchStore.currentBranchId
+  }
+  refresh()
+})
 </script>
 
 <style scoped>

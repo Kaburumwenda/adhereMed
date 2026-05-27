@@ -6,8 +6,22 @@ import '../screens/auth/login_screen.dart';
 import '../screens/auth/welcome_screen.dart';
 import '../screens/shell/shell_screen.dart';
 import '../screens/pharmacy/dashboard_screen.dart';
+import '../screens/pharmacy/cashier_dashboard_screen.dart';
 import '../screens/pharmacy/inventory/inventory_screen.dart';
 import '../screens/pharmacy/inventory/stock_detail_screen.dart';
+// Homecare
+import '../screens/homecare/homecare_shell_screen.dart';
+import '../screens/homecare/dashboard_screen.dart' as hc;
+import '../screens/homecare/assignments_screen.dart';
+import '../screens/homecare/patients_screen.dart';
+import '../screens/homecare/patient_enroll_screen.dart';
+import '../screens/homecare/patient_detail_screen.dart';
+import '../screens/homecare/schedules_screen.dart';
+import '../screens/homecare/caregivers_screen.dart';
+import '../screens/homecare/caregiver_enroll_screen.dart';
+import '../screens/homecare/caregiver_detail_screen.dart';
+import '../screens/homecare/escalations_screen.dart';
+import '../screens/homecare/my_day_screen.dart';
 import '../screens/pharmacy/inventory/add_stock_screen.dart';
 import '../screens/pharmacy/inventory/edit_stock_screen.dart';
 import '../screens/pharmacy/inventory/categories_screen.dart';
@@ -36,6 +50,8 @@ import '../screens/pharmacy/prescriptions/prescriptions_screen.dart';
 import '../screens/pharmacy/insurance/insurance_screen.dart';
 import '../screens/pharmacy/branches/branches_screen.dart';
 import '../screens/pharmacy/catalog/medication_catalog_screen.dart';
+import '../screens/pharmacy/pos/parked_sales_screen.dart';
+import '../screens/pharmacy/more_screen.dart';
 import '../screens/pharmacy/purchase_orders/purchase_orders_screen.dart';
 import '../screens/pharmacy/purchase_orders/new_purchase_order_screen.dart';
 import '../screens/pharmacy/purchase_orders/purchase_order_detail_screen.dart';
@@ -66,7 +82,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       final loc = state.matchedLocation;
       final isAuthRoute = loc == '/login' || loc == '/welcome';
       if (!loggedIn && !isAuthRoute) return '/welcome';
-      if (loggedIn && isAuthRoute) return '/';
+      if (loggedIn && isAuthRoute) {
+        // Route to the correct dashboard based on tenant type
+        if (auth.tenantType == 'homecare') return '/homecare';
+        return '/';
+      }
       return null;
     },
     routes: [
@@ -76,7 +96,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         navigatorKey: _shellNavigatorKey,
         builder: (_, __, child) => ShellScreen(child: child),
         routes: [
-          GoRoute(path: '/', builder: (_, __) => const DashboardScreen()),
+          GoRoute(path: '/', builder: (context, state) {
+            final auth = ref.read(authProvider);
+            if (auth.user?.role == 'cashier') return const CashierDashboardScreen();
+            return const DashboardScreen();
+          }),
           // Inventory
           GoRoute(path: '/inventory', builder: (_, __) => const InventoryScreen()),
           GoRoute(path: '/inventory/add', builder: (_, __) => const AddStockScreen()),
@@ -115,6 +139,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/alerts', builder: (_, __) => const AlertsScreen()),
           GoRoute(path: '/branches', builder: (_, __) => const BranchesScreen()),
           GoRoute(path: '/settings', builder: (_, __) => const SettingsScreen()),
+          GoRoute(path: '/more', builder: (_, __) => const MoreScreen()),
           GoRoute(path: '/catalog', builder: (_, __) => const MedicationCatalogScreen()),
           // Purchase Orders
           GoRoute(path: '/purchase-orders', builder: (_, __) => const PurchaseOrdersScreen()),
@@ -124,6 +149,24 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/pos', builder: (_, __) => const POSSelectorScreen()),
           GoRoute(path: '/pos/pharmacy', builder: (_, __) => const POSScreen()),
           GoRoute(path: '/pos/smart', builder: (_, __) => const SmartPOSScreen()),
+          GoRoute(path: '/pos/parked', builder: (_, __) => const ParkedSalesScreen()),
+        ],
+      ),
+      // ── Homecare Module ──
+      ShellRoute(
+        builder: (_, __, child) => HomecareShellScreen(child: child),
+        routes: [
+          GoRoute(path: '/homecare', builder: (_, __) => const hc.HomecareDashboardScreen()),
+          GoRoute(path: '/homecare/assignments', builder: (_, __) => const HomecareAssignmentsScreen()),
+          GoRoute(path: '/homecare/patients', builder: (_, __) => const HomecarePatientsScreen()),
+          GoRoute(path: '/homecare/patients/new', builder: (_, __) => const HomecarePatientEnrollScreen()),
+          GoRoute(path: '/homecare/patients/:id', builder: (_, s) => HomecarePatientDetailScreen(id: int.parse(s.pathParameters['id']!))),
+          GoRoute(path: '/homecare/schedules', builder: (_, __) => const HomecareSchedulesScreen()),
+          GoRoute(path: '/homecare/caregivers', builder: (_, __) => const HomecareCaregiversScreen()),
+          GoRoute(path: '/homecare/caregivers/new', builder: (_, __) => const HomecareCaregiverEnrollScreen()),
+          GoRoute(path: '/homecare/caregivers/:id', builder: (_, s) => HomecareCaregiverDetailScreen(id: int.parse(s.pathParameters['id']!))),
+          GoRoute(path: '/homecare/escalations', builder: (_, __) => const HomecareEscalationsScreen()),
+          GoRoute(path: '/homecare/my-day', builder: (_, __) => const HomecareMyDayScreen()),
         ],
       ),
     ],

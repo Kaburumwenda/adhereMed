@@ -292,7 +292,7 @@ class _NotificationsTabState extends ConsumerState<_NotificationsTab> {
 
       // ── Search + filters ──
       Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+        padding: const EdgeInsets.fromLTRB(10, 0, 10, 0),
         child: Row(children: [
           Expanded(child: TextField(
             decoration: InputDecoration(
@@ -349,7 +349,7 @@ class _NotificationsTabState extends ConsumerState<_NotificationsTab> {
       onRefresh: () async { setState(() => _items = []); ref.invalidate(_alertsProvider); },
       child: ListView.builder(
         controller: _scrollCtrl,
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 80),
         itemCount: items.length + (_loadingMore || _nextUrl != null ? 1 : 0),
         itemBuilder: (_, i) {
           if (i >= items.length) {
@@ -392,7 +392,7 @@ class _StockAlertsTab extends ConsumerWidget {
 
         return RefreshIndicator(
           onRefresh: () async => ref.invalidate(_stockAlertsProvider),
-          child: ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 80), children: [
+          child: ListView(padding: const EdgeInsets.fromLTRB(10, 12, 10, 80), children: [
             // ── KPI row ──
             _KpiRow(items: [
               _Kpi('Low Stock', lowStock.length, Colors.orange.shade600),
@@ -596,7 +596,7 @@ void _showAlertDetail(BuildContext context, dynamic alert, WidgetRef ref) {
               gradient: LinearGradient(colors: [tc.withValues(alpha: 0.12), tc.withValues(alpha: 0.02)],
                 begin: Alignment.topCenter, end: Alignment.bottomCenter),
               borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            padding: const EdgeInsets.fromLTRB(10, 12, 10, 20),
             child: Column(children: [
               Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
               const SizedBox(height: 16),
@@ -669,7 +669,7 @@ class _KpiRow extends StatelessWidget {
   const _KpiRow({required this.items});
   final List<_Kpi> items;
   @override Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
     child: Row(children: items.map((k) => Expanded(child: Container(
       margin: const EdgeInsets.symmetric(horizontal: 3),
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),

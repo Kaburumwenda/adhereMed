@@ -12,6 +12,20 @@
         </div>
       </div>
       <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
+        <v-select
+          v-if="branchStore.hasBranches"
+          v-model="branchFilter"
+          :items="branchFilterItems"
+          item-title="name"
+          item-value="id"
+          density="compact"
+          variant="outlined"
+          rounded="lg"
+          hide-details
+          :disabled="isBranchLocked"
+          prepend-inner-icon="mdi-store-marker"
+          style="min-width: 180px"
+        />
         <v-btn rounded="lg" variant="flat" color="primary" prepend-icon="mdi-refresh" class="text-none"
                  :loading="loading" @click="loadAll">Refresh</v-btn>
       <v-btn rounded="lg" v-bind="props" variant="flat" color="primary" class="text-none"
@@ -1278,9 +1292,25 @@ import { useRoute } from 'vue-router'
 import { formatMoney, formatDate, formatDateTime } from '~/utils/format'
 import EmptyState from '~/components/EmptyState.vue'
 import SparkArea from '~/components/SparkArea.vue'
+import { useBranchStore } from '~/stores/branch'
+import { useAuthStore } from '~/stores/auth'
 
 const { $api } = useNuxtApp()
 const route = useRoute()
+const branchStore = useBranchStore()
+const auth = useAuthStore()
+
+const isBranchLocked = computed(() => auth.role === 'branch_admin')
+const branchFilter = ref(null)
+const branchFilterItems = computed(() => {
+  if (isBranchLocked.value) {
+    const b = branchStore.currentBranch
+    return b ? [{ id: b.id, name: b.name }] : []
+  }
+  const items = branchStore.activeBranches.map(b => ({ id: b.id, name: b.name }))
+  items.unshift({ id: null, name: 'All Branches' })
+  return items
+})
 
 const loading = ref(false)
 const saving = ref(false)
@@ -1369,16 +1399,20 @@ const inventoryValuation = ref(null) // /reports/inventory-valuation/ snapshot
 
 async function loadAll() {
   loading.value = true
+  if (isBranchLocked.value && branchStore.currentBranchId) {
+    branchFilter.value = branchStore.currentBranchId
+  }
   data.value.range = resolveRange()
   const { start, end } = data.value.range
   try {
     const params = { date_from: start, date_to: end, page_size: 500, ordering: '-created_at' }
+    if (branchFilter.value) params.branch = branchFilter.value
     const [s, inv, pay, exp, cred, api, invVal] = await Promise.allSettled([
       $api.get('/pos/transactions/', { params: { ...params, status: 'completed' } }),
-      $api.get('/billing/invoices/', { params: { page_size: 500, ordering: '-created_at' } }),
-      $api.get('/billing/payments/', { params: { page_size: 500, ordering: '-paid_at' } }),
-      $api.get('/expenses/expenses/', { params: { page_size: 500, ordering: '-expense_date' } }),
-      $api.get('/pos/credits/', { params: { page_size: 500, ordering: '-created_at' } }),
+      $api.get('/billing/invoices/', { params: { page_size: 500, ordering: '-created_at', ...(branchFilter.value ? { branch: branchFilter.value } : {}) } }),
+      $api.get('/billing/payments/', { params: { page_size: 500, ordering: '-paid_at', ...(branchFilter.value ? { branch: branchFilter.value } : {}) } }),
+      $api.get('/expenses/expenses/', { params: { page_size: 500, ordering: '-expense_date', ...(branchFilter.value ? { branch: branchFilter.value } : {}) } }),
+      $api.get('/pos/credits/', { params: { page_size: 500, ordering: '-created_at', ...(branchFilter.value ? { branch: branchFilter.value } : {}) } }),
       $api.get('/usage-billing/dashboard/'),
       $api.get('/reports/inventory-valuation/'),
     ])
@@ -1402,6 +1436,7 @@ function pickRows(settled) {
   return d?.results || (Array.isArray(d) ? d : [])
 }
 
+watch(branchFilter, () => loadAll())
 onMounted(loadAll)
 
 // ────── Derived: filter by date range (client-side for invoices/expenses)

@@ -52,13 +52,6 @@ watch(width, (w) => {
   rail.value = w < 1100 && !mobile.value
 }, { immediate: true })
 
-// Auto-collapse sidebar to rail mode whenever a POS page is open,
-// except for /pos/history and /pos/parked which should keep the sidebar expanded.
-watch(() => route.path, (p) => {
-  if (p.startsWith('/pos') && !p.startsWith('/pos/history') && !p.startsWith('/pos/parked')) {
-    rail.value = true
-  }
-}, { immediate: true })
 
 const pageTitle = computed(() => {
   const segs = route.path.split('/').filter(Boolean)
@@ -75,6 +68,12 @@ async function onLogout() {
 onMounted(async () => {
   if (auth.isLoggedIn) {
     await branchStore.load()
+    // Lock branch for users with an assigned branch (branch_admin, pharmacist, cashier, etc.)
+    const userBranchId = auth.user?.branch_id
+    if (userBranchId) {
+      branchStore.lockToUserBranch(auth.role, userBranchId)
+    }
+    // Auto-assign nearest and capture location for branch filtering
     await branchStore.autoAssignNearest(auth.role)
   }
 })

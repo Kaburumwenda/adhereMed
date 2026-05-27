@@ -1,6 +1,7 @@
 from rest_framework import viewsets, filters, status
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 
@@ -67,3 +68,85 @@ class DeliveryViewSet(viewsets.ModelViewSet):
             delivery.delivered_at = timezone.now()
         delivery.save()
         return Response(DeliverySerializer(delivery).data)
+
+
+# ── Pharmacy Setup / Seed ────────────────────────────────────────────────────────
+
+PHARMACY_SEED_COMMANDS = {
+    "categories_units": {
+        "label": "Categories & Units",
+        "description": "34 stock categories and 24 measurement units (subset of full stock seed)",
+        "command": "seed_pharmacy_stock",
+        "args": {"skip_existing": True},
+    },
+    "medications": {
+        "label": "Medication Catalog",
+        "description": "~120 common medications (analgesics, antibiotics, etc.)",
+        "command": "seed_medications",
+        "args": {"skip_existing": True},
+    },
+    "interactions": {
+        "label": "Drug Interactions",
+        "description": "~30 common drug-drug interaction pairs with severity & advice",
+        "command": "seed_interactions",
+        "args": {"skip_existing": True},
+    },
+}
+
+ALLOWED_SEED_ROLES = {"tenant_admin", "branch_admin", "pharmacist", "admin"}
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def pharmacy_seed_catalog(request):
+    """Return available pharmacy seed commands for tenant/branch admins."""
+    if request.user.role not in ALLOWED_SEED_ROLES:
+        return Response(
+            {"detail": "You do not have permission to seed data."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    items = []
+    for key, info in PHARMACY_SEED_COMMANDS.items():
+        items.append({
+            "key": key,
+            "label": info["label"],
+            "description": info["description"],
+        })
+    return Response(items)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def pharmacy_run_seed(request):
+    """
+    Run a pharmacy seed command for the current tenant.
+    Body: { "command": "pharmacy_stock" }
+    """
+    from django.core.management import call_command
+
+    if request.user.role not in ALLOWED_SEED_ROLES:
+        return Response(
+            {"detail": "You do not have permission to seed data."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    cmd_key = request.data.get("command", "")
+    if cmd_key not in PHARMACY_SEED_COMMANDS:
+        return Response(
+            {"detail": f"Unknown seed command: {cmd_key}"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    info = PHARMACY_SEED_COMMANDS[cmd_key]
+    try:
+        kwargs = info.get("args", {})
+        call_command(info["command"], **kwargs)
+        return Response({
+            "detail": f"'{info['label']}' seeded successfully.",
+            "command": cmd_key,
+        })
+    except Exception as e:
+        return Response(
+            {"detail": f"Seed failed: {str(e)}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )

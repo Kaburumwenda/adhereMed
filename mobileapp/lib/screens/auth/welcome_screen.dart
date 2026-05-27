@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
+import '../../l10n/app_localizations.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  NETWORK NODE MODEL
@@ -82,12 +83,9 @@ class _WelcomeScreenState extends State<WelcomeScreen>
     with TickerProviderStateMixin {
   late final AnimationController _netCtrl;
   late final AnimationController _pulseCtrl;
-  late final AnimationController _splitCtrl;
-  late final Animation<double> _splitAnim;
   final List<_NetNode> _nodes = [];
   final _rng = Random(42);
   bool _nodesInit = false;
-  bool _splitting = false;
 
   static const _nodeData = [
     (Icons.local_hospital_rounded, Color(0xFF5EEAD4)),
@@ -116,21 +114,10 @@ class _WelcomeScreenState extends State<WelcomeScreen>
       vsync: this,
       duration: const Duration(seconds: 3),
     )..repeat(reverse: true);
-
-    _splitCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    );
-    _splitAnim = CurvedAnimation(parent: _splitCtrl, curve: Curves.easeInBack);
   }
 
   void _navigateToLogin() {
-    if (_splitting) return;
-    _splitting = true;
-    setState(() {});
-    _splitCtrl.forward().then((_) {
-      if (mounted) context.go('/login');
-    });
+    context.go('/login');
   }
 
   void _initNodes(Size size) {
@@ -173,7 +160,6 @@ class _WelcomeScreenState extends State<WelcomeScreen>
   void dispose() {
     _netCtrl.dispose();
     _pulseCtrl.dispose();
-    _splitCtrl.dispose();
     super.dispose();
   }
 
@@ -183,57 +169,7 @@ class _WelcomeScreenState extends State<WelcomeScreen>
     _initNodes(size);
 
     return Scaffold(
-      body: AnimatedBuilder(
-        animation: _splitAnim,
-        builder: (_, __) {
-          final t = _splitAnim.value;
-          final halfH = size.height / 2;
-
-          return Stack(
-            children: [
-              // ── Reveal layer (dark bg behind the split) ──
-              if (t > 0)
-                Container(
-                  color: const Color(0xFF0F172A),
-                  child: Center(
-                    child: Opacity(
-                      opacity: t,
-                      child: const Icon(Icons.lock_open_rounded,
-                          size: 48, color: Color(0xFF5EEAD4)),
-                    ),
-                  ),
-                ),
-
-              // ── Top half ──
-              Transform.translate(
-                offset: Offset(0, -halfH * t),
-                child: ClipRect(
-                  child: Align(
-                    alignment: Alignment.topCenter,
-                    heightFactor: 0.5,
-                    child: _buildBody(size),
-                  ),
-                ),
-              ),
-
-              // ── Bottom half ──
-              Transform.translate(
-                offset: Offset(0, halfH * t),
-                child: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: ClipRect(
-                    child: Align(
-                      alignment: Alignment.bottomCenter,
-                      heightFactor: 0.5,
-                      child: _buildBody(size),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
+      body: _buildBody(size),
     );
   }
 
@@ -279,9 +215,9 @@ class _WelcomeScreenState extends State<WelcomeScreen>
               children: [
                 const SizedBox(height: 12),
 
-                // ── Top Bar ──
+                // ── Top Bar (fixed) ──
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
                   child: Row(
                     children: [
                       Container(
@@ -318,13 +254,13 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                         style: FilledButton.styleFrom(
                           backgroundColor: const Color(0xFF0D9488),
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12)),
                           elevation: 0,
                         ),
-                        child: const Text('Sign In',
-                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                        child: Text(AppLocalizations.of(context)?.signIn ?? 'Sign In',
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
                       ),
                     ],
                   ),
@@ -333,10 +269,10 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                     .fadeIn(duration: 500.ms)
                     .slideY(begin: -0.3, curve: Curves.easeOut),
 
-                // ── Hero Section ──
+                // ── Scrollable Content ──
                 Expanded(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
                     child: Column(
                       children: [
                         SizedBox(height: size.height * 0.05),
@@ -468,6 +404,10 @@ class _WelcomeScreenState extends State<WelcomeScreen>
           'Records, prescriptions\n& online orders', Color(0xFFFBBF24)),
       _Feature(Icons.home_rounded, 'Homecare',
           'In-home visits, care\nplans & monitoring', Color(0xFFA7F3D0)),
+      _Feature(Icons.medical_information_rounded, 'Doctors',
+          'Profiles, schedules\n& consultations', Color(0xFF93C5FD)),
+      _Feature(Icons.shield_rounded, 'Insurance',
+          'Claims, coverage\n& authorizations', Color(0xFFFDE68A)),
     ];
 
     return Wrap(

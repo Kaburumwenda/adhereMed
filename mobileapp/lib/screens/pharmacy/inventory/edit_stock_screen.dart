@@ -6,14 +6,14 @@ import 'barcode_scanner_dialog.dart';
 
 final _categoriesProvider = FutureProvider.autoDispose<List>((ref) async {
   final dio = ref.read(dioProvider);
-  final res = await dio.get('/inventory/categories/', queryParameters: {'page_size': 200});
-  return (res.data['results'] as List?) ?? [];
+  final res = await dio.get('/inventory/categories/');
+  return res.data is List ? res.data as List : (res.data['results'] as List?) ?? [];
 });
 
 final _unitsProvider = FutureProvider.autoDispose<List>((ref) async {
   final dio = ref.read(dioProvider);
-  final res = await dio.get('/inventory/units/', queryParameters: {'page_size': 200});
-  return (res.data['results'] as List?) ?? [];
+  final res = await dio.get('/inventory/units/');
+  return res.data is List ? res.data as List : (res.data['results'] as List?) ?? [];
 });
 
 final _detailProvider = FutureProvider.autoDispose.family<Map, int>((ref, id) async {

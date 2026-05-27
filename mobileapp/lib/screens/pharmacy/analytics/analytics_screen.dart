@@ -206,7 +206,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> with TickerPr
 
           // ── Tab Bar ──
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             child: Container(
               decoration: BoxDecoration(
                 color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
@@ -372,7 +372,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> with TickerPr
     final cashierStats = cashierMap.values.toList()..sort((a, b) => (b['revenue'] as double).compareTo(a['revenue'] as double));
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+      padding: const EdgeInsets.fromLTRB(10, 12, 10, 100),
       children: [
         GridView.count(
           crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
@@ -1304,7 +1304,7 @@ class _ProductsTabState extends State<_ProductsTab> with TickerProviderStateMixi
     return Column(children: [
       // KPIs
       Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+        padding: const EdgeInsets.fromLTRB(10, 12, 10, 0),
         child: SizedBox(
           height: 54,
           child: ListView(scrollDirection: Axis.horizontal, children: [
@@ -1365,7 +1365,7 @@ class _ProductsTabState extends State<_ProductsTab> with TickerProviderStateMixi
     final top = sorted.take(20).toList();
     final maxVal = top.isNotEmpty ? (top[0][_sortBy] as num).toDouble() : 1.0;
 
-    return ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 80), children: [
+    return ListView(padding: const EdgeInsets.fromLTRB(10, 8, 10, 80), children: [
       // Sort toggle
       Row(children: [
         const Expanded(child: _SectionLabel('Top 20 products')),
@@ -1415,7 +1415,7 @@ class _ProductsTabState extends State<_ProductsTab> with TickerProviderStateMixi
   }
 
   Widget _buildSlowMoving(ColorScheme cs, List<Map<String, dynamic>> items, double totalValue) {
-    return ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 80), children: [
+    return ListView(padding: const EdgeInsets.fromLTRB(10, 8, 10, 80), children: [
       // Threshold control
       Row(children: [
         const Expanded(child: _SectionLabel('Slow Moving')),
@@ -1464,7 +1464,7 @@ class _ProductsTabState extends State<_ProductsTab> with TickerProviderStateMixi
   }
 
   Widget _buildNeverSold(ColorScheme cs, List items, double totalValue) {
-    return ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 80), children: [
+    return ListView(padding: const EdgeInsets.fromLTRB(10, 8, 10, 80), children: [
       const _SectionLabel('Never Sold'),
       if (items.isNotEmpty) ...[
         const SizedBox(height: 8),
@@ -1499,7 +1499,7 @@ class _ProductsTabState extends State<_ProductsTab> with TickerProviderStateMixi
 
   Widget _buildAbc(ColorScheme cs, List<Map<String, dynamic>> sorted, int aCount, int bCount, int cCount, double aRev, double bRev, double cRev, double totalRevenue) {
     final displayed = _abcGradeFilter != null ? sorted.where((p) => p['grade'] == _abcGradeFilter).toList() : sorted;
-    return ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 80), children: [
+    return ListView(padding: const EdgeInsets.fromLTRB(10, 8, 10, 80), children: [
       const _SectionLabel('ABC Analysis'),
       const SizedBox(height: 4),
       Text('A ≤ 80% cumulative revenue · B ≤ 95% · C > 95%', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
@@ -1563,7 +1563,7 @@ class _ProductsTabState extends State<_ProductsTab> with TickerProviderStateMixi
   }
 
   Widget _buildDeadStock(ColorScheme cs, List items, double totalValue) {
-    return ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 80), children: [
+    return ListView(padding: const EdgeInsets.fromLTRB(10, 8, 10, 80), children: [
       const _SectionLabel('Dead Stock'),
       if (items.isNotEmpty) ...[
         const SizedBox(height: 8),
@@ -1733,7 +1733,7 @@ class _CategoriesTabState extends State<_CategoriesTab> with TickerProviderState
 
     return Column(children: [
       Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+        padding: const EdgeInsets.fromLTRB(10, 12, 10, 0),
         child: SizedBox(
           height: 54,
           child: ListView(scrollDirection: Axis.horizontal, children: [
@@ -1784,7 +1784,7 @@ class _CategoriesTabState extends State<_CategoriesTab> with TickerProviderState
     final cRev = sorted.where((c) => c['grade'] == 'C').fold<double>(0, (s, c) => s + (c['revenue'] as double));
     final displayed = _abcGradeFilter != null ? sorted.where((c) => c['grade'] == _abcGradeFilter).toList() : sorted;
 
-    return ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 80), children: [
+    return ListView(padding: const EdgeInsets.fromLTRB(10, 8, 10, 80), children: [
       const _SectionLabel('ABC Analysis'),
       const SizedBox(height: 4),
       Text('A ≤ 80% cumulative · B ≤ 95% · C > 95%', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
@@ -1859,7 +1859,7 @@ class _CategoriesTabState extends State<_CategoriesTab> with TickerProviderState
       segments.add(MapEntry('Other (${rest.length})', otherRev));
     }
 
-    return ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 80), children: [
+    return ListView(padding: const EdgeInsets.fromLTRB(10, 8, 10, 80), children: [
       const _SectionLabel('Revenue distribution'),
       const SizedBox(height: 8),
       _CategoryDonut(categories: segments, total: totalRevenue),
@@ -1900,7 +1900,7 @@ class _CategoriesTabState extends State<_CategoriesTab> with TickerProviderState
 
   Widget _buildCatList(ColorScheme cs, String title, List<Map<String, dynamic>> items, Color alertColor, {bool showSold = false}) {
     final totalValue = items.fold<double>(0, (s, c) => s + (c['costValue'] as double));
-    return ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 80), children: [
+    return ListView(padding: const EdgeInsets.fromLTRB(10, 8, 10, 80), children: [
       _SectionLabel(title),
       if (items.isNotEmpty) ...[
         const SizedBox(height: 8),

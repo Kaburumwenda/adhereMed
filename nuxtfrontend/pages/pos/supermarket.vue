@@ -6,7 +6,7 @@
         <v-avatar color="primary" rounded="lg" size="40"><v-icon>mdi-cart-variant</v-icon></v-avatar>
         <div>
           <div class="smkt-brand">{{ $t('posSupermarket.title') }}</div>
-          <div class="smkt-subbrand">Lane #{{ laneId }} · {{ today }} · {{ clock }}</div>
+          <div class="smkt-subbrand">{{ branchStore.currentBranchName ? branchStore.currentBranchName + ' · ' : '' }}Lane #{{ laneId }} · {{ today }} · {{ clock }}</div>
         </div>
       </div>
 
@@ -694,7 +694,9 @@ watch(() => search.value, (q) => {
     ).length
     if (localCount > 3) return
     searching.value = true
-    const results = await $api.get(`/inventory/stocks/?search=${encodeURIComponent(trimmed)}&is_active=true&page_size=20`)
+    const bId = branchStore.currentBranchId
+    const branchParam = bId ? `&branch=${bId}` : ''
+    const results = await $api.get(`/inventory/stocks/?search=${encodeURIComponent(trimmed)}&is_active=true&page_size=20${branchParam}`)
       .then(r => r.data?.results || r.data || []).catch(() => [])
     serverResults.value = results
     searching.value = false
@@ -978,16 +980,18 @@ function _normalizeParked(srv) {
 }
 
 async function load() {
-  products.value = await $api.get('/inventory/stocks/?page_size=5000&is_active=true&ordering=-created_at')
+  const bId = branchStore.currentBranchId
+  const branchParam = bId ? `&branch=${bId}` : ''
+  products.value = await $api.get(`/inventory/stocks/?page_size=5000&is_active=true&ordering=-created_at${branchParam}`)
     .then(r => r.data?.results || r.data || []).catch(() => [])
-  const tx = await $api.get('/pos/transactions/?page_size=200')
+  const tx = await $api.get(`/pos/transactions/?page_size=200${branchParam}`)
     .then(r => r.data?.results || r.data || []).catch(() => [])
   const todayKey = new Date().toISOString().slice(0, 10)
   const todayTx = tx.filter(t => (t.created_at || '').startsWith(todayKey))
   todayStats.count = todayTx.length
   todayStats.revenue = todayTx.reduce((s, t) => s + Number(t.total || t.total_amount || 0), 0)
   // Load parked sales from server
-  const parked = await $api.get('/pos/parked-sales/?page_size=100')
+  const parked = await $api.get(`/pos/parked-sales/?page_size=100${branchParam}`)
     .then(r => r.data?.results || r.data || []).catch(() => [])
   parkedSales.value = parked.map(_normalizeParked)
   // If a parked sale was selected from the parked screen, resume it now
@@ -1003,6 +1007,9 @@ async function load() {
   focusScan()
 }
 onMounted(load)
+
+// Re-fetch products when the active branch changes
+watch(() => branchStore.currentBranchId, () => { load() })
 
 // ===== Persist cart & sale state to localStorage =====
 const LS_KEY = 'smkt_pos_state_v1'

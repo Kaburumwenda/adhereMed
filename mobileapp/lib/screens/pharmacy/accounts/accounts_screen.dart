@@ -554,7 +554,7 @@ class _ReceivablesTab extends ConsumerWidget {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheetState) => Padding(
-          padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+          padding: EdgeInsets.fromLTRB(10, 20, 10, MediaQuery.of(ctx).viewInsets.bottom + 20),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.outline.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2)))),
             const SizedBox(height: 16),
@@ -659,7 +659,7 @@ class _PayablesTab extends ConsumerWidget {
 
         // Add expense button
         FilledButton.icon(
-          onPressed: () => context.go('/expenses/add'),
+          onPressed: () => context.push('/expenses/add'),
           icon: const Icon(Icons.add, size: 18),
           label: const Text('New Expense'),
           style: FilledButton.styleFrom(
@@ -1083,7 +1083,7 @@ class _CashFlowChart extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.2))),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        padding: const EdgeInsets.fromLTRB(10, 16, 10, 8),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             _legendDot(const Color(0xFF22C55E), 'Income'),
@@ -1533,7 +1533,7 @@ class _GeneralLedgerTab extends StatelessWidget {
           elevation: 0,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.2))),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            padding: const EdgeInsets.fromLTRB(10, 16, 10, 8),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 _legendDot(const Color(0xFF3B82F6), 'Debit'),

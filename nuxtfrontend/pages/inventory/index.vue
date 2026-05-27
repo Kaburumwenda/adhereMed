@@ -13,9 +13,9 @@
       </div>
       <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
         <v-btn variant="tonal" color="primary" prepend-icon="mdi-refresh" rounded="lg" class="text-none" :loading="currentResource.loading.value" @click="reload">{{ $t('common.refresh') }}</v-btn>
-        <v-btn v-if="tab === 'stocks'" variant="tonal" color="warning" prepend-icon="mdi-table-edit" rounded="lg" class="text-none" to="/inventory/bulk?mode=edit">Edit mode</v-btn>
-        <v-btn v-if="tab === 'stocks'" variant="tonal" color="error" prepend-icon="mdi-trash-can" rounded="lg" class="text-none" to="/inventory/bulk?mode=delete">Delete mode</v-btn>
-        <v-btn color="primary" prepend-icon="mdi-plus" rounded="lg" class="text-none" :to="createPaths[tab]">{{ createLabels[tab] }}</v-btn>
+        <v-btn v-if="canEdit && tab === 'stocks'" variant="tonal" color="warning" prepend-icon="mdi-table-edit" rounded="lg" class="text-none" to="/inventory/bulk?mode=edit">Edit mode</v-btn>
+        <v-btn v-if="canEdit && tab === 'stocks'" variant="tonal" color="error" prepend-icon="mdi-trash-can" rounded="lg" class="text-none" to="/inventory/bulk?mode=delete">Delete mode</v-btn>
+        <v-btn v-if="canEdit" color="primary" prepend-icon="mdi-plus" rounded="lg" class="text-none" :to="createPaths[tab]">{{ createLabels[tab] }}</v-btn>
       </div>
     </div>
 
@@ -105,9 +105,73 @@
           density="compact" variant="outlined" rounded="lg" hide-details
           prepend-inner-icon="mdi-filter-variant" style="min-width: 180px"
         />
+        <v-select
+          v-if="tab === 'stocks' && branchOptions.length > 1"
+          v-model="branchFilter"
+          :items="branchOptions"
+          item-title="label" item-value="value"
+          density="compact" variant="outlined" rounded="lg" hide-details
+          prepend-inner-icon="mdi-store-outline" style="min-width: 180px"
+          :disabled="branchStore.branchLocked"
+        />
         <v-spacer />
         <span class="text-caption text-medium-emphasis">{{ filteredItems.length }} of {{ currentItems.length }}</span>
       </div>
+
+      <!-- Date filter chips -->
+      <div class="d-flex flex-wrap align-center mt-2" style="gap:6px">
+        <v-icon size="18" class="text-medium-emphasis mr-1">mdi-calendar-filter</v-icon>
+        <v-chip
+          v-for="df in datePresets" :key="df.value"
+          :color="dateFilter === df.value ? 'primary' : undefined"
+          :variant="dateFilter === df.value ? 'flat' : 'tonal'"
+          size="small" rounded="lg" class="text-none"
+          @click="df.value === 'custom' ? (customDateDialog = true) : setDateFilter(df.value)"
+        >
+          {{ df.label }}
+        </v-chip>
+        <span v-if="dateFilter === 'custom' && customDateFrom && customDateTo" class="text-caption text-medium-emphasis ml-1">
+          {{ customDateFrom }} — {{ customDateTo }}
+        </span>
+        <v-chip
+          v-if="dateFilter !== 'all'"
+          size="small" variant="tonal" color="error" rounded="lg"
+          prepend-icon="mdi-close" class="text-none"
+          @click="setDateFilter('all')"
+        >
+          Clear
+        </v-chip>
+      </div>
+
+      <!-- Custom date range dialog -->
+      <v-dialog v-model="customDateDialog" max-width="400" persistent>
+        <v-card rounded="lg">
+          <v-card-title class="d-flex align-center" style="gap:8px">
+            <v-icon color="primary">mdi-calendar-range</v-icon>
+            Custom Date Range
+          </v-card-title>
+          <v-card-text>
+            <v-text-field
+              v-model="customDateFromTemp"
+              type="date"
+              label="From"
+              density="compact" variant="outlined" rounded="lg"
+              class="mb-3"
+            />
+            <v-text-field
+              v-model="customDateToTemp"
+              type="date"
+              label="To"
+              density="compact" variant="outlined" rounded="lg"
+            />
+          </v-card-text>
+          <v-card-actions>
+            <v-spacer />
+            <v-btn variant="text" class="text-none" @click="customDateDialog = false">Cancel</v-btn>
+            <v-btn color="primary" variant="flat" rounded="lg" class="text-none" :disabled="!customDateFromTemp || !customDateToTemp" @click="applyCustomDate">Apply</v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
     </v-card>
 
     <!-- Table -->
@@ -169,7 +233,7 @@
                 </span>
               </td>
               <td class="text-right">
-                <v-btn icon="mdi-pencil" variant="text" size="small" :to="`/inventory/stocks/${row.id}/edit`" />
+                <v-btn v-if="canEdit" icon="mdi-pencil" variant="text" size="small" :to="`/inventory/stocks/${row.id}/edit`" />
               </td>
             </tr>
           </tbody>
@@ -205,7 +269,7 @@
                 <div class="text-caption text-medium-emphasis mt-1">{{ sharePctByCategory(row.id) }}%</div>
               </td>
               <td class="text-right">
-                <v-btn icon="mdi-pencil" variant="text" size="small" :to="`/inventory/categories/${row.id}/edit`" />
+                <v-btn v-if="canEdit" icon="mdi-pencil" variant="text" size="small" :to="`/inventory/categories/${row.id}/edit`" />
               </td>
             </tr>
           </tbody>
@@ -232,7 +296,7 @@
               <td class="text-right font-weight-medium">{{ countByUnit(row.id).toLocaleString() }}</td>
               <td class="text-right">{{ unitsByUnit(row.id).toLocaleString() }} <span class="text-caption text-medium-emphasis">{{ row.abbreviation || '' }}</span></td>
               <td class="text-right">
-                <v-btn icon="mdi-pencil" variant="text" size="small" :to="`/inventory/units/${row.id}/edit`" />
+                <v-btn v-if="canEdit" icon="mdi-pencil" variant="text" size="small" :to="`/inventory/units/${row.id}/edit`" />
               </td>
             </tr>
           </tbody>
@@ -323,14 +387,87 @@ const { t } = useI18n()
 import { ref, computed, watch, onMounted } from 'vue'
 import { useResource } from '~/composables/useResource'
 import { formatMoney, formatDateTime } from '~/utils/format'
+import { useBranchStore } from '~/stores/branch'
+import { useAuthStore } from '~/stores/auth'
+
+const branchStore = useBranchStore()
+const auth = useAuthStore()
+
+// Only admin roles can create/edit/delete inventory
+const canEdit = computed(() => ['super_admin', 'tenant_admin', 'branch_admin'].includes(auth.role))
 
 const tab = ref('stocks')
 const search = ref('')
 const categoryFilter = ref('all')
 const statusFilter = ref('all')
+const branchFilter = ref('all')
+const dateFilter = ref('all')
+const customDateFrom = ref('')
+const customDateTo = ref('')
+const customDateDialog = ref(false)
+const customDateFromTemp = ref('')
+const customDateToTemp = ref('')
 const page = ref(1)
 const pageSize = ref(20)
 const pageSizeOptions = [10, 20, 50, 100]
+
+const datePresets = [
+  { label: 'All time', value: 'all' },
+  { label: 'Today', value: 'today' },
+  { label: 'Yesterday', value: 'yesterday' },
+  { label: 'Last 7 days', value: '7d' },
+  { label: 'Last 30 days', value: '30d' },
+  { label: 'This month', value: 'month' },
+  { label: 'Custom', value: 'custom' },
+]
+
+function setDateFilter(val) {
+  dateFilter.value = val
+  if (val !== 'custom') {
+    customDateFrom.value = ''
+    customDateTo.value = ''
+  }
+}
+
+function applyCustomDate() {
+  customDateFrom.value = customDateFromTemp.value
+  customDateTo.value = customDateToTemp.value
+  dateFilter.value = 'custom'
+  customDateDialog.value = false
+}
+
+function getDateRange() {
+  const now = new Date()
+  const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  switch (dateFilter.value) {
+    case 'today':
+      return { from: startOfDay(now), to: null }
+    case 'yesterday': {
+      const y = new Date(now)
+      y.setDate(y.getDate() - 1)
+      return { from: startOfDay(y), to: startOfDay(now) }
+    }
+    case '7d': {
+      const d = new Date(now)
+      d.setDate(d.getDate() - 7)
+      return { from: startOfDay(d), to: null }
+    }
+    case '30d': {
+      const d = new Date(now)
+      d.setDate(d.getDate() - 30)
+      return { from: startOfDay(d), to: null }
+    }
+    case 'month':
+      return { from: new Date(now.getFullYear(), now.getMonth(), 1), to: null }
+    case 'custom': {
+      const from = customDateFrom.value ? new Date(customDateFrom.value) : null
+      const to = customDateTo.value ? new Date(customDateTo.value + 'T23:59:59') : null
+      return { from, to }
+    }
+    default:
+      return { from: null, to: null }
+  }
+}
 
 const stocks = useResource('/inventory/stocks/')
 const categoriesRes = useResource('/inventory/categories/')
@@ -398,12 +535,40 @@ const statusOptions = [
   { label: 'Out of stock', value: 'out' }
 ]
 
+const SOFT_ROLES = new Set(['cashier', 'pharmacist', 'pharmacy_tech'])
+const branchOptions = computed(() => {
+  if (branchStore.branchLocked) {
+    // Locked users only see their branch
+    const b = branchStore.currentBranch
+    return b ? [{ label: b.name, value: b.id }] : [{ label: 'All branches', value: 'all' }]
+  }
+  // Soft-assign roles see only allowed (assigned + nearby) branches
+  const source = SOFT_ROLES.has(auth.role) ? branchStore.allowedBranches : branchStore.activeBranches
+  const opts = source.length > 1 ? [{ label: 'All branches', value: 'all' }] : []
+  for (const b of source) opts.push({ label: b.name, value: b.id })
+  return opts
+})
+
 const filteredItems = computed(() => {
   const q = (search.value || '').toLowerCase().trim()
   let arr = currentItems.value.slice()
   if (tab.value === 'stocks') {
     if (categoryFilter.value !== 'all') arr = arr.filter(s => s.category === categoryFilter.value)
     if (statusFilter.value !== 'all') arr = arr.filter(s => stockStatus(s).key === statusFilter.value)
+    if (branchFilter.value !== 'all') arr = arr.filter(s => s.branch === branchFilter.value)
+  }
+  // Date filter on created_at
+  if (dateFilter.value !== 'all') {
+    const { from, to } = getDateRange()
+    if (from || to) {
+      arr = arr.filter(row => {
+        const created = row.created_at ? new Date(row.created_at) : null
+        if (!created) return false
+        if (from && created < from) return false
+        if (to && created > to) return false
+        return true
+      })
+    }
   }
   if (!q) return arr
   return arr.filter(row => Object.values(row).some(v => {
@@ -422,7 +587,7 @@ const rangeStart = computed(() => filteredItems.value.length === 0 ? 0 : (page.v
 const rangeEnd = computed(() => Math.min(page.value * pageSize.value, filteredItems.value.length))
 function rowNumber(i) { return (page.value - 1) * pageSize.value + i + 1 }
 
-watch([tab, search, categoryFilter, statusFilter, pageSize], () => { page.value = 1 })
+watch([tab, search, categoryFilter, statusFilter, branchFilter, dateFilter, customDateFrom, customDateTo, pageSize], () => { page.value = 1 })
 
 function countByCategory(id) {
   return (stocks.items.value || []).filter(s => s.category === id).length
@@ -471,13 +636,36 @@ function reasonLabel(r) { return _reasonMeta[r]?.label || (r ? r.replace(/_/g, '
 function reasonColor(r) { return _reasonMeta[r]?.color || 'default' }
 function reasonIcon(r)  { return _reasonMeta[r]?.icon  || 'mdi-tag' }
 
-function reload() { currentResource.value.list({ page_size: 2000 }) }
+function reload() {
+  const params = { page_size: 2000 }
+  if (branchStore.currentBranchId) params.branch = branchStore.currentBranchId
+  currentResource.value.list(params)
+}
 
-watch(tab, (t) => { resourceMap[t].list({ page_size: 2000 }) }, { immediate: true })
+function loadWithBranch(resource) {
+  const params = { page_size: 2000 }
+  if (branchStore.currentBranchId) params.branch = branchStore.currentBranchId
+  resource.list(params)
+}
+
+watch(tab, (t) => { loadWithBranch(resourceMap[t]) }, { immediate: true })
 onMounted(() => {
   // Always load stocks + categories so KPIs and category filter populate even on other tabs
-  if (!stocks.items.value?.length) stocks.list({ page_size: 2000 })
-  if (!categoriesRes.items.value?.length) categoriesRes.list({ page_size: 2000 })
+  if (!stocks.items.value?.length) loadWithBranch(stocks)
+  if (!categoriesRes.items.value?.length) loadWithBranch(categoriesRes)
+  branchStore.load()
+  // Default branch filter to user's branch when locked
+  if (branchStore.branchLocked && branchStore.currentBranchId) {
+    branchFilter.value = branchStore.currentBranchId
+  }
+})
+
+// Reload when branch changes
+watch(() => branchStore.currentBranchId, () => {
+  loadWithBranch(stocks)
+  loadWithBranch(categoriesRes)
+  loadWithBranch(units)
+  loadWithBranch(adjustments)
 })
 </script>
 

@@ -40,7 +40,7 @@ class ReferralScreen extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.bar_chart_rounded),
             tooltip: 'Performance',
-            onPressed: () => context.go('/referral/performance'),
+            onPressed: () => context.push('/referral/performance'),
           ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -75,7 +75,7 @@ class _Body extends StatelessWidget {
     final link = '${d['referral_link'] ?? ''}';
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 100),
       children: [
         // ── Coin Balance Hero Card ──
         _CoinHeroCard(profile: profile, cs: cs, isDark: isDark).animate().fadeIn(duration: 400.ms).slideY(begin: 0.05),
@@ -155,7 +155,7 @@ class _CoinHeroCard extends StatelessWidget {
               Text('Adhere Coins', style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 13)),
               const SizedBox(height: 20),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
                 decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(14)),
                 child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
                   _HeroStat(value: _fmtCoins(profile['total_earned']), label: 'Earned', color: const Color(0xFF4ADE80)),
@@ -242,7 +242,7 @@ class _ShareCardState extends State<_ShareCard> {
           Text('REFERRAL CODE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: widget.cs.onSurfaceVariant, letterSpacing: 1)),
           const SizedBox(height: 6),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
             decoration: BoxDecoration(
               color: widget.isDark ? widget.cs.surfaceContainerHighest : widget.cs.surfaceContainerHighest.withValues(alpha: 0.5),
               borderRadius: BorderRadius.circular(12),
@@ -363,18 +363,18 @@ class _HowItWorksCard extends StatelessWidget {
 // ────────────────────────────────────────────────────
 // Redeem Card
 // ────────────────────────────────────────────────────
-class _RedeemCard extends StatelessWidget {
+class _RedeemCard extends ConsumerWidget {
   final ColorScheme cs;
   final bool isDark;
   const _RedeemCard({required this.cs, required this.isDark});
 
   @override
-  Widget build(BuildContext context) {
-    const redeemOptions = [
-      (Icons.payments_rounded, Color(0xFFF59E0B), 'Cash Out', 'Convert to KSH'),
-      (Icons.receipt_long_rounded, Color(0xFF6366F1), 'Pay API Bill', 'Settle billing'),
-      (Icons.card_giftcard_rounded, Color(0xFF22C55E), 'Gift Coins', 'Send to pharmacy'),
-      (Icons.local_offer_rounded, Color(0xFF8B5CF6), 'Discounts', 'Unlock features'),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final redeemOptions = [
+      (Icons.payments_rounded, const Color(0xFFF59E0B), 'Cash Out', 'Convert to KSH', false, null),
+      (Icons.receipt_long_rounded, const Color(0xFF6366F1), 'Pay API Bill', 'Settle billing', true, () => _showPayBillDialog(context, ref)),
+      (Icons.card_giftcard_rounded, const Color(0xFF22C55E), 'Gift Coins', 'Send to pharmacy', true, () => _showGiftCoinsDialog(context, ref)),
+      (Icons.local_offer_rounded, const Color(0xFF8B5CF6), 'Discounts', 'Unlock features', false, null),
     ];
 
     return Card(
@@ -388,16 +388,6 @@ class _RedeemCard extends StatelessWidget {
             const SizedBox(width: 8),
             const Text('Redeem Coins', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
           ]),
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(color: const Color(0xFF3B82F6).withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10)),
-            child: Row(children: [
-              const Icon(Icons.info_rounded, size: 16, color: Color(0xFF3B82F6)),
-              const SizedBox(width: 8),
-              Expanded(child: Text('Coming Soon! Keep earning — coins will be redeemable when this feature launches.', style: TextStyle(fontSize: 11, color: cs.onSurface))),
-            ]),
-          ),
           const SizedBox(height: 14),
           GridView.count(
             crossAxisCount: 2,
@@ -407,23 +397,214 @@ class _RedeemCard extends StatelessWidget {
             crossAxisSpacing: 8,
             childAspectRatio: 1.5,
             children: redeemOptions.map((opt) {
-              final (icon, color, title, desc) = opt;
-              return Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.2)),
+              final (icon, color, title, desc, enabled, onTap) = opt;
+              return GestureDetector(
+                onTap: enabled ? onTap : null,
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: enabled ? color.withValues(alpha: 0.4) : cs.outlineVariant.withValues(alpha: 0.2)),
+                    color: enabled ? color.withValues(alpha: 0.05) : null,
+                  ),
+                  child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(icon, size: 24, color: enabled ? color : color.withValues(alpha: 0.4)),
+                    const SizedBox(height: 6),
+                    Text(title, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: enabled ? cs.onSurface : cs.onSurface.withValues(alpha: 0.5))),
+                    Text(enabled ? desc : 'Coming soon', style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant.withValues(alpha: enabled ? 0.7 : 0.4)), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ]),
                 ),
-                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(icon, size: 24, color: color.withValues(alpha: 0.5)),
-                  const SizedBox(height: 6),
-                  Text(title, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.5))),
-                  Text(desc, style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant.withValues(alpha: 0.4)), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
-                ]),
               );
             }).toList(),
           ),
         ]),
+      ),
+    );
+  }
+
+  void _showPayBillDialog(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    final amountCtrl = TextEditingController();
+    final balance = (ref.read(_refDashProvider).valueOrNull?['profile']?['coin_balance'] as num?)?.toInt() ?? 0;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(children: [
+          const Icon(Icons.receipt_long_rounded, color: Color(0xFF6366F1), size: 22),
+          const SizedBox(width: 8),
+          const Text('Pay API Bill', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        ]),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('Use your Adhere Coins to settle your API billing balance.', style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(color: const Color(0xFF6366F1).withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)),
+            child: Row(children: [
+              const Icon(Icons.account_balance_wallet_rounded, size: 16, color: Color(0xFF6366F1)),
+              const SizedBox(width: 6),
+              Text('Available: ${_fmtCoins(balance)} coins', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF6366F1))),
+            ]),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: amountCtrl,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              labelText: 'Amount (coins)',
+              hintText: 'Max $balance',
+              prefixIcon: const Icon(Icons.monetization_on_rounded, size: 20),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text('1 coin = KES 1 billing credit', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () async {
+              final amount = int.tryParse(amountCtrl.text.trim());
+              if (amount == null || amount <= 0) return;
+              if (amount > balance) {
+                ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+                  content: Text('Insufficient coins. You have $balance available.'),
+                  behavior: SnackBarBehavior.floating,
+                  backgroundColor: Colors.red.shade700,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ));
+                return;
+              }
+              Navigator.pop(ctx);
+              try {
+                final dio = ref.read(dioProvider);
+                await dio.post('/usage-billing/referral/redeem/', data: {
+                  'type': 'pay_api_bill',
+                  'amount': amount,
+                });
+                ref.invalidate(_refDashProvider);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text('$amount coins redeemed to API billing!'),
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ));
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text('Failed: ${e.toString().contains('detail') ? 'Insufficient coins or error' : 'Something went wrong'}'),
+                    behavior: SnackBarBehavior.floating,
+                    backgroundColor: Colors.red.shade700,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ));
+                }
+              }
+            },
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF6366F1)),
+            child: const Text('Redeem'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showGiftCoinsDialog(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    final amountCtrl = TextEditingController();
+    final recipientCtrl = TextEditingController();
+    final balance = (ref.read(_refDashProvider).valueOrNull?['profile']?['coin_balance'] as num?)?.toInt() ?? 0;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(children: [
+          const Icon(Icons.card_giftcard_rounded, color: Color(0xFF22C55E), size: 22),
+          const SizedBox(width: 8),
+          const Text('Gift Coins', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        ]),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('Send Adhere Coins to another pharmacy on the platform.', style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(color: const Color(0xFF22C55E).withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)),
+            child: Row(children: [
+              const Icon(Icons.account_balance_wallet_rounded, size: 16, color: Color(0xFF22C55E)),
+              const SizedBox(width: 6),
+              Text('Available: ${_fmtCoins(balance)} coins', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF22C55E))),
+            ]),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: recipientCtrl,
+            decoration: InputDecoration(
+              labelText: 'Recipient code or email',
+              hintText: 'e.g. REF-ABC123 or email',
+              prefixIcon: const Icon(Icons.person_search_rounded, size: 20),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: amountCtrl,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              labelText: 'Amount (coins)',
+              hintText: 'Max $balance',
+              prefixIcon: const Icon(Icons.monetization_on_rounded, size: 20),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () async {
+              final amount = int.tryParse(amountCtrl.text.trim());
+              final recipient = recipientCtrl.text.trim();
+              if (amount == null || amount <= 0 || recipient.isEmpty) return;
+              if (amount > balance) {
+                ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+                  content: Text('Insufficient coins. You have $balance available.'),
+                  behavior: SnackBarBehavior.floating,
+                  backgroundColor: Colors.red.shade700,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ));
+                return;
+              }
+              Navigator.pop(ctx);
+              try {
+                final dio = ref.read(dioProvider);
+                await dio.post('/usage-billing/referral/redeem/', data: {
+                  'type': 'gift_coins',
+                  'amount': amount,
+                  'recipient': recipient,
+                });
+                ref.invalidate(_refDashProvider);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text('$amount coins gifted to $recipient!'),
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ));
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text('Failed: ${e.toString().contains('detail') ? 'Insufficient coins or invalid recipient' : 'Something went wrong'}'),
+                    behavior: SnackBarBehavior.floating,
+                    backgroundColor: Colors.red.shade700,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ));
+                }
+              }
+            },
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF22C55E)),
+            child: const Text('Send Gift'),
+          ),
+        ],
       ),
     );
   }

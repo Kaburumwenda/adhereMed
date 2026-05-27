@@ -9,14 +9,14 @@ import 'barcode_scanner_dialog.dart';
 // ── data providers ──
 final _categoriesProvider = FutureProvider.autoDispose<List>((ref) async {
   final dio = ref.read(dioProvider);
-  final res = await dio.get('/inventory/categories/', queryParameters: {'page_size': 200});
-  return (res.data['results'] as List?) ?? [];
+  final res = await dio.get('/inventory/categories/');
+  return res.data is List ? res.data as List : (res.data['results'] as List?) ?? [];
 });
 
 final _unitsProvider = FutureProvider.autoDispose<List>((ref) async {
   final dio = ref.read(dioProvider);
-  final res = await dio.get('/inventory/units/', queryParameters: {'page_size': 200});
-  return (res.data['results'] as List?) ?? [];
+  final res = await dio.get('/inventory/units/');
+  return res.data is List ? res.data as List : (res.data['results'] as List?) ?? [];
 });
 
 double _dbl(dynamic v) => (v is num) ? v.toDouble() : double.tryParse('$v') ?? 0;
@@ -99,7 +99,9 @@ class _AddStockScreenState extends ConsumerState<AddStockScreen> {
     try {
       final dio = ref.read(dioProvider);
       final res = await dio.get('/medications/search/', queryParameters: {'q': query});
-      final results = (res.data as List?)?.cast<Map<String, dynamic>>() ?? [];
+      final data = res.data;
+      final List rawList = data is List ? data : (data is Map ? (data['results'] as List?) ?? [] : []);
+      final results = rawList.cast<Map<String, dynamic>>();
       setState(() { _catalogResults = results; _catalogSearching = false; _catalogSearchDone = true; });
     } catch (_) {
       setState(() { _catalogSearching = false; _catalogSearchDone = true; });
@@ -117,9 +119,26 @@ class _AddStockScreenState extends ConsumerState<AddStockScreen> {
   }
 
   void _selectCatalogItem(Map<String, dynamic> item) {
+    final categories = ref.read(_categoriesProvider).valueOrNull ?? [];
+    final units = ref.read(_unitsProvider).valueOrNull ?? [];
+
+    // Match category by name
+    final catName = (item['category'] ?? '').toString().toLowerCase();
+    final matchedCat = catName.isNotEmpty
+        ? categories.cast<Map<String, dynamic>>().where((c) => (c['name'] ?? '').toString().toLowerCase() == catName).firstOrNull
+        : null;
+
+    // Match unit by name or dosage_form
+    final unitName = (item['unit'] ?? item['dosage_form'] ?? '').toString().toLowerCase();
+    final matchedUnit = unitName.isNotEmpty
+        ? units.cast<Map<String, dynamic>>().where((u) => (u['name'] ?? '').toString().toLowerCase() == unitName).firstOrNull
+        : null;
+
     setState(() {
       _name.text = item['generic_name'] ?? '';
-      _description.text = item['description'] ?? '';
+      if ((item['description'] ?? '').toString().isNotEmpty) _description.text = item['description'];
+      if (matchedCat != null) _categoryId = matchedCat['id'] as int;
+      if (matchedUnit != null) _unitId = matchedUnit['id'] as int;
       _catalogResults = [];
       _catalogItemSelected = true;
       _catalogSearchDone = false;
@@ -176,7 +195,7 @@ class _AddStockScreenState extends ConsumerState<AddStockScreen> {
         'barcode': _barcode.text.trim(),
         'is_active': _isActive,
         if (_categoryId != null) 'category': _categoryId,
-        if (_unitId != null) 'unit': _unitId,
+        'unit': _unitId,
         if (_expiryDate != null) 'expiry_date': DateFormat('yyyy-MM-dd').format(_expiryDate!),
       });
       if (mounted) {
@@ -212,7 +231,7 @@ class _AddStockScreenState extends ConsumerState<AddStockScreen> {
       body: Form(
         key: _formKey,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 40),
           children: [
             // ── Duplicate warning ──
             if (_duplicateFound && _duplicateItem != null) ...[
@@ -232,7 +251,7 @@ class _AddStockScreenState extends ConsumerState<AddStockScreen> {
                     Text('"${_duplicateItem!['medication_name']}" already exists with qty ${_duplicateItem!['total_quantity'] ?? 0}.', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
                   ])),
                   TextButton(
-                    onPressed: () { if (_duplicateItem?['id'] != null) context.go('/inventory/${_duplicateItem!['id']}'); },
+                    onPressed: () { if (_duplicateItem?['id'] != null) context.push('/inventory/${_duplicateItem!['id']}'); },
                     child: const Text('View', style: TextStyle(fontSize: 11)),
                   ),
                 ]),
@@ -278,7 +297,18 @@ class _AddStockScreenState extends ConsumerState<AddStockScreen> {
                       child: Icon(Icons.medication_rounded, size: 16, color: cs.primary),
                     ),
                     title: Text(item['generic_name'] ?? '', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                    subtitle: Text('${item['category'] ?? ''} · ${item['dosage_form'] ?? ''} · ${item['strength'] ?? ''}', style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant)),
+                    subtitle: () {
+                      final raw = item['brand_names'];
+                      final brands = raw is List ? raw.join(', ') : (raw ?? '').toString();
+                      return Text(
+                        [
+                          if (brands.isNotEmpty) brands,
+                          item['dosage_form'],
+                          item['strength'],
+                        ].where((e) => e != null && e.toString().isNotEmpty).join(' · '),
+                        style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
+                      );
+                    }(),
                     onTap: () => _selectCatalogItem(item),
                   );
                 },
@@ -384,9 +414,10 @@ class _AddStockScreenState extends ConsumerState<AddStockScreen> {
               const SizedBox(width: 12),
               Expanded(child: DropdownButtonFormField<int>(
                 initialValue: _unitId,
-                decoration: _dec('Unit', Icons.straighten_rounded),
+                decoration: _dec('Unit *', Icons.straighten_rounded),
                 isExpanded: true,
                 items: units.map<DropdownMenuItem<int>>((u) => DropdownMenuItem(value: u['id'] as int, child: Text(u['name'] ?? '', style: const TextStyle(fontSize: 13)))).toList(),
+                validator: (v) => v == null ? 'Unit is required' : null,
                 onChanged: (v) => setState(() => _unitId = v),
               )),
             ]),

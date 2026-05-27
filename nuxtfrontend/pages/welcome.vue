@@ -40,9 +40,9 @@
           class="text-none"
           rounded="lg"
           style="color:#0F766E;"
-          @click="$router.push('/register-facility')"
+          @click="$router.push('/register-pharmacy')"
         >
-          Register
+          Register Pharmacy
         </v-btn>
       </div>
 
@@ -59,6 +59,21 @@
           Connected Healthcare.<br>Simplified.
         </p>
 
+        <!-- Info banner -->
+        <v-alert
+          type="info"
+          variant="tonal"
+          rounded="xl"
+          class="mb-6 text-left"
+          style="background:rgba(255,255,255,0.1) !important;border:1px solid rgba(255,255,255,0.2);"
+        >
+          <div class="text-body-2" style="color:rgba(255,255,255,0.9);">
+            <strong>Self-registration:</strong> Only the <strong>Pharmacy</strong> module is currently available
+            for self-registration in your jurisdiction. For hospitals, laboratories, radiology centres
+            or homecare facilities, please contact our team.
+          </div>
+        </v-alert>
+
         <!-- Feature grid -->
         <v-row justify="center" class="mb-12">
           <v-col v-for="f in features" :key="f.title" cols="12" sm="6" md="3">
@@ -69,30 +84,6 @@
             </div>
           </v-col>
         </v-row>
-
-        <!-- CTAs -->
-        <div class="d-flex flex-column flex-sm-row justify-center ga-3 mb-8">
-          <v-btn
-            size="large"
-            color="white"
-            class="text-none px-8"
-            rounded="lg"
-            style="color:#0F766E;"
-            @click="$router.push('/login')"
-          >
-            <v-icon class="mr-2">mdi-login</v-icon> Sign In
-          </v-btn>
-          <v-btn
-            size="large"
-            variant="outlined"
-            color="white"
-            class="text-none px-8"
-            rounded="lg"
-            @click="$router.push('/register')"
-          >
-            <v-icon class="mr-2">mdi-account-plus</v-icon> Create Account
-          </v-btn>
-        </div>
 
         <p class="text-caption mb-6" style="color:rgba(255,255,255,0.45);">
           © 2026 AdhereMed. Powering Healthcare Excellence.
@@ -110,6 +101,8 @@ const features = [
   { icon: 'mdi-pharmacy', title: 'Pharmacies', desc: 'POS, inventory, dispensing & analytics', color: '#7DD3FC' },
   { icon: 'mdi-flask', title: 'Laboratories', desc: 'Lab orders, results & exchange', color: '#F9A8D4' },
   { icon: 'mdi-radiology', title: 'Radiology', desc: 'Imaging orders, reports & scheduling', color: '#C4B5FD' },
+  { icon: 'mdi-doctor', title: 'Doctors', desc: 'Appointments, e-prescriptions & patient management', color: '#93C5FD' },
+  { icon: 'mdi-shield-check', title: 'Insurance', desc: 'Claims processing, pre-auth & provider networks', color: '#FDE68A' },
   { icon: 'mdi-account-heart', title: 'Patients', desc: 'Records, prescriptions & online orders', color: '#FBBF24' },
   { icon: 'mdi-home-heart', title: 'Homecare', desc: 'In-home visits, care plans & monitoring', color: '#A7F3D0' }
 ]

@@ -59,8 +59,8 @@ final _branchesProvider = FutureProvider.autoDispose((ref) async {
 final _categoriesProvider = FutureProvider.autoDispose((ref) async {
   final dio = ref.read(dioProvider);
   try {
-    final res = await dio.get('/inventory/categories/', queryParameters: {'page_size': 100});
-    return (res.data['results'] as List?) ?? (res.data is List ? res.data as List : []);
+    final res = await dio.get('/inventory/categories/');
+    return res.data is List ? res.data as List : (res.data['results'] as List?) ?? [];
   } catch (_) { return []; }
 });
 
@@ -110,7 +110,7 @@ class _StockTakeScreenState extends ConsumerState<StockTakeScreen> {
         ),
         // Search + filter
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+          padding: const EdgeInsets.fromLTRB(10, 0, 10, 0),
           child: Row(children: [
             Expanded(child: TextField(
               decoration: InputDecoration(hintText: 'Search counts...', prefixIcon: const Icon(Icons.search_rounded, size: 20),
@@ -145,7 +145,7 @@ class _StockTakeScreenState extends ConsumerState<StockTakeScreen> {
             return RefreshIndicator(
               onRefresh: () async => ref.invalidate(_countsProvider),
               child: ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 80),
                 itemCount: items.length,
                 itemBuilder: (_, i) => _CountCard(count: items[i], ref: ref)
                   .animate().fadeIn(duration: 300.ms, delay: Duration(milliseconds: (30 * i).clamp(0, 300))).slideY(begin: 0.05, end: 0),
@@ -265,7 +265,7 @@ void _showDetail(BuildContext context, dynamic c, WidgetRef ref) {
               gradient: LinearGradient(colors: [sc.withValues(alpha: 0.12), sc.withValues(alpha: 0.02)],
                 begin: Alignment.topCenter, end: Alignment.bottomCenter),
               borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            padding: const EdgeInsets.fromLTRB(10, 12, 10, 20),
             child: Column(children: [
               Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
               const SizedBox(height: 16),
@@ -460,7 +460,7 @@ void _showCountEntry(BuildContext context, dynamic c, WidgetRef ref) {
         return StatefulBuilder(builder: (ctx, setState) => Container(
           decoration: BoxDecoration(color: cs.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
           child: Column(children: [
-            Padding(padding: const EdgeInsets.fromLTRB(20, 12, 20, 0), child: Column(children: [
+            Padding(padding: const EdgeInsets.fromLTRB(10, 12, 10, 0), child: Column(children: [
               Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
               const SizedBox(height: 16),
               Row(children: [
@@ -571,7 +571,7 @@ class _CreateCountSheetState extends ConsumerState<_CreateCountSheet> {
       builder: (_, scrollCtrl) => Container(
         decoration: BoxDecoration(color: cs.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
         child: Column(children: [
-          Padding(padding: const EdgeInsets.fromLTRB(20, 12, 20, 0), child: Column(children: [
+          Padding(padding: const EdgeInsets.fromLTRB(10, 12, 10, 0), child: Column(children: [
             Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
             const SizedBox(height: 16),
             Row(children: [
@@ -709,7 +709,7 @@ class _ActionBtn extends StatelessWidget {
 class _KpiRow extends StatelessWidget {
   const _KpiRow({required this.items}); final List<_Kpi> items;
   @override Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
     child: Row(children: items.map((k) => Expanded(child: Container(
       margin: const EdgeInsets.symmetric(horizontal: 3), padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
       decoration: BoxDecoration(color: k.color.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(12),

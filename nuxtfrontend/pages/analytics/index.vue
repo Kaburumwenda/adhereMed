@@ -19,6 +19,7 @@
           variant="outlined"
           rounded="lg"
           hide-details
+          :disabled="isBranchLocked"
           prepend-inner-icon="mdi-store-marker"
           style="min-width: 180px"
         />
@@ -387,9 +388,13 @@ const { t } = useI18n()
 
 import { formatMoney, formatDate } from '~/utils/format'
 import { useBranchStore } from '~/stores/branch'
+import { useAuthStore } from '~/stores/auth'
 
 const { $api } = useNuxtApp()
 const branchStore = useBranchStore()
+const auth = useAuthStore()
+
+const isBranchLocked = computed(() => auth.role === 'branch_admin')
 
 const rangeKey = ref('30d')
 const branchFilter = ref(null) // null = All Branches
@@ -469,6 +474,10 @@ const rangeLabel = computed(() => activeRange.value.label)
 const cutoffPrev = computed(() => addDays(cutoff.value, -rangeDays.value))
 
 const branchFilterItems = computed(() => {
+  if (isBranchLocked.value) {
+    const b = branchStore.currentBranch
+    return b ? [{ id: b.id, name: b.name }] : []
+  }
   const items = branchStore.activeBranches.map(b => ({ id: b.id, name: b.name }))
   items.unshift({ id: null, name: 'All Branches' })
   return items
@@ -709,10 +718,15 @@ function initials(name) {
 
 async function load() {
   loading.value = true
+  // Lock branch_admin to their branch on load
+  if (isBranchLocked.value && branchStore.currentBranchId) {
+    branchFilter.value = branchStore.currentBranchId
+  }
+  const branchParam = branchFilter.value ? `&branch=${branchFilter.value}` : ''
   const safeList = (p) => $api.get(p).then(r => r.data?.results || (Array.isArray(r.data) ? r.data : [])).catch(() => [])
   const [tx, st] = await Promise.all([
-    safeList('/pos/transactions/?page_size=1000'),
-    safeList('/inventory/stocks/?page_size=500')
+    safeList(`/pos/transactions/?page_size=1000${branchParam}`),
+    safeList(`/inventory/stocks/?page_size=500${branchParam}`)
   ])
   txAll.value = tx
   stocks.value = st

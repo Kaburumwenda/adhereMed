@@ -17,11 +17,12 @@ from .serializers import (
     CreditPaymentSerializer,
     RecordCreditPaymentSerializer,
 )
+from config.branch_scope import BranchScopedMixin, get_user_branch, is_branch_scoped_user
 
 
 # Roles that may view ALL POS records and analytics for the tenant.
 # Anyone else (e.g. cashier, pharmacy_tech) only sees their own data.
-ADMIN_ROLES = {'super_admin', 'tenant_admin', 'pharmacist'}
+ADMIN_ROLES = {'super_admin', 'tenant_admin', 'branch_admin', 'pharmacist'}
 
 
 def _user_is_admin(user) -> bool:
@@ -42,6 +43,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
 
 
 class POSTransactionViewSet(
+    BranchScopedMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
@@ -317,7 +319,7 @@ class SalesAnalyticsView(APIView):
         })
 
 
-class ParkedSaleViewSet(viewsets.ModelViewSet):
+class ParkedSaleViewSet(BranchScopedMixin, viewsets.ModelViewSet):
     queryset = ParkedSale.objects.select_related('cashier').all()
     serializer_class = ParkedSaleSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]

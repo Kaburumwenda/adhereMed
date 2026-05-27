@@ -662,7 +662,7 @@ watch(() => search.value, (q) => {
     ).length
     if (localCount > 3) return
     searching.value = true
-    const results = await $api.get(`/inventory/stocks/?search=${encodeURIComponent(trimmed)}&is_active=true&page_size=20`)
+    const results = await $api.get(`/inventory/stocks/?search=${encodeURIComponent(trimmed)}&is_active=true&page_size=20${branchStore.currentBranchId ? '&branch=' + branchStore.currentBranchId : ''}`)
       .then(r => r.data?.results || r.data || []).catch(() => [])
     serverResults.value = results
     searching.value = false
@@ -762,7 +762,8 @@ async function confirmHold() {
 
 async function loadParkedCount() {
   try {
-    const res = await $api.get('/pos/parked-sales/?page_size=1')
+    const bp = branchStore.currentBranchId ? `&branch=${branchStore.currentBranchId}` : ''
+    const res = await $api.get(`/pos/parked-sales/?page_size=1${bp}`)
     parkedCount.value = res.data?.count ?? (Array.isArray(res.data?.results) ? res.data.results.length : (Array.isArray(res.data) ? res.data.length : 0))
   } catch (e) { parkedCount.value = 0 }
 }
@@ -773,10 +774,11 @@ function flash(text, color = 'success') {
 
 async function load() {
   loading.value = true
-  products.value = await $api.get('/inventory/stocks/?page_size=5000&is_active=true&ordering=-created_at')
+  const branchParam = branchStore.currentBranchId ? `&branch=${branchStore.currentBranchId}` : ''
+  products.value = await $api.get(`/inventory/stocks/?page_size=5000&is_active=true&ordering=-created_at${branchParam}`)
     .then(r => r.data?.results || r.data || []).catch(() => [])
   // today stats
-  const tx = await $api.get('/pos/transactions/?page_size=200')
+  const tx = await $api.get(`/pos/transactions/?page_size=200${branchParam}`)
     .then(r => r.data?.results || r.data || []).catch(() => [])
   const todayKey = new Date().toISOString().slice(0, 10)
   const todayTx = tx.filter(t => (t.created_at || '').startsWith(todayKey))
@@ -786,6 +788,9 @@ async function load() {
   loadParkedCount()
 }
 onMounted(load)
+
+// Reload products when branch changes
+watch(() => branchStore.currentBranchId, () => { load() })
 
 // ===== Persist cart & sale state to localStorage =====
 const LS_KEY = 'pharm_pos_state_v1'

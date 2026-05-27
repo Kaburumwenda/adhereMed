@@ -27,6 +27,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         RADIOLOGIST = 'radiologist', 'Radiologist'
         PHARMACIST = 'pharmacist', 'Pharmacist'
         PHARMACY_TECH = 'pharmacy_tech', 'Pharmacy Technician'
+        BRANCH_ADMIN = 'branch_admin', 'Branch Admin'
         CASHIER = 'cashier', 'Cashier'
         RECEPTIONIST = 'receptionist', 'Receptionist'
         HOMECARE_ADMIN = 'homecare_admin', 'Homecare Admin'

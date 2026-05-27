@@ -37,6 +37,21 @@
                 />
               </v-col>
               <v-col cols="6" md="3">
+                <v-select
+                  v-model="form.branch"
+                  :items="branchOptions"
+                  item-title="label"
+                  item-value="value"
+                  label="Branch *"
+                  variant="outlined"
+                  density="comfortable"
+                  prepend-inner-icon="mdi-store"
+                  :disabled="branchLocked"
+                  :rules="req"
+                  hide-details="auto"
+                />
+              </v-col>
+              <v-col cols="6" md="3">
                 <v-text-field
                   v-model="form.expected_delivery"
                   label="Expected/Received Delivery"
@@ -98,7 +113,7 @@
                     <v-col cols="12" md="5">
                       <v-combobox
                         v-model="it.pick"
-                        :items="stocks"
+                        :items="itemSearchResults"
                         item-title="medication_name"
                         :return-object="true"
                         label="Item *"
@@ -106,28 +121,48 @@
                         density="comfortable"
                         hide-details="auto"
                         :rules="itemRules"
-                        hint="Pick from list or type a new item name"
+                        :loading="itemSearching"
+                        hint="Search inventory or catalog"
                         persistent-hint
+                        @update:search="onItemSearch"
                         @update:model-value="onPickItem(it, $event)"
                       >
                         <template #item="{ props: ip, item }">
-                          <v-list-item v-bind="ip" :title="item.raw.medication_name">
+                          <v-list-item v-bind="ip" :title="item.raw.medication_name || item.raw.generic_name">
                             <template #subtitle>
                               <div class="d-flex flex-wrap ga-1 align-center">
-                                <v-chip size="x-small" variant="tonal" color="primary">Cost {{ formatMoney(item.raw.cost_price) }}</v-chip>
-                                <v-chip size="x-small" variant="tonal" color="success">Sell {{ formatMoney(item.raw.selling_price) }}</v-chip>
-                                <v-chip v-if="Number(item.raw.tax_percent) > 0" size="x-small" variant="tonal" color="orange">VAT {{ item.raw.tax_percent }}%</v-chip>
-                                <v-chip v-if="Number(item.raw.discount_percent) > 0" size="x-small" variant="tonal" color="warning">{{ item.raw.discount_percent }}% off</v-chip>
-                                <v-chip size="x-small" variant="tonal" :color="(item.raw.total_quantity || 0) <= 0 ? 'error' : 'default'">Stock {{ item.raw.total_quantity || 0 }}</v-chip>
+                                <v-chip v-if="item.raw._source === 'inventory'" size="x-small" variant="tonal" color="primary">Inventory</v-chip>
+                                <v-chip v-else-if="item.raw._source === 'catalog'" size="x-small" variant="tonal" color="purple">Catalog — not in inventory</v-chip>
+                                <v-chip v-if="item.raw.cost_price" size="x-small" variant="tonal" color="primary">Cost {{ formatMoney(item.raw.cost_price) }}</v-chip>
+                                <v-chip v-if="item.raw.selling_price" size="x-small" variant="tonal" color="success">Sell {{ formatMoney(item.raw.selling_price) }}</v-chip>
+                                <v-chip v-if="item.raw._source === 'inventory'" size="x-small" variant="tonal" :color="(item.raw.total_quantity || 0) <= 0 ? 'error' : 'default'">Stock {{ item.raw.total_quantity || 0 }}</v-chip>
                               </div>
                             </template>
                           </v-list-item>
                         </template>
+                        <template #no-data>
+                          <v-list-item v-if="itemSearchQuery && !itemSearching">
+                            <div class="text-body-2 text-medium-emphasis pa-2">
+                              <div class="mb-2">No items found in inventory or catalog.</div>
+                              <v-btn
+                                size="small"
+                                color="purple"
+                                variant="tonal"
+                                prepend-icon="mdi-pill"
+                                to="/pharmacy/medications"
+                                target="_blank"
+                              >Add to Medication Catalog first</v-btn>
+                            </div>
+                          </v-list-item>
+                        </template>
                       </v-combobox>
-                      <div v-if="it.stock_id" class="mt-1 d-flex flex-wrap ga-1">
+                      <div v-if="it.stock_id && it._source === 'inventory'" class="mt-1 d-flex flex-wrap ga-1">
                         <v-chip size="x-small" variant="flat" color="primary">Sell {{ formatMoney(it.unit_selling_price) }}</v-chip>
                         <v-chip size="x-small" variant="flat" color="info">In stock {{ it._current_stock ?? '—' }}</v-chip>
                         <v-chip size="x-small" variant="flat" color="success">+{{ it.qty || 0 }} after save</v-chip>
+                      </div>
+                      <div v-else-if="it._source === 'catalog'" class="mt-1 d-flex flex-wrap ga-1 align-center">
+                        <v-chip size="x-small" variant="flat" color="purple" prepend-icon="mdi-plus-circle">From catalog — will create inventory item on save</v-chip>
                       </div>
                       <div v-else-if="it.name" class="mt-1">
                         <v-chip size="x-small" variant="flat" color="warning" prepend-icon="mdi-plus-circle">New item — will be created on save</v-chip>
@@ -381,11 +416,16 @@
 <script setup>
 import { useResource } from '~/composables/useResource'
 import { formatMoney } from '~/utils/format'
+import { useBranchStore } from '~/stores/branch'
+import { useAuthStore } from '~/stores/auth'
 
 const route = useRoute(); const router = useRouter()
 const { $api } = useNuxtApp()
 const loadId = computed(() => route.params.id || null)
 const r = useResource('/purchase-orders/orders/')
+
+const branchStore = useBranchStore()
+const auth = useAuthStore()
 
 const formRef = ref(null)
 const saving = ref(false)
@@ -408,6 +448,20 @@ const itemRules = [v => {
 // supplierPick can be either a Supplier object (from list) or a string (free text)
 const supplierPick = ref(null)
 
+// --- Branch logic ---
+const branchLocked = computed(() => {
+  const role = auth.role
+  // tenant_admin/super_admin can pick any branch; branch_admin is locked
+  return role === 'branch_admin'
+})
+const branchOptions = computed(() => {
+  if (branchLocked.value) {
+    const b = branchStore.currentBranch
+    return b ? [{ label: b.name, value: b.id }] : []
+  }
+  return branchStore.activeBranches.map(b => ({ label: b.name, value: b.id }))
+})
+
 const statusOptions = [
   { label: 'Draft', value: 'draft' },
   { label: 'Sent', value: 'sent' },
@@ -419,6 +473,7 @@ const statusOptions = [
 const form = reactive({
   po_number: '',
   supplier: null,
+  branch: null,
   expected_delivery: '',
   status: 'draft',
   notes: '',
@@ -427,6 +482,71 @@ const form = reactive({
 
 const suppliers = ref([])
 const stocks = ref([])
+
+// --- Branch-aware item search ---
+const itemSearchResults = ref([])
+const itemSearching = ref(false)
+const itemSearchQuery = ref('')
+let _itemSearchTimer = null
+
+async function onItemSearch(query) {
+  itemSearchQuery.value = query || ''
+  clearTimeout(_itemSearchTimer)
+  if (!query || query.length < 2) {
+    // Show all branch inventory as default
+    itemSearchResults.value = stocks.value.map(s => ({ ...s, _source: 'inventory' }))
+    return
+  }
+  _itemSearchTimer = setTimeout(async () => {
+    itemSearching.value = true
+    try {
+      const branchId = form.branch
+      const params = { search: query, page_size: 50 }
+      if (branchId) params.branch = branchId
+
+      // 1. Search inventory for this branch
+      const invRes = await $api.get('/inventory/stocks/', { params }).catch(() => ({ data: [] }))
+      const invItems = (invRes.data?.results || invRes.data || []).map(s => ({ ...s, _source: 'inventory' }))
+
+      // 2. If few results, also search medication catalog
+      let catalogItems = []
+      if (invItems.length < 5) {
+        const catRes = await $api.get('/medications/search/', { params: { q: query } }).catch(() => ({ data: [] }))
+        const catRaw = catRes.data?.results || catRes.data || []
+        // Exclude catalog items already in inventory results
+        const invNames = new Set(invItems.map(i => (i.medication_name || '').toLowerCase()))
+        catalogItems = catRaw
+          .filter(c => !invNames.has((c.generic_name || '').toLowerCase()))
+          .map(c => ({
+            medication_name: c.generic_name,
+            generic_name: c.generic_name,
+            cost_price: 0,
+            selling_price: 0,
+            _source: 'catalog',
+            _catalog_id: c.id,
+          }))
+      }
+
+      itemSearchResults.value = [...invItems, ...catalogItems]
+    } catch {
+      itemSearchResults.value = []
+    } finally {
+      itemSearching.value = false
+    }
+  }, 300)
+}
+
+// Reload inventory stocks when branch changes
+watch(() => form.branch, async (branchId) => {
+  if (!branchId) return
+  try {
+    const params = { page_size: 1000 }
+    if (branchId) params.branch = branchId
+    const res = await $api.get('/inventory/stocks/', { params })
+    stocks.value = res.data?.results || res.data || []
+    itemSearchResults.value = stocks.value.map(s => ({ ...s, _source: 'inventory' }))
+  } catch { /* silent */ }
+})
 
 function newItem() {
   return {
@@ -441,6 +561,8 @@ function newItem() {
     batch_number: '',
     expiry_date: '',
     _current_stock: null,
+    _source: null,
+    _catalog_id: null,
   }
 }
 
@@ -448,21 +570,40 @@ function addItem() { form.items.push(newItem()) }
 
 function onPickItem(it, value) {
   if (value && typeof value === 'object') {
-    it.stock_id = value.id || null
-    it.name = value.medication_name || ''
-    it.unit_cost = Number(value.cost_price || 0)
-    it.unit_selling_price = Number(value.selling_price || 0)
-    it.discount_percent = Number(value.discount_percent || 0)
-    it.tax_percent = Number(value.tax_percent || 0)
-    it._current_stock = value.total_quantity ?? 0
+    if (value._source === 'catalog') {
+      // From catalog — will create inventory item on save
+      it.stock_id = null
+      it.name = value.generic_name || value.medication_name || ''
+      it.unit_cost = 0
+      it.unit_selling_price = 0
+      it.discount_percent = 0
+      it.tax_percent = 0
+      it._current_stock = null
+      it._source = 'catalog'
+      it._catalog_id = value._catalog_id || null
+    } else {
+      it.stock_id = value.id || null
+      it.name = value.medication_name || ''
+      it.unit_cost = Number(value.cost_price || 0)
+      it.unit_selling_price = Number(value.selling_price || 0)
+      it.discount_percent = Number(value.discount_percent || 0)
+      it.tax_percent = Number(value.tax_percent || 0)
+      it._current_stock = value.total_quantity ?? 0
+      it._source = 'inventory'
+      it._catalog_id = null
+    }
   } else if (typeof value === 'string') {
     it.stock_id = null
     it.name = value.trim()
     it._current_stock = null
+    it._source = null
+    it._catalog_id = null
   } else {
     it.stock_id = null
     it.name = ''
     it._current_stock = null
+    it._source = null
+    it._catalog_id = null
   }
 }
 
@@ -510,12 +651,14 @@ const totalQty = computed(() => form.items.reduce((s, it) => s + Number(it.qty |
 const avgUnitCost = computed(() => totalQty.value ? grandSubtotal.value / totalQty.value : 0)
 const canSave = computed(() => {
   const hasSupplier = (supplierPick.value && (supplierPick.value.id || (typeof supplierPick.value === 'string' && supplierPick.value.trim())))
-  return !!hasSupplier && form.items.length > 0 && form.items.every(it => (it.stock_id || (it.name && it.name.trim())) && Number(it.qty) > 0)
+  const hasBranch = !!form.branch
+  return !!hasSupplier && hasBranch && form.items.length > 0 && form.items.every(it => (it.stock_id || (it.name && it.name.trim())) && Number(it.qty) > 0)
 })
 
 function hydrateFromServer(data) {
   form.po_number = data.po_number || ''
   form.supplier = data.supplier ?? null
+  form.branch = data.branch ?? form.branch
   supplierPick.value = suppliers.value.find(s => s.id === form.supplier) || null
   form.expected_delivery = data.expected_delivery || ''
   form.status = data.status || 'draft'
@@ -541,11 +684,24 @@ function hydrateFromServer(data) {
 }
 
 onMounted(async () => {
-  const safe = (p) => $api.get(p).then(res => res.data?.results || res.data || []).catch(() => [])
+  await branchStore.load()
+  // Set default branch
+  if (branchLocked.value) {
+    form.branch = branchStore.currentBranchId
+  } else if (branchStore.currentBranchId) {
+    form.branch = branchStore.currentBranchId
+  } else if (branchStore.activeBranches.length) {
+    form.branch = branchStore.activeBranches[0].id
+  }
+
+  const safe = (p, params) => $api.get(p, { params }).then(res => res.data?.results || res.data || []).catch(() => [])
+  const stockParams = { page_size: 1000 }
+  if (form.branch) stockParams.branch = form.branch
   ;[suppliers.value, stocks.value] = await Promise.all([
     safe('/suppliers/'),
-    safe('/inventory/stocks/?page_size=1000'),
+    safe('/inventory/stocks/', stockParams),
   ])
+  itemSearchResults.value = stocks.value.map(s => ({ ...s, _source: 'inventory' }))
   if (loadId.value) {
     const data = await r.get(loadId.value)
     if (data) hydrateFromServer(data)
@@ -607,6 +763,7 @@ async function onSubmit() {
         cost_price: Number(it.unit_cost || 0),
         discount_percent: Number(it.discount_percent || 0),
         tax_percent: Number(it.tax_percent || 0),
+        branch: form.branch || undefined,
       })
       stocks.value.push(created)
       it.stock_id = created.id
@@ -622,6 +779,7 @@ async function onSubmit() {
   const payload = {
     po_number: form.po_number || undefined,
     supplier: supplierId,
+    branch: form.branch || undefined,
     expected_delivery: form.expected_delivery || null,
     status: form.status,
     notes: form.notes,

@@ -13,9 +13,11 @@
       </div>
       <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
         <v-btn rounded="lg" variant="flat" color="primary" prepend-icon="mdi-refresh" class="text-none"
-                 :loading="loading" @click="loadAll">{{ $t('common.refresh') }}</v-btn>
+                 :loading="loading" @click="loadMeds">{{ $t('common.refresh') }}</v-btn>
       <v-btn rounded="lg" color="primary" variant="flat" class="text-none"
                  prepend-icon="mdi-plus" @click="openCreate">New medication</v-btn>
+      <v-btn rounded="lg" color="error" variant="tonal" class="text-none"
+                 prepend-icon="mdi-delete-sweep" @click="deleteAllDialog = true">Delete all</v-btn>
       </div>
     </div>
 
@@ -54,16 +56,22 @@
                     density="comfortable" variant="outlined" hide-details />
         </v-col>
         <v-col cols="12" md="2" class="text-right">
-          <v-chip color="primary" variant="tonal">{{ filtered.length }} shown</v-chip>
+          <v-chip color="primary" variant="tonal">{{ totalCount }} total</v-chip>
         </v-col>
       </v-row>
     </v-card>
 
     <!-- Table -->
     <v-card flat rounded="xl" border>
-      <v-data-table
-        :headers="headers" :items="filtered" :loading="loading"
-        density="comfortable" hover :items-per-page="25"
+      <v-data-table-server
+        :headers="headers" :items="meds" :loading="loading"
+        :items-length="totalCount"
+        density="comfortable" hover
+        :items-per-page="itemsPerPage"
+        :page="currentPage"
+        @update:page="onPageChange"
+        @update:items-per-page="onPerPageChange"
+        @update:sort-by="onSortChange"
       >
         <template #item.generic_name="{ item }">
           <div class="font-weight-medium">{{ item.generic_name }}</div>
@@ -96,7 +104,7 @@
           <EmptyState icon="mdi-pill" title="No medications yet"
                       message="Add your first medication to start building your catalog." />
         </template>
-      </v-data-table>
+      </v-data-table-server>
     </v-card>
 
     <!-- Create/Edit dialog -->
@@ -195,6 +203,40 @@
       </v-card>
     </v-dialog>
 
+    <!-- Delete All warning dialog -->
+    <v-dialog v-model="deleteAllDialog" max-width="500">
+      <v-card rounded="xl">
+        <v-card-item>
+          <template #prepend>
+            <v-avatar color="error" variant="tonal" size="44">
+              <v-icon>mdi-alert</v-icon>
+            </v-avatar>
+          </template>
+          <v-card-title class="font-weight-bold">Delete entire medication catalog?</v-card-title>
+        </v-card-item>
+        <v-card-text>
+          <v-alert type="warning" variant="tonal" rounded="lg" class="mb-3">
+            <strong>This action cannot be undone.</strong> All {{ totalCount }} medications will be permanently
+            removed from the catalog. Drug interactions referencing these medications will also be deleted.
+          </v-alert>
+          <div class="text-body-2 text-medium-emphasis">
+            To confirm, type <strong>DELETE</strong> in the field below:
+          </div>
+          <v-text-field v-model="deleteAllConfirm" class="mt-2" variant="outlined" density="comfortable"
+                        placeholder="Type DELETE to confirm" hide-details />
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="deleteAllDialog = false; deleteAllConfirm = ''">Cancel</v-btn>
+          <v-btn color="error" variant="flat" prepend-icon="mdi-delete-sweep"
+                 :disabled="deleteAllConfirm !== 'DELETE'" :loading="deletingAll"
+                 @click="doDeleteAll">
+            Delete all medications
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-snackbar v-model="snack.show" :color="snack.color" location="top right" timeout="3000">
       {{ snack.message }}
     </v-snackbar>
@@ -205,7 +247,7 @@
 import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import EmptyState from '~/components/EmptyState.vue'
 
 const { $api } = useNuxtApp()
@@ -213,16 +255,46 @@ const { $api } = useNuxtApp()
 const loading = ref(false)
 const saving = ref(false)
 const meds = ref([])
+const totalCount = ref(0)
+const currentPage = ref(1)
+const itemsPerPage = ref(100)
+const sortBy = ref([])
 
-async function loadAll() {
+let searchDebounceTimer = null
+
+async function loadMeds() {
   loading.value = true
   try {
-    const { data } = await $api.get('/medications/', { params: { page_size: 1000 } })
+    const params = {
+      page_size: itemsPerPage.value,
+      page: currentPage.value,
+    }
+    if (search.value?.trim()) params.search = search.value.trim()
+    if (categoryFilter.value && categoryFilter.value !== 'all') params.category = categoryFilter.value
+    if (dosageFilter.value && dosageFilter.value !== 'all') params.dosage_form = dosageFilter.value
+    if (sortBy.value?.length) {
+      const s = sortBy.value[0]
+      params.ordering = s.order === 'desc' ? `-${s.key}` : s.key
+    } else {
+      params.ordering = '-created_at'
+    }
+    const { data } = await $api.get('/medications/', { params })
     meds.value = data?.results || data || []
+    totalCount.value = data?.count ?? meds.value.length
   } catch { notify('Failed to load medications', 'error') }
   finally { loading.value = false }
 }
-onMounted(loadAll)
+
+function onPageChange(page) { currentPage.value = page; loadMeds() }
+function onPerPageChange(size) { itemsPerPage.value = size; currentPage.value = 1; loadMeds() }
+function onSortChange(sort) { sortBy.value = sort; loadMeds() }
+
+function debouncedSearch() {
+  clearTimeout(searchDebounceTimer)
+  searchDebounceTimer = setTimeout(() => { currentPage.value = 1; loadMeds() }, 400)
+}
+
+onMounted(loadMeds)
 
 const categoryOptions = [
   'analgesic','antibiotic','antifungal','antiviral','antiparasitic','antimalarial',
@@ -243,20 +315,12 @@ const search = ref('')
 const categoryFilter = ref('all')
 const dosageFilter = ref('all')
 
-const filtered = computed(() => {
-  const q = search.value.toLowerCase().trim()
-  return meds.value.filter(m => {
-    if (categoryFilter.value !== 'all' && m.category !== categoryFilter.value) return false
-    if (dosageFilter.value !== 'all' && m.dosage_form !== dosageFilter.value) return false
-    if (!q) return true
-    const hay = [m.generic_name, m.abbreviation, m.subcategory, m.strength,
-                 ...(m.brand_names || [])].join(' ').toLowerCase()
-    return hay.includes(q)
-  })
-})
+watch(search, debouncedSearch)
+watch(categoryFilter, () => { currentPage.value = 1; loadMeds() })
+watch(dosageFilter, () => { currentPage.value = 1; loadMeds() })
 
 const kpiTiles = computed(() => [
-  { label: 'Total', value: meds.value.length, icon: 'mdi-pill', color: 'teal' },
+  { label: 'Total', value: totalCount.value, icon: 'mdi-pill', color: 'teal' },
   { label: 'Active', value: meds.value.filter(m => m.is_active).length, icon: 'mdi-check-circle', color: 'success' },
   { label: 'Prescription only', value: meds.value.filter(m => m.requires_prescription).length, icon: 'mdi-prescription', color: 'error' },
   { label: 'OTC', value: meds.value.filter(m => !m.requires_prescription).length, icon: 'mdi-cart-check', color: 'info' },
@@ -298,7 +362,7 @@ async function save() {
     else await $api.post('/medications/', payload)
     notify(form.id ? 'Medication updated' : 'Medication created')
     formDialog.value = false
-    await loadAll()
+    await loadMeds()
   } catch (e) { notify(extractError(e) || 'Save failed', 'error') }
   finally { saving.value = false }
 }
@@ -312,7 +376,7 @@ async function doDelete() {
     await $api.delete(`/medications/${deleteTarget.value.id}/`)
     notify('Deleted')
     deleteDialog.value = false
-    await loadAll()
+    await loadMeds()
   } catch (e) { notify(extractError(e) || 'Delete failed', 'error') }
   finally { saving.value = false }
 }
@@ -324,6 +388,22 @@ function extractError(e) {
   if (d.detail) return d.detail
   return Object.entries(d).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(' ') : v}`).join(' · ')
 }
+// ── Delete all
+const deleteAllDialog = ref(false)
+const deleteAllConfirm = ref('')
+const deletingAll = ref(false)
+async function doDeleteAll() {
+  deletingAll.value = true
+  try {
+    const { data } = await $api.delete('/medications/delete-all/')
+    notify(data.detail || 'All medications deleted')
+    deleteAllDialog.value = false
+    deleteAllConfirm.value = ''
+    await loadMeds()
+  } catch (e) { notify(extractError(e) || 'Delete failed', 'error') }
+  finally { deletingAll.value = false }
+}
+
 const snack = reactive({ show: false, color: 'success', message: '' })
 function notify(message, color = 'success') { Object.assign(snack, { show: true, color, message }) }
 </script>

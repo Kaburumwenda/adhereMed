@@ -1,7 +1,7 @@
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q
-from rest_framework import filters, generics, permissions, viewsets
-from rest_framework.decorators import action
+from rest_framework import filters, generics, permissions, status, viewsets
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -27,15 +27,34 @@ class MedicationDetailView(generics.RetrieveUpdateDestroyAPIView):
 class MedicationSearchView(generics.ListAPIView):
     serializer_class = MedicationSearchSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
 
     def get_queryset(self):
         q = self.request.query_params.get('q', '')
         if len(q) < 2:
             return Medication.objects.none()
         return Medication.objects.filter(
+            Q(generic_name__icontains=q) |
+            Q(abbreviation__icontains=q) |
+            Q(brand_names__icontains=q),
             is_active=True,
-            generic_name__icontains=q,
-        )[:20]
+        )[:30]
+
+
+ALLOWED_DELETE_ALL_ROLES = {"tenant_admin", "branch_admin", "pharmacist", "admin"}
+
+
+@api_view(["DELETE"])
+@permission_classes([permissions.IsAuthenticated])
+def delete_all_medications(request):
+    """Delete ALL medications in the current tenant schema."""
+    if request.user.role not in ALLOWED_DELETE_ALL_ROLES:
+        return Response(
+            {"detail": "You do not have permission to delete the catalog."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    count, _ = Medication.objects.all().delete()
+    return Response({"detail": f"Deleted {count} medications.", "count": count})
 
 
 class DrugInteractionViewSet(viewsets.ModelViewSet):
@@ -44,6 +63,7 @@ class DrugInteractionViewSet(viewsets.ModelViewSet):
                 .filter(is_active=True))
     serializer_class = DrugInteractionSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['severity', 'drug_a', 'drug_b']
     search_fields = ['drug_a__generic_name', 'drug_b__generic_name', 'description']

@@ -91,18 +91,24 @@
           </v-col>
         </v-row>
 
-        <div v-if="range.daily.length" class="usage-bars mt-3" style="height: 120px;">
-          <div
-            v-for="d in range.daily"
-            :key="d.date"
-            class="usage-bar-wrap"
-            :title="`${d.date}: ${d.request_count} requests`"
-          >
-            <div
-              class="usage-bar"
-              :class="{ 'is-peak': range.peak_day && d.request_count === range.peak_day.request_count && d.request_count > 0 }"
-              :style="{ height: rangeBarHeight(d.request_count) + '%' }"
-            />
+        <div v-if="range.daily.length" class="chart-with-axes mt-3">
+          <div class="chart-y-label">Requests</div>
+          <div class="chart-inner">
+            <div class="usage-bars" style="height: 120px;">
+              <div
+                v-for="d in range.daily"
+                :key="d.date"
+                class="usage-bar-wrap"
+                :title="`${d.date}: ${d.request_count} requests`"
+              >
+                <div
+                  class="usage-bar"
+                  :class="{ 'is-peak': range.peak_day && d.request_count === range.peak_day.request_count && d.request_count > 0 }"
+                  :style="{ height: rangeBarHeight(d.request_count) + '%' }"
+                />
+              </div>
+            </div>
+            <div class="chart-x-label">Date</div>
           </div>
         </div>
         <div v-else class="text-medium-emphasis text-center py-3 text-caption">
@@ -251,19 +257,25 @@
             <div v-if="!data.daily_last_30_days.length" class="text-medium-emphasis py-6 text-center">
               No requests recorded yet.
             </div>
-            <div v-else class="usage-bars">
-              <div
-                v-for="d in data.daily_last_30_days"
-                :key="d.date"
-                class="usage-bar-wrap"
-                :title="`${d.date}: ${d.request_count} requests`"
-              >
-                <div
-                  class="usage-bar"
-                  :class="{ 'is-peak': d.request_count === peakValue && peakValue > 0 }"
-                  :style="{ height: barHeight(d.request_count) + '%' }"
-                />
-                <div class="usage-bar-label">{{ String(d.date).slice(8) }}</div>
+            <div v-else class="chart-with-axes">
+              <div class="chart-y-label">Requests</div>
+              <div class="chart-inner">
+                <div class="usage-bars">
+                  <div
+                    v-for="d in data.daily_last_30_days"
+                    :key="d.date"
+                    class="usage-bar-wrap"
+                    :title="`${d.date}: ${d.request_count} requests`"
+                  >
+                    <div
+                      class="usage-bar"
+                      :class="{ 'is-peak': d.request_count === peakValue && peakValue > 0 }"
+                      :style="{ height: barHeight(d.request_count) + '%' }"
+                    />
+                    <div class="usage-bar-label">{{ String(d.date).slice(8) }}</div>
+                  </div>
+                </div>
+                <div class="chart-x-label">Date</div>
               </div>
             </div>
           </v-card>
@@ -290,7 +302,8 @@
                 </div>
                 <div class="weekday-val">{{ fmt(w.total) }}</div>
               </div>
-              <div class="text-caption text-medium-emphasis mt-2">
+              <div class="chart-x-label mt-2">Requests</div>
+              <div class="text-caption text-medium-emphasis mt-1">
                 Last 30 days
               </div>
             </div>
@@ -306,20 +319,26 @@
               <v-icon class="mr-2">mdi-chart-timeline-variant</v-icon>
               <h3 class="text-h6 font-weight-bold">Last 6 months</h3>
             </div>
-            <div class="monthly-bars">
-              <div
-                v-for="m in data.monthly_history"
-                :key="m.label"
-                class="monthly-bar-wrap"
-              >
-                <div class="monthly-bar-value">{{ fmt(m.total_requests) }}</div>
-                <div
-                  class="monthly-bar"
-                  :class="{ 'is-current': m.year === data.current_month.year && m.month === data.current_month.month }"
-                  :style="{ height: monthlyHeight(m.total_requests) + '%' }"
-                />
-                <div class="monthly-bar-label">{{ m.label }}</div>
-                <div class="monthly-bar-cost">{{ formatMoney(m.cost, data.rate.currency) }}</div>
+            <div class="chart-with-axes">
+              <div class="chart-y-label">Requests</div>
+              <div class="chart-inner">
+                <div class="monthly-bars">
+                  <div
+                    v-for="m in data.monthly_history"
+                    :key="m.label"
+                    class="monthly-bar-wrap"
+                  >
+                    <div class="monthly-bar-value">{{ fmt(m.total_requests) }}</div>
+                    <div
+                      class="monthly-bar"
+                      :class="{ 'is-current': m.year === data.current_month.year && m.month === data.current_month.month }"
+                      :style="{ height: monthlyHeight(m.total_requests) + '%' }"
+                    />
+                    <div class="monthly-bar-label">{{ m.label }}</div>
+                    <div class="monthly-bar-cost">{{ formatMoney(m.cost, data.rate.currency) }}</div>
+                  </div>
+                </div>
+                <div class="chart-x-label">Month</div>
               </div>
             </div>
           </v-card>
@@ -558,6 +577,7 @@ onMounted(() => {
   flex: 1 0 18px;
   display: flex;
   flex-direction: column;
+  justify-content: flex-end;
   align-items: center;
   height: 100%;
   min-width: 18px;
@@ -616,6 +636,7 @@ onMounted(() => {
   flex: 1;
   display: flex;
   flex-direction: column;
+  justify-content: flex-end;
   align-items: center;
   height: 100%;
   position: relative;
@@ -642,5 +663,33 @@ onMounted(() => {
 .monthly-bar-cost {
   font-size: 10px;
   color: rgba(var(--v-theme-on-surface), 0.5);
+}
+
+/* Axis labels */
+.chart-with-axes {
+  display: flex;
+  align-items: stretch;
+}
+.chart-y-label {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-size: 11px;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  text-align: center;
+  padding: 0 4px;
+  white-space: nowrap;
+  align-self: center;
+}
+.chart-inner {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.chart-x-label {
+  text-align: center;
+  font-size: 11px;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  margin-top: 4px;
 }
 </style>

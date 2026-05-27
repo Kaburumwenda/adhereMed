@@ -20,6 +20,7 @@
           variant="outlined"
           rounded="lg"
           hide-details
+          :disabled="isBranchLocked"
           prepend-inner-icon="mdi-store-marker"
           style="min-width: 180px"
         />
@@ -479,11 +480,19 @@ const { t } = useI18n()
 
 import { formatMoney } from '~/utils/format'
 import { useBranchStore } from '~/stores/branch'
+import { useAuthStore } from '~/stores/auth'
 
 const { $api } = useNuxtApp()
 const branchStore = useBranchStore()
+const auth = useAuthStore()
+const isBranchLocked = computed(() => auth.role === 'branch_admin')
+
 const branchFilter = ref(null)
 const branchFilterItems = computed(() => {
+  if (isBranchLocked.value) {
+    const b = branchStore.currentBranch
+    return b ? [{ id: b.id, name: b.name }] : []
+  }
   const items = branchStore.activeBranches.map(b => ({ id: b.id, name: b.name }))
   items.unshift({ id: null, name: 'All Branches' })
   return items
@@ -832,10 +841,14 @@ function exportCsv() {
 
 async function load() {
   loading.value = true
+  if (isBranchLocked.value && branchStore.currentBranchId) {
+    branchFilter.value = branchStore.currentBranchId
+  }
+  const branchParam = branchFilter.value ? `&branch=${branchFilter.value}` : ''
   try {
     const [txRes, stockRes] = await Promise.allSettled([
-      $api.get('/pos/transactions/?page_size=2000'),
-      $api.get('/inventory/stocks/?page_size=1000'),
+      $api.get(`/pos/transactions/?page_size=2000${branchParam}`),
+      $api.get(`/inventory/stocks/?page_size=1000${branchParam}`),
     ])
     txAll.value = txRes.status === 'fulfilled' ? (txRes.value.data?.results || (Array.isArray(txRes.value.data) ? txRes.value.data : [])) : []
     allStocks.value = stockRes.status === 'fulfilled' ? (stockRes.value.data?.results || (Array.isArray(stockRes.value.data) ? stockRes.value.data : [])) : []

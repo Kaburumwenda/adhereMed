@@ -11,6 +11,8 @@ class User {
   final String? tenantSchema;
   final bool isActive;
   final String? pin;
+  final int? branchId;
+  final String? branchName;
 
   User({
     required this.id,
@@ -25,6 +27,8 @@ class User {
     this.tenantSchema,
     this.isActive = true,
     this.pin,
+    this.branchId,
+    this.branchName,
   });
 
   String get fullName => '$firstName $lastName'.trim();
@@ -43,6 +47,8 @@ class User {
         tenantSchema: j['tenant_schema'],
         isActive: j['is_active'] ?? true,
         pin: j['pin'],
+        branchId: j['branch_id'],
+        branchName: j['branch_name'],
       );
 
   Map<String, dynamic> toJson() => {
@@ -58,5 +64,7 @@ class User {
         'tenant_schema': tenantSchema,
         'is_active': isActive,
         'pin': pin,
+        'branch_id': branchId,
+        'branch_name': branchName,
       };
 }

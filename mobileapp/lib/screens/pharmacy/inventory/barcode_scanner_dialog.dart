@@ -63,7 +63,7 @@ class _BarcodeScannerSheetState extends State<_BarcodeScannerSheet> {
           ),
           // Header
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             child: Row(
               children: [
                 const Icon(Icons.qr_code_scanner_rounded, color: Colors.white, size: 22),
