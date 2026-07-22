@@ -1,52 +1,55 @@
 <template>
   <NuxtLayout name="auth">
     <div class="auth-root">
-      <div class="brand-gradient bg-fill" />
+      <!-- Background layers -->
+      <div class="bg-base bg-fill" />
+      <div class="bg-grid bg-fill" />
+      <div class="blob blob-1" />
+      <div class="blob blob-2" />
 
       <v-container fluid class="fill-height" style="position:relative;z-index:2;">
         <v-row justify="center" align="center" class="fill-height py-6">
           <v-col cols="12" sm="11" md="10" lg="8" xl="7">
             <v-btn
               variant="text"
-              color="white"
-              class="text-none mb-4"
+              class="text-none nav-back mb-5"
               prepend-icon="mdi-arrow-left"
               @click="$router.push('/welcome')"
-            >Back</v-btn>
+            >Back to home</v-btn>
 
-            <v-card rounded="xl" elevation="12" class="pa-6 pa-md-8">
-              <div class="text-center mb-6">
-                <v-avatar color="teal-lighten-5" size="56" class="mx-auto mb-3">
-                  <v-icon color="teal-darken-2" size="28">mdi-pharmacy</v-icon>
-                </v-avatar>
-                <h2 class="text-h5 font-weight-bold">Register your Pharmacy</h2>
-                <p class="text-body-2 text-medium-emphasis">
+            <div class="form-card pa-6 pa-md-8">
+              <div class="text-center mb-7">
+                <div class="brand-badge mx-auto mb-4" style="width:54px;height:54px;border-radius:16px;">
+                  <v-icon size="26" color="white">mdi-pharmacy</v-icon>
+                </div>
+                <h2 class="form-title">Register your Pharmacy</h2>
+                <p class="form-sub">
                   Create your pharmacy tenant on AdhereMed — POS, inventory, dispensing &amp; analytics
                 </p>
               </div>
 
-              <v-alert v-if="errorMsg" type="error" variant="tonal" density="compact" class="mb-4">
+              <v-alert v-if="errorMsg" type="error" variant="tonal" density="compact" rounded="lg" class="mb-5">
                 {{ errorMsg }}
               </v-alert>
-              <v-alert v-if="success" type="success" variant="tonal" class="mb-4">
+              <v-alert v-if="success" type="success" variant="tonal" rounded="lg" class="mb-5">
                 Pharmacy created successfully! Redirecting to sign in…
               </v-alert>
 
               <!-- Stepper -->
-              <v-stepper v-if="!success" v-model="step" flat alt-labels class="elevation-0">
+              <v-stepper v-if="!success" v-model="step" flat alt-labels class="elevation-0 stepper-dark">
                 <v-stepper-header>
-                  <v-stepper-item :value="1" title="Pharmacy Info" :complete="step > 1" />
+                  <v-stepper-item :value="1" title="Pharmacy Info" :complete="step > 1" color="#3b82f6" />
                   <v-divider />
-                  <v-stepper-item :value="2" title="Location" :complete="step > 2" />
+                  <v-stepper-item :value="2" title="Location" :complete="step > 2" color="#3b82f6" />
                   <v-divider />
-                  <v-stepper-item :value="3" title="Admin Account" :complete="step > 3" />
+                  <v-stepper-item :value="3" title="Admin Account" :complete="step > 3" color="#3b82f6" />
                 </v-stepper-header>
 
                 <v-stepper-window>
                   <!-- Step 1: Pharmacy Info -->
                   <v-stepper-window-item :value="1">
                     <v-form ref="step1Ref">
-                      <p class="text-overline text-medium-emphasis mb-3">Pharmacy details</p>
+                      <p class="step-overline mb-3">Pharmacy details</p>
                       <v-row dense>
                         <v-col cols="12" md="6">
                           <v-text-field v-model="form.tenantName" label="Pharmacy name *" :rules="req"
@@ -90,7 +93,7 @@
                     </v-form>
 
                     <div class="d-flex justify-end mt-4">
-                      <v-btn color="teal-darken-1" variant="flat" rounded="lg" class="text-none"
+                      <v-btn class="text-none btn-primary" variant="flat" rounded="lg"
                              append-icon="mdi-arrow-right" @click="goStep2">
                         Next: Location
                       </v-btn>
@@ -99,10 +102,10 @@
 
                   <!-- Step 2: Location -->
                   <v-stepper-window-item :value="2">
-                    <p class="text-overline text-medium-emphasis mb-3">Pharmacy address &amp; location</p>
+                    <p class="step-overline mb-3">Pharmacy address &amp; location</p>
 
                     <!-- Location method tabs -->
-                    <v-btn-toggle v-model="locationMethod" mandatory color="teal-darken-1" rounded="lg"
+                    <v-btn-toggle v-model="locationMethod" mandatory color="#3b82f6" rounded="lg"
                                   density="comfortable" class="mb-4" variant="outlined">
                       <v-btn value="search" prepend-icon="mdi-magnify" class="text-none">Search Places</v-btn>
                       <v-btn value="map" prepend-icon="mdi-map" class="text-none">Pick on Map</v-btn>
@@ -121,11 +124,11 @@
                         @update:model-value="debouncedPlaceSearch"
                         hide-details
                       />
-                      <v-list v-if="placePredictions.length" density="compact" class="mt-1 rounded-lg border">
+                      <v-list v-if="placePredictions.length" density="compact" class="place-list mt-1 rounded-lg">
                         <v-list-item v-for="p in placePredictions" :key="p.place_id"
                                      @click="selectPlace(p)" class="cursor-pointer">
                           <template #prepend>
-                            <v-icon size="small" color="teal">mdi-map-marker</v-icon>
+                            <v-icon size="small" color="#60a5fa">mdi-map-marker</v-icon>
                           </template>
                           <v-list-item-title class="text-body-2">{{ p.description }}</v-list-item-title>
                         </v-list-item>
@@ -142,7 +145,7 @@
 
                     <!-- Live location -->
                     <div v-if="locationMethod === 'live'">
-                      <v-btn color="teal-darken-1" variant="tonal" rounded="lg" class="text-none mb-3"
+                      <v-btn class="text-none btn-outline mb-3" variant="outlined" rounded="lg"
                              prepend-icon="mdi-crosshairs-gps" :loading="gettingLocation"
                              @click="useLiveLocation">
                         Detect my current location
@@ -153,9 +156,9 @@
                     </div>
 
                     <!-- Selected location display -->
-                    <v-card v-if="form.address" variant="tonal" color="teal" rounded="lg" class="pa-3 mt-4">
+                    <v-card v-if="form.address" variant="tonal" color="#1d4ed8" rounded="lg" class="pa-3 mt-4 address-card">
                       <div class="d-flex align-center">
-                        <v-icon color="teal-darken-2" class="mr-2">mdi-check-circle</v-icon>
+                        <v-icon color="#60a5fa" class="mr-2">mdi-check-circle</v-icon>
                         <div>
                           <div class="text-body-2 font-weight-medium">{{ form.address }}</div>
                           <div v-if="form.lat && form.lng" class="text-caption text-medium-emphasis">
@@ -168,9 +171,9 @@
                     </v-card>
 
                     <div class="d-flex justify-space-between mt-4">
-                      <v-btn variant="text" rounded="lg" class="text-none" prepend-icon="mdi-arrow-left"
+                      <v-btn variant="text" rounded="lg" class="text-none step-back-btn" prepend-icon="mdi-arrow-left"
                              @click="step = 1">Back</v-btn>
-                      <v-btn color="teal-darken-1" variant="flat" rounded="lg" class="text-none"
+                      <v-btn class="text-none btn-primary" variant="flat" rounded="lg"
                              append-icon="mdi-arrow-right" @click="step = 3">
                         Next: Admin Account
                       </v-btn>
@@ -180,7 +183,7 @@
                   <!-- Step 3: Admin Account -->
                   <v-stepper-window-item :value="3">
                     <v-form ref="step3Ref">
-                      <p class="text-overline text-medium-emphasis mb-3">Admin account</p>
+                      <p class="step-overline mb-3">Admin account</p>
                       <v-row dense>
                         <v-col cols="12" md="6">
                           <v-text-field v-model="form.firstName" label="First name *" :rules="req"
@@ -212,8 +215,8 @@
                         </v-col>
                       </v-row>
 
-                      <v-divider class="my-4" />
-                      <p class="text-overline text-medium-emphasis mb-2">Referral (optional)</p>
+                      <v-divider class="my-4 divider-dark" />
+                      <p class="step-overline mb-2">Referral (optional)</p>
                       <v-text-field
                         v-model="form.referralCode"
                         label="Referral Code"
@@ -231,22 +234,22 @@
                     </v-form>
 
                     <div class="d-flex justify-space-between mt-4">
-                      <v-btn variant="text" rounded="lg" class="text-none" prepend-icon="mdi-arrow-left"
+                      <v-btn variant="text" rounded="lg" class="text-none step-back-btn" prepend-icon="mdi-arrow-left"
                              @click="step = 2">Back</v-btn>
-                      <v-btn color="teal-darken-1" variant="flat" size="large" rounded="lg" class="text-none"
+                      <v-btn class="text-none btn-primary" variant="flat" size="large" rounded="lg"
                              prepend-icon="mdi-pharmacy" :loading="loading" @click="onSubmit">
                         Register Pharmacy
                       </v-btn>
                     </div>
 
-                    <div class="text-center mt-6 text-body-2">
+                    <div class="text-center mt-6 text-body-2 form-footer-text">
                       Already registered?
-                      <NuxtLink to="/login" class="text-primary font-weight-medium">Sign in</NuxtLink>
+                      <NuxtLink to="/login" class="form-link font-weight-medium">Sign in</NuxtLink>
                     </div>
                   </v-stepper-window-item>
                 </v-stepper-window>
               </v-stepper>
-            </v-card>
+            </div>
           </v-col>
         </v-row>
       </v-container>
@@ -711,7 +714,107 @@ const countries = [
 </script>
 
 <style scoped>
-.auth-root { position: relative; min-height: 100vh; overflow: hidden; }
-.bg-fill { position: absolute; inset: 0; z-index: 0; }
-.map-container { width: 100%; height: 300px; background: #e0e0e0; }
+/* ---------- Root / Background ---------- */
+.auth-root { position: relative; min-height: 100vh; overflow-x: hidden; color: #fff; }
+.bg-fill { position: absolute; inset: 0; }
+.bg-base {
+  z-index: 0;
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(37, 99, 235, 0.35), transparent 60%),
+    radial-gradient(900px 500px at 0% 20%, rgba(59, 130, 246, 0.18), transparent 55%),
+    linear-gradient(160deg, #060b18 0%, #081226 45%, #0a1530 100%);
+}
+.bg-grid {
+  z-index: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(circle at 50% 0%, #000 0%, transparent 70%);
+  -webkit-mask-image: radial-gradient(circle at 50% 0%, #000 0%, transparent 70%);
+}
+.blob { position: absolute; border-radius: 50%; filter: blur(70px); z-index: 0; }
+.blob-1 { top: -120px; right: -80px; width: 380px; height: 380px; background: rgba(37, 99, 235, 0.38); }
+.blob-2 { bottom: -80px; left: -80px; width: 340px; height: 340px; background: rgba(29, 78, 216, 0.28); }
+
+/* ---------- Brand ---------- */
+.brand-badge {
+  width: 46px; height: 46px; border-radius: 13px;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.5);
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ---------- Nav ---------- */
+.nav-back { color: rgba(255,255,255,0.7) !important; }
+
+/* ---------- Form card ---------- */
+.form-card {
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+.form-title { font-size: 1.55rem; font-weight: 800; color: #fff; letter-spacing: -0.4px; }
+.form-sub { font-size: 0.9rem; color: rgba(255,255,255,0.6); margin-top: 4px; }
+.form-footer-text { color: rgba(255,255,255,0.62); }
+.form-link { color: #60a5fa !important; }
+
+/* ---------- Stepper ---------- */
+:deep(.stepper-dark) {
+  background: transparent !important;
+}
+:deep(.stepper-dark .v-stepper__header) {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 14px;
+  margin-bottom: 24px;
+}
+:deep(.stepper-dark .v-stepper-item__title) { color: rgba(255,255,255,0.8) !important; font-size: 0.82rem; }
+:deep(.stepper-dark .v-stepper-item--selected .v-stepper-item__title) { color: #fff !important; font-weight: 700; }
+:deep(.stepper-dark .v-divider) { border-color: rgba(255,255,255,0.1) !important; }
+:deep(.stepper-dark .v-stepper-window) { background: transparent !important; padding: 0; }
+
+/* ---------- Step labels ---------- */
+.step-overline {
+  font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
+  color: #60a5fa;
+}
+.step-back-btn { color: rgba(255,255,255,0.7) !important; }
+.divider-dark { border-color: rgba(255,255,255,0.1) !important; }
+
+/* ---------- Buttons ---------- */
+.btn-primary {
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
+  color: #fff !important; font-weight: 600;
+  box-shadow: 0 8px 22px rgba(37, 99, 235, 0.4);
+}
+.btn-outline { color: #93c5fd !important; border-color: rgba(96,165,250,0.4) !important; }
+
+/* ---------- Fields (inherit Vuetify outlined) ---------- */
+:deep(.v-field) {
+  background: rgba(255,255,255,0.05) !important;
+  border-radius: 12px !important;
+}
+:deep(.v-field__outline) { color: rgba(255,255,255,0.12) !important; }
+:deep(.v-field--focused .v-field__outline) { color: rgba(96,165,250,0.7) !important; }
+:deep(.v-label) { color: rgba(255,255,255,0.55) !important; }
+:deep(.v-field input), :deep(.v-field textarea) { color: #fff !important; }
+:deep(.v-icon.v-field__prepend-inner-icon) { color: rgba(255,255,255,0.45) !important; }
+
+/* ---------- Places list ---------- */
+.place-list {
+  background: rgba(8, 18, 38, 0.95) !important;
+  border: 1px solid rgba(96,165,250,0.25) !important;
+  backdrop-filter: blur(12px);
+}
+:deep(.place-list .v-list-item) { color: rgba(255,255,255,0.82) !important; }
+:deep(.place-list .v-list-item:hover) { background: rgba(59,130,246,0.12) !important; }
+
+/* ---------- Address card ---------- */
+.address-card { background: rgba(29,78,216,0.14) !important; border: 1px solid rgba(96,165,250,0.3) !important; }
+
+/* ---------- Map ---------- */
+.map-container { width: 100%; height: 300px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); overflow: hidden; }
 </style>

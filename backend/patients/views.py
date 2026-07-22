@@ -51,9 +51,17 @@ class PatientViewSet(viewsets.ModelViewSet):
         user.set_password(password)
         user.save()
 
+        # Record how the patient got registered (facility type or explicit value).
+        valid_sources = {c[0] for c in Patient.RegistrationSource.choices}
+        source = (data.get('registration_source') or '').strip().lower()
+        if source not in valid_sources:
+            tenant_type = getattr(getattr(request, 'tenant', None), 'tenant_type', '') or ''
+            source = tenant_type if tenant_type in valid_sources else Patient.RegistrationSource.OTHER
+
         patient = Patient.objects.create(
             user=user,
             patient_number=f'PT-{uuid.uuid4().hex[:8].upper()}',
+            registration_source=source,
             date_of_birth=data.get('date_of_birth') or '1900-01-01',
             gender=data.get('gender') or 'other',
             blood_type=data.get('blood_type') or data.get('blood_group', ''),

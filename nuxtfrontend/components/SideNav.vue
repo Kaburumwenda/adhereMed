@@ -42,6 +42,7 @@
                 v-bind="props"
                 :prepend-icon="item.icon"
                 :title="(!rail || mobile) ? item.label : ''"
+                :active="isGroupActive(item)"
               />
             </template>
             <v-list-item
@@ -123,10 +124,16 @@ const drawer = computed({
 })
 
 const route = useRoute()
+const router = useRouter()
 
 const sections = computed(() => filterNavSections(getNavSections(props.userRole, props.tenantType, t), props.userRole))
 
 const initial = computed(() => (props.userName?.[0] || 'U').toUpperCase())
+
+function isGroupActive(item) {
+  if (route.path === item.path) return true
+  return (item.children || []).some(child => route.path === child.path)
+}
 
 function formatRole(r) {
   if (!r) return ''

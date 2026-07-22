@@ -633,18 +633,18 @@ onMounted(loadAll)
   background: linear-gradient(135deg, rgba(13,148,136,0.10) 0%, rgba(99,102,241,0.10) 100%);
   border: 1px solid rgba(13,148,136,0.18);
 }
-:global(.v-theme--dark) .hc-hero {
+:global(.v-theme--dark .hc-hero) {
   background: linear-gradient(135deg, rgba(13,148,136,0.18) 0%, rgba(99,102,241,0.18) 100%);
   border-color: rgba(13,148,136,0.3);
 }
 .hc-avatar { box-shadow: 0 6px 20px rgba(0,0,0,0.18); }
 .hc-card { background: white; border: 1px solid rgba(15,23,42,0.06); }
-:global(.v-theme--dark) .hc-card { background: rgb(30,41,59); border-color: rgba(255,255,255,0.08); }
+:global(.v-theme--dark .hc-card) { background: rgb(30,41,59); border-color: rgba(255,255,255,0.08); }
 .hc-kin {
   background: rgba(239,68,68,0.04);
   border: 1px dashed rgba(239,68,68,0.35);
 }
-:global(.v-theme--dark) .hc-kin {
+:global(.v-theme--dark .hc-kin) {
   background: rgba(239,68,68,0.10);
   border-color: rgba(239,68,68,0.45);
 }

@@ -9,6 +9,8 @@ class UserSerializer(serializers.ModelSerializer):
     tenant_schema = serializers.CharField(source='tenant.schema_name', read_only=True, default=None)
     branch_id = serializers.SerializerMethodField()
     branch_name = serializers.SerializerMethodField()
+    is_tenant_admin = serializers.SerializerMethodField()
+    billing = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -16,7 +18,7 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'email', 'phone', 'first_name', 'last_name',
             'role', 'tenant', 'tenant_name', 'tenant_type', 'tenant_schema',
             'is_active', 'date_joined', 'pin',
-            'branch_id', 'branch_name',
+            'branch_id', 'branch_name', 'is_tenant_admin', 'billing',
         ]
         read_only_fields = ['date_joined', 'pin']
 
@@ -32,6 +34,30 @@ class UserSerializer(serializers.ModelSerializer):
             return branch.name if branch else None
         except Exception:
             return None
+
+    def get_is_tenant_admin(self, obj):
+        return obj.role in {'tenant_admin', 'homecare_admin', 'admin'}
+
+    def get_billing(self, obj):
+        """Lightweight overdue-lock summary so the frontend can gate access."""
+        default = {'locked': False, 'has_overdue': False, 'overdue_count': 0,
+                   'total_overdue': '0'}
+        tenant = getattr(obj, 'tenant', None)
+        if tenant is None or getattr(tenant, 'schema_name', 'public') == 'public':
+            return default
+        try:
+            from usage_billing.views import compute_billing_lock
+            lock = compute_billing_lock(tenant)
+            return {
+                'locked': lock['locked'],
+                'has_overdue': lock['has_overdue'],
+                'overdue_count': lock['overdue_count'],
+                'total_overdue': lock['total_overdue'],
+                'reason': lock['reason'],
+                'grace_until': lock['grace_until'],
+            }
+        except Exception:
+            return default
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -49,7 +75,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         if user.role == User.Role.PATIENT:
             import uuid
             from patients.models import Patient
-            Patient.objects.get_or_create(
+            patient, _ = Patient.objects.get_or_create(
                 user=user,
                 defaults={
                     'patient_number': f'PT-{uuid.uuid4().hex[:8].upper()}',
@@ -57,6 +83,11 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
                     'gender': 'other',
                 },
             )
+            try:
+                from superadmin.mailer import send_patient_welcome_email
+                send_patient_welcome_email(user, patient)
+            except Exception:
+                pass
         return user
 
 

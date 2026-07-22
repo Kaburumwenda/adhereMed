@@ -777,14 +777,14 @@ async function markDose(d, status) {
   color: var(--v-theme-on-surface, inherit);
 }
 
-:global(.v-theme--dark) .hc-stat,
-:global(.v-theme--dark) .hc-med-card {
+:global(.v-theme--dark .hc-stat),
+:global(.v-theme--dark .hc-med-card) {
   background: rgba(30,41,59,0.7);
   border-color: rgba(255,255,255,0.06);
 }
-:global(.v-theme--dark) .hc-dose-row { background: rgba(255,255,255,0.04); }
-:global(.v-theme--dark) .hc-rx-section + .hc-rx-section {
+:global(.v-theme--dark .hc-dose-row) { background: rgba(255,255,255,0.04); }
+:global(.v-theme--dark .hc-rx-section + .hc-rx-section) {
   border-top-color: rgba(255,255,255,0.08);
 }
-:global(.v-theme--dark) .hc-rx-section-title { color: rgba(255,255,255,0.75); }
+:global(.v-theme--dark .hc-rx-section-title) { color: rgba(255,255,255,0.75); }
 </style>

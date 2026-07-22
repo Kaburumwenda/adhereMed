@@ -4,13 +4,26 @@ from .models import (
     CaregiverNote, TreatmentPlan, MedicationSchedule, DoseEvent,
     EscalationRule, Escalation, TeleconsultRoom, HomecareAppointment,
     HomecarePrescription, PharmacyStockAlert, InsurancePolicy, InsuranceClaim,
-    Consent,
+    Consent, PatientDataSharing, BillingSettings,
+    HREmployee, LeaveRequest, LeaveBalance, Shift, Attendance, Timesheet,
+    BenefitPlan, BenefitEnrollment, PayrollEntry, JobOpening, Applicant,
+    OnboardingTemplate, OnboardingRecord, OnboardingTask,
+    TrainingProgram, TrainingEnrollment,
+    PerformanceReview, Goal,
+    ComplianceViolation, Certification, ComplianceReport,
+    HRDocument,
 )
 
 
 @admin.register(HomecareCompanyProfile)
 class HomecareCompanyProfileAdmin(admin.ModelAdmin):
     list_display = ('legal_name', 'city', 'country', 'updated_at')
+
+
+@admin.register(BillingSettings)
+class BillingSettingsAdmin(admin.ModelAdmin):
+    list_display = ('billing_type', 'auto_generate', 'last_run_at', 'updated_at')
+    list_filter = ('billing_type', 'auto_generate')
 
 
 @admin.register(Caregiver)
@@ -27,6 +40,14 @@ class HomecarePatientAdmin(admin.ModelAdmin):
                     'assigned_caregiver', 'is_active', 'enrolled_at')
     list_filter = ('risk_level', 'is_active')
     search_fields = ('medical_record_number', 'user__email', 'user__first_name', 'user__last_name')
+
+
+@admin.register(PatientDataSharing)
+class PatientDataSharingAdmin(admin.ModelAdmin):
+    list_display = ('patient', 'is_shared', 'share_vitals', 'share_medications',
+                    'share_care_team', 'updated_at')
+    list_filter = ('is_shared',)
+    search_fields = ('patient__medical_record_number',)
 
 
 @admin.register(CaregiverSchedule)
@@ -112,3 +133,133 @@ class InsuranceClaimAdmin(admin.ModelAdmin):
 class ConsentAdmin(admin.ModelAdmin):
     list_display = ('patient', 'scope', 'granted_to', 'granted_at', 'expires_at', 'revoked_at')
     list_filter = ('scope',)
+
+
+# ── HR module ──
+@admin.register(HREmployee)
+class HREmployeeAdmin(admin.ModelAdmin):
+    list_display = ('name', 'email', 'department', 'job_title', 'employment_type', 'status', 'hire_date')
+    list_filter = ('status', 'department', 'employment_type')
+    search_fields = ('first_name', 'last_name', 'email', 'phone', 'national_id', 'job_title')
+
+
+@admin.register(LeaveRequest)
+class LeaveRequestAdmin(admin.ModelAdmin):
+    list_display = ('employee', 'leave_type', 'start_date', 'end_date', 'status', 'approved_at')
+    list_filter = ('status', 'leave_type')
+
+
+@admin.register(LeaveBalance)
+class LeaveBalanceAdmin(admin.ModelAdmin):
+    list_display = ('employee', 'annual_used', 'annual_total', 'sick_used', 'sick_total')
+
+
+@admin.register(Shift)
+class ShiftAdmin(admin.ModelAdmin):
+    list_display = ('employee', 'date', 'shift_type', 'start_time', 'end_time')
+    list_filter = ('shift_type',)
+
+
+@admin.register(Attendance)
+class AttendanceAdmin(admin.ModelAdmin):
+    list_display = ('employee', 'date', 'clock_in', 'clock_out', 'late', 'status')
+    list_filter = ('status', 'late')
+
+
+@admin.register(Timesheet)
+class TimesheetAdmin(admin.ModelAdmin):
+    list_display = ('employee', 'date', 'hours', 'shift_type', 'status')
+    list_filter = ('status', 'shift_type')
+
+
+@admin.register(BenefitPlan)
+class BenefitPlanAdmin(admin.ModelAdmin):
+    list_display = ('name', 'type', 'employer_contribution', 'employee_contribution', 'mandatory', 'is_active')
+    list_filter = ('type', 'mandatory', 'is_active')
+
+
+@admin.register(BenefitEnrollment)
+class BenefitEnrollmentAdmin(admin.ModelAdmin):
+    list_display = ('benefit', 'employee', 'enrolled_at')
+
+
+@admin.register(PayrollEntry)
+class PayrollEntryAdmin(admin.ModelAdmin):
+    list_display = ('employee', 'period', 'gross', 'deductions', 'net', 'status')
+    list_filter = ('status', 'period')
+
+
+@admin.register(JobOpening)
+class JobOpeningAdmin(admin.ModelAdmin):
+    list_display = ('title', 'department', 'employment_type', 'status', 'is_published', 'closing_date')
+    list_filter = ('status', 'employment_type', 'is_published')
+
+
+@admin.register(Applicant)
+class ApplicantAdmin(admin.ModelAdmin):
+    list_display = ('name', 'job', 'stage', 'rating', 'applied_date')
+    list_filter = ('stage',)
+    search_fields = ('name', 'email', 'phone')
+
+
+@admin.register(OnboardingTemplate)
+class OnboardingTemplateAdmin(admin.ModelAdmin):
+    list_display = ('name', 'created_at')
+
+
+@admin.register(OnboardingRecord)
+class OnboardingRecordAdmin(admin.ModelAdmin):
+    list_display = ('employee', 'status', 'progress', 'start_date', 'completed_at')
+    list_filter = ('status',)
+
+
+@admin.register(OnboardingTask)
+class OnboardingTaskAdmin(admin.ModelAdmin):
+    list_display = ('onboarding', 'title', 'done', 'due_date')
+
+
+@admin.register(TrainingProgram)
+class TrainingProgramAdmin(admin.ModelAdmin):
+    list_display = ('title', 'category', 'duration_hours', 'delivery_mode', 'mandatory', 'is_active')
+    list_filter = ('category', 'delivery_mode', 'mandatory', 'is_active')
+
+
+@admin.register(TrainingEnrollment)
+class TrainingEnrollmentAdmin(admin.ModelAdmin):
+    list_display = ('program', 'employee', 'deadline', 'completed', 'enrolled_at')
+
+
+@admin.register(PerformanceReview)
+class PerformanceReviewAdmin(admin.ModelAdmin):
+    list_display = ('employee', 'cycle_name', 'review_type', 'rating', 'review_date', 'status')
+    list_filter = ('status', 'review_type')
+
+
+@admin.register(Goal)
+class GoalAdmin(admin.ModelAdmin):
+    list_display = ('employee', 'title', 'category', 'progress', 'due_date')
+
+
+@admin.register(ComplianceViolation)
+class ComplianceViolationAdmin(admin.ModelAdmin):
+    list_display = ('employee', 'title', 'type', 'severity', 'status', 'created_at')
+    list_filter = ('status', 'severity', 'type')
+
+
+@admin.register(Certification)
+class CertificationAdmin(admin.ModelAdmin):
+    list_display = ('employee', 'name', 'type', 'expiry_date')
+    list_filter = ('type',)
+
+
+@admin.register(ComplianceReport)
+class ComplianceReportAdmin(admin.ModelAdmin):
+    list_display = ('title', 'type', 'start_date', 'end_date', 'generated_at')
+    list_filter = ('type',)
+
+
+@admin.register(HRDocument)
+class HRDocumentAdmin(admin.ModelAdmin):
+    list_display = ('name', 'category', 'employee', 'access_level', 'expiry_date', 'uploaded_at')
+    list_filter = ('category', 'access_level')
+    search_fields = ('name', 'description')

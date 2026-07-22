@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from tenants.models import Domain, Tenant
-from .models import CoinPackage
+from .models import CoinPackage, MailConfiguration
 from usage_billing.referral_models import ReferralProfile, CoinTransaction as RefCoinTransaction, Referral
 
 User = get_user_model()
@@ -202,3 +202,36 @@ class ReferralAdminSerializer(serializers.ModelSerializer):
             "coins_from_usage", "created_at", "updated_at",
         ]
         read_only_fields = ["created_at", "updated_at"]
+
+
+class MailConfigurationSerializer(serializers.ModelSerializer):
+    # Password is write-only; the GET response exposes only whether one is set.
+    password = serializers.CharField(write_only=True, required=False, allow_blank=True, style={"input_type": "password"})
+    has_password = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MailConfiguration
+        fields = [
+            "id", "from_name", "from_email", "username", "password", "has_password",
+            "imap_host", "imap_port", "imap_use_ssl",
+            "smtp_host", "smtp_port", "smtp_use_ssl",
+            "is_active", "last_verified_at", "last_verified_ok", "last_error",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = [
+            "id", "has_password", "last_verified_at", "last_verified_ok",
+            "last_error", "created_at", "updated_at",
+        ]
+
+    def get_has_password(self, obj):
+        return bool(obj.password)
+
+    def update(self, instance, validated_data):
+        # Only overwrite the password when a non-empty value is provided.
+        pwd = validated_data.pop("password", None)
+        if pwd:
+            instance.password = pwd
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance

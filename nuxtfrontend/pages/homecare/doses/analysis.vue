@@ -704,7 +704,7 @@ onMounted(async () => {
   background: white;
   border: 1px solid rgba(15,23,42,0.05);
 }
-:global(.v-theme--dark) .hc-card {
+:global(.v-theme--dark .hc-card) {
   background: #1e1e1e;
   border-color: rgba(255,255,255,0.08);
 }
@@ -780,9 +780,9 @@ onMounted(async () => {
   border: 1px solid rgba(15,23,42,0.04);
 }
 .hc-hm-bubble { display: inline-block; border-radius: 50%; }
-:global(.v-theme--dark) .hc-trend-axis,
-:global(.v-theme--dark) .hc-hm-row-h,
-:global(.v-theme--dark) .hc-hm-col-h { color: rgba(255,255,255,0.65); }
-:global(.v-theme--dark) .hc-trend-bars,
-:global(.v-theme--dark) .hc-hm-cell { border-color: rgba(255,255,255,0.10); }
+:global(.v-theme--dark .hc-trend-axis),
+:global(.v-theme--dark .hc-hm-row-h),
+:global(.v-theme--dark .hc-hm-col-h) { color: rgba(255,255,255,0.65); }
+:global(.v-theme--dark .hc-trend-bars),
+:global(.v-theme--dark .hc-hm-cell) { border-color: rgba(255,255,255,0.10); }
 </style>

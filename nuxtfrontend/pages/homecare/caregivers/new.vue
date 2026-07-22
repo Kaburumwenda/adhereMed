@@ -232,7 +232,7 @@ async function submit() {
   background: white;
   border: 1px solid rgba(15,23,42,0.06);
 }
-:global(.v-theme--dark) .hc-card {
+:global(.v-theme--dark .hc-card) {
   background: rgb(30,41,59);
   border-color: rgba(255,255,255,0.08);
 }
@@ -243,7 +243,7 @@ async function submit() {
 }
 .hc-cat-pick:hover { border-color: rgba(15,23,42,0.18); }
 .hc-cat-pick--active { background: rgba(99,102,241,0.04); }
-:global(.v-theme--dark) .hc-cat-pick {
+:global(.v-theme--dark .hc-cat-pick) {
   background: rgb(30,41,59);
   border-color: rgba(255,255,255,0.1);
 }

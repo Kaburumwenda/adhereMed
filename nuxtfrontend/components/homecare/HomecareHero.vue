@@ -8,15 +8,15 @@
               <v-icon :icon="icon" color="white" />
             </v-avatar>
             <div>
-              <div class="text-overline text-white-soft">{{ eyebrow }}</div>
-              <h1 class="text-h4 text-md-h3 font-weight-bold text-white ma-0">{{ title }}</h1>
+              <div class="text-overline text-teal-darken-2 font-weight-bold">{{ eyebrow }}</div>
+              <h1 class="text-h4 text-md-h3 font-weight-bold text-slate-900 ma-0">{{ title }}</h1>
             </div>
           </div>
-          <p v-if="subtitle" class="text-body-1 text-white-soft mb-4 mt-2">{{ subtitle }}</p>
+          <p v-if="subtitle" class="text-body-1 text-medium-emphasis mb-4 mt-2">{{ subtitle }}</p>
           <div class="d-flex flex-wrap ga-2">
             <slot name="chips" />
             <v-chip v-for="c in chips" :key="c.label" size="small"
-                    color="rgba(255,255,255,0.18)" variant="flat" class="text-white">
+                    color="teal-lighten-4" variant="flat" class="text-teal-darken-4">
               <v-icon v-if="c.icon" :icon="c.icon" size="14" class="mr-1" />
               {{ c.label }}
             </v-chip>
@@ -62,31 +62,38 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
   position: relative;
   border-radius: 24px;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 0% 0%, rgba(255,255,255,0.18) 0%, transparent 45%),
-    radial-gradient(circle at 100% 100%, rgba(255,255,255,0.08) 0%, transparent 50%),
-    linear-gradient(135deg, #0d9488 0%, #0ea5a4 35%, #0284c7 100%);
-  box-shadow: 0 18px 40px -18px rgba(13,148,136,0.55);
+  background: white;
+  border: 1px solid rgba(15,23,42,0.06);
+  box-shadow: 0 1px 3px rgba(15,23,42,0.04);
 }
 .hc-hero-inner { position: relative; z-index: 2; }
 .hc-hero-icon {
-  background: rgba(255,255,255,0.18) !important;
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255,255,255,0.28);
+  background: rgba(13,148,136,0.12) !important;
+  border: 1px solid rgba(13,148,136,0.22);
 }
-.text-white-soft { color: rgba(255,255,255,0.82) !important; }
+.hc-hero-icon .v-icon { color: #0d9488 !important; }
+.text-slate-900 { color: #0f172a; }
 .hc-hero-clock {
   display: inline-flex; align-items: center;
   padding: 4px 10px; border-radius: 999px;
-  background: rgba(255,255,255,0.16);
-  color: white; font-size: 12px; font-weight: 500;
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255,255,255,0.22);
+  background: rgba(15,23,42,0.04);
+  color: #64748b; font-size: 12px; font-weight: 500;
+  border: 1px solid rgba(15,23,42,0.08);
 }
 .hc-hero-decor {
-  position: absolute; right: -120px; top: -120px;
-  width: 360px; height: 360px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(255,255,255,0.12), transparent 70%);
+  position: absolute; right: -80px; top: -80px;
+  width: 280px; height: 280px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(13,148,136,0.04), transparent 70%);
   pointer-events: none;
+}
+:global(.v-theme--dark .hc-hero) {
+  background: #1e293b;
+  border-color: rgba(255,255,255,0.08);
+}
+:global(.v-theme--dark .text-slate-900) { color: white; }
+:global(.v-theme--dark .hc-hero-clock) {
+  background: rgba(255,255,255,0.04);
+  color: #94a3b8;
+  border-color: rgba(255,255,255,0.1);
 }
 </style>

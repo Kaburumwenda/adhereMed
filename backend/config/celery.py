@@ -45,6 +45,13 @@ app.conf.beat_schedule = {
         'task': 'homecare.tasks.tick_daily_digest',
         'schedule': crontab(hour=7, minute=0),
     },
+    'homecare-auto-generate-bills': {
+        # Runs a few minutes after every hour so hourly plans bill promptly and
+        # daily / weekly / monthly plans are also picked up on their first tick
+        # past midnight / week-end / month-end (see homecare/services.py).
+        'task': 'homecare.tasks.tick_auto_generate_bills',
+        'schedule': crontab(minute=5),
+    },
 }
 
 

@@ -1342,7 +1342,8 @@
   "topbar": {
     "fullscreen": "Enter fullscreen",
     "exitFullscreen": "Exit fullscreen",
-    "theme": "Theme"
+    "theme": "Theme",
+    "refresh": "አድስ"
   },
   "sidenav": {
     "collapse": "Collapse"

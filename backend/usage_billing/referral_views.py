@@ -294,8 +294,9 @@ def redeem_pay_bill(request):
     ksh_paid = coins_to_apply * COIN_TO_KSH
     bill.status = MonthlyBill.Status.PAID
     bill.paid_at = timezone.now()
+    bill.paid_amount = ksh_paid
     bill.notes = (bill.notes or "") + f"\nPaid with {coins_to_apply} Adhere Coins ({ksh_paid} KSH)."
-    bill.save(update_fields=["status", "paid_at", "notes"])
+    bill.save(update_fields=["status", "paid_at", "paid_amount", "notes"])
 
     return Response({
         "detail": f"Successfully paid bill with {coins_to_apply} Adhere Coins.",

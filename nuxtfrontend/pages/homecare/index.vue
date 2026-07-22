@@ -342,7 +342,6 @@ const quickActions = [
   { icon: 'mdi-heart-pulse', label: 'Vitals', hint: 'Observations', to: '/homecare/vitals', color: '#ef4444' },
   { icon: 'mdi-shield-plus', label: 'Insurance', hint: 'Claims', to: '/homecare/insurance', color: '#f59e0b' },
   { icon: 'mdi-file-document-plus', label: 'Consents', hint: 'Authorisation', to: '/homecare/consents', color: '#14b8a6' },
-  { icon: 'mdi-account-multiple-plus', label: 'Family portal', hint: 'Invite family', to: '/homecare/family', color: '#ec4899' },
   { icon: 'mdi-cash-register', label: 'Billing', hint: 'Invoices', to: '/homecare/billing', color: '#0284c7' },
   { icon: 'mdi-medical-bag', label: 'Equipment', hint: 'Loan tracking', to: '/homecare/equipment', color: '#7c3aed' },
   { icon: 'mdi-clipboard-pulse', label: 'Care pathways', hint: 'Protocols', to: '/homecare/care-pathways', color: '#0d9488' },

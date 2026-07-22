@@ -386,7 +386,7 @@ onMounted(load)
   background: white;
   border: 1px solid rgba(15,23,42,0.06);
 }
-:global(.v-theme--dark) .hc-card {
+:global(.v-theme--dark .hc-card) {
   background: rgb(30,41,59);
   border-color: rgba(255,255,255,0.08);
 }
@@ -442,7 +442,7 @@ onMounted(load)
   font-size: 0.85rem; white-space: pre-wrap; word-break: break-word;
 }
 
-:global(.v-theme--dark) .hc-att { border-color: rgba(255,255,255,0.08); }
-:global(.v-theme--dark) .hc-att__thumb { background: rgba(255,255,255,0.04); }
-:global(.v-theme--dark) .hc-preview { background: rgba(0,0,0,0.2); }
+:global(.v-theme--dark .hc-att) { border-color: rgba(255,255,255,0.08); }
+:global(.v-theme--dark .hc-att__thumb) { background: rgba(255,255,255,0.04); }
+:global(.v-theme--dark .hc-preview) { background: rgba(0,0,0,0.2); }
 </style>

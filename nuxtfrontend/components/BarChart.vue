@@ -32,6 +32,18 @@
               <title>{{ b.label }}: {{ b.value }}</title>
             </rect>
           </g>
+          <!-- Value labels above bars -->
+          <g v-if="showValues">
+            <text v-for="(b, i) in bars" :key="`v${i}`"
+              :x="b.x + b.w / 2"
+              :y="Math.max(b.y - 6, padY + 6)"
+              text-anchor="middle"
+              font-size="10"
+              font-weight="600"
+              fill="currentColor"
+              fill-opacity="0.75"
+            >{{ fmt(b.value) }}</text>
+          </g>
           <!-- Rotated labels -->
           <g v-if="rotateLabels">
             <text v-for="(b, i) in bars" :key="`l${i}`"
@@ -62,6 +74,7 @@ const props = defineProps({
   height: { type: Number, default: 220 },
   showGrid: { type: Boolean, default: true },
   rotateLabels: { type: Boolean, default: false },
+  showValues: { type: Boolean, default: false },
   minBarSlot: { type: Number, default: 0 },
   yFormatter: { type: Function, default: null }
 })

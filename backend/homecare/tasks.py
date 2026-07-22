@@ -38,6 +38,12 @@ def evaluate_escalations():
     return _eval()
 
 
+@tenant_task(name='homecare.auto_generate_bills')
+def auto_generate_bills():
+    from .services import auto_generate_bills_for_tenant
+    return auto_generate_bills_for_tenant()
+
+
 @tenant_task(name='homecare.auto_close_teleconsult')
 def auto_close_teleconsult():
     from .models import TeleconsultRoom
@@ -134,6 +140,11 @@ def tick_mark_missed_doses():
 @shared_task(name='homecare.tasks.tick_evaluate_escalations')
 def tick_evaluate_escalations():
     return _fan_out(evaluate_escalations)
+
+
+@shared_task(name='homecare.tasks.tick_auto_generate_bills')
+def tick_auto_generate_bills():
+    return _fan_out(auto_generate_bills)
 
 
 @shared_task(name='homecare.tasks.tick_auto_close_teleconsult')

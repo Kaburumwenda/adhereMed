@@ -913,3 +913,45 @@ def referral_monthly_projections(request):
             "avg_monthly": round(statistics.mean(earnings_values), 2) if earnings_values else 0,
         },
     })
+
+
+# ── Mail Configuration ────────────────────────────────────────────────────────
+
+from .models import MailConfiguration
+from .serializers import MailConfigurationSerializer
+from .mailer import send_test_mail
+
+
+@api_view(["GET", "PUT", "PATCH"])
+@permission_classes([IsSuperAdmin])
+def mail_config(request):
+    """Retrieve or update the platform mail configuration (singleton)."""
+    cfg = MailConfiguration.get_solo()
+
+    if request.method == "GET":
+        return Response(MailConfigurationSerializer(cfg).data)
+
+    serializer = MailConfigurationSerializer(cfg, data=request.data, partial=True)
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+    return Response(MailConfigurationSerializer(cfg).data)
+
+
+@api_view(["POST"])
+@permission_classes([IsSuperAdmin])
+def mail_config_test(request):
+    """Send a test email to verify the mail configuration."""
+    to = request.data.get("to") or getattr(request.user, "email", None)
+    if not to:
+        return Response(
+            {"detail": "No recipient address provided."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    ok, error = send_test_mail(to)
+    if ok:
+        return Response({"ok": True, "detail": f"Test email sent to {to}."})
+    return Response(
+        {"ok": False, "detail": error or "Failed to send test email."},
+        status=status.HTTP_502_BAD_GATEWAY,
+    )
+

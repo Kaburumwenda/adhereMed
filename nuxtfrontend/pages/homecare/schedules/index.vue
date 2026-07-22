@@ -769,7 +769,7 @@ onMounted(async () => { await loadOptions(); await load() })
   background: white;
   border: 1px solid rgba(15,23,42,0.06);
 }
-:global(.v-theme--dark) .hc-card {
+:global(.v-theme--dark .hc-card) {
   background: rgb(30,41,59);
   border-color: rgba(255,255,255,0.08);
 }
@@ -828,7 +828,7 @@ onMounted(async () => { await loadOptions(); await load() })
   border-bottom: 1px solid rgba(0,0,0,0.08);
   position: sticky; top: 0; background: white; z-index: 1;
 }
-:global(.v-theme--dark) .hc-week-head { background: rgb(30,41,59); }
+:global(.v-theme--dark .hc-week-head) { background: rgb(30,41,59); }
 .hc-week-spacer { }
 .hc-week-day {
   text-align: center;

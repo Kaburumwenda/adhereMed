@@ -4,10 +4,15 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'l10n/app_localizations.dart';
 import 'core/router.dart';
 import 'core/theme.dart';
+import 'core/notifications.dart';
 import 'providers/locale_provider.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  // Initialize the local notifications module ahead of the UI so the
+  // AwesomeNotifications listeners are registered before any action
+  // could be received on a cold-launch from a notification tap.
+  NotificationService.instance.init();
   runApp(const ProviderScope(child: AdhereMedApp()));
 }
 

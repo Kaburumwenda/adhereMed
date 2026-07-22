@@ -28,6 +28,7 @@ SHARED_APPS = [
     # shared apps
     'tenants',
     'accounts',
+    'patients',
     'medications',
     'exchange',
     'doctors',
@@ -196,7 +197,7 @@ CORS_ALLOW_HEADERS = [
 # OpenAPI / Swagger
 # ──────────────────────────────────────────────
 SPECTACULAR_SETTINGS = {
-    'TITLE': 'AfyaOne API',
+    'TITLE': 'AdhereMed API',
     'DESCRIPTION': 'SaaS Hospital & Pharmacy Ecosystem',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
@@ -206,13 +207,21 @@ SPECTACULAR_SETTINGS = {
 # Email (SMTP / SSL)
 # ──────────────────────────────────────────────
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = config('EMAIL_HOST', default='mail.tiktek-ex.com')
+EMAIL_HOST = config('EMAIL_HOST', default='mail.adheremed.co')
 EMAIL_PORT = config('EMAIL_PORT', default=465, cast=int)
 EMAIL_USE_SSL = True
-EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='afyaone@tiktek-ex.com')
-EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD')
-DEFAULT_FROM_EMAIL = 'AfyaOne <afyaone@tiktek-ex.com>'
+EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='info@adheremed.co')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='A_#dheremed@2026_')
+DEFAULT_FROM_EMAIL = 'AdhereMed <info@adheremed.co>'
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:3000')
+
+# ──────────────────────────────────────────────
+# Incoming mail (IMAP) — platform mailbox defaults.
+# Overridable from the superadmin dashboard via the MailConfiguration model.
+# ──────────────────────────────────────────────
+IMAP_HOST = config('IMAP_HOST', default='mail.adheremed.co')
+IMAP_PORT = config('IMAP_PORT', default=993, cast=int)
+IMAP_USE_SSL = True
 
 # ──────────────────────────────────────────────
 # Homecare tenant mailbox (IMAP + SMTP)

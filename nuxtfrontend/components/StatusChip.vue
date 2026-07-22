@@ -25,7 +25,10 @@ const map = {
   canceled: { color: 'error', icon: 'mdi-cancel' },
   paid: { color: 'success', icon: 'mdi-cash-check' },
   unpaid: { color: 'warning', icon: 'mdi-cash-remove' },
+  issued: { color: 'info', icon: 'mdi-receipt-text' },
+  overdue: { color: 'error', icon: 'mdi-alert-circle' },
   partial: { color: 'warning', icon: 'mdi-cash-clock' },
+  waived: { color: 'purple', icon: 'mdi-cash-remove' },
   draft: { color: 'grey', icon: 'mdi-file-document-edit' },
   open: { color: 'info', icon: 'mdi-folder-open' },
   closed: { color: 'grey', icon: 'mdi-folder' },
@@ -53,7 +56,7 @@ const map = {
   stat: { color: 'error', icon: 'mdi-flash' }
 }
 
-const meta = computed(() => map[props.status] || { color: 'grey', icon: 'mdi-circle-medium' })
+const meta = computed(() => map[(props.status || '').toLowerCase()] || { color: 'grey', icon: 'mdi-circle-medium' })
 const color = computed(() => meta.value.color)
 const icon = computed(() => meta.value.icon)
 </script>

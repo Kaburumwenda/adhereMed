@@ -10,6 +10,11 @@
 
     <v-spacer />
 
+    <v-btn icon variant="text" @click="refreshPage">
+      <v-icon>mdi-refresh</v-icon>
+      <v-tooltip activator="parent" location="bottom">{{ $t('topbar.refresh') }}</v-tooltip>
+    </v-btn>
+
     <v-btn icon variant="text" @click="toggleFullscreen">
       <v-icon>{{ isFullscreen ? 'mdi-fullscreen-exit' : 'mdi-fullscreen' }}</v-icon>
       <v-tooltip activator="parent" location="bottom">
@@ -124,12 +129,51 @@ function toggleFullscreen() {
   }
 }
 
+function refreshPage() {
+  if (typeof document === 'undefined' || typeof window === 'undefined') return
+  // Flag that we want fullscreen after the reload
+  sessionStorage.setItem('autoFullscreen', '1')
+  // Enter fullscreen now with the user gesture, then reload
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen?.().finally(() => {
+      window.location.reload()
+    })
+  } else {
+    window.location.reload()
+  }
+}
+
 onMounted(() => {
   if (typeof document !== 'undefined') {
     document.addEventListener('fullscreenchange', syncFullscreen)
     syncFullscreen()
+    // Auto-enter fullscreen once the user logs in and reaches the dashboard
+    attemptFullscreen()
   }
 })
+
+/** Try to enter fullscreen now; if blocked by browser, wait for first user interaction */
+function attemptFullscreen() {
+  if (typeof document === 'undefined') return
+  if (document.fullscreenElement) return
+
+  const requested = document.documentElement.requestFullscreen?.()
+  if (requested) {
+    requested.catch(() => {
+      // Browser blocked it — wait for the first user click/keydown
+      const onInteraction = () => {
+        document.documentElement.requestFullscreen?.().catch(() => {})
+      }
+      document.addEventListener('click', onInteraction, { once: true })
+      document.addEventListener('keydown', onInteraction, { once: true })
+    })
+  }
+
+  // Clean up the sessionStorage flag used by refreshPage
+  if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('autoFullscreen')) {
+    sessionStorage.removeItem('autoFullscreen')
+  }
+}
 
 onBeforeUnmount(() => {
   if (typeof document !== 'undefined') {

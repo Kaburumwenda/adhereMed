@@ -111,8 +111,10 @@ class MonthlyBill(models.Model):
     class Status(models.TextChoices):
         DRAFT = "DRAFT", "Draft"
         ISSUED = "ISSUED", "Issued"
+        PARTIAL = "PARTIAL", "Partially Paid"
         PAID = "PAID", "Paid"
         CANCELLED = "CANCELLED", "Cancelled"
+        WAIVED = "WAIVED", "Waived"
 
     tenant = models.ForeignKey(
         "tenants.Tenant",
@@ -125,10 +127,23 @@ class MonthlyBill(models.Model):
     requests_per_unit = models.PositiveIntegerField()
     unit_cost = models.DecimalField(max_digits=12, decimal_places=4)
     amount = models.DecimalField(max_digits=14, decimal_places=4, default=Decimal("0"))
+    discount_amount = models.DecimalField(
+        max_digits=14, decimal_places=4, default=Decimal("0"),
+        help_text="Coupons / offers applied to reduce the amount owed on this bill.",
+    )
     currency = models.CharField(max_length=8, default="KSH")
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.ISSUED)
+    due_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Date payment is due. Issued bills past this date are overdue.",
+    )
     generated_at = models.DateTimeField(auto_now_add=True)
+    issued_at = models.DateTimeField(null=True, blank=True)
     paid_at = models.DateTimeField(null=True, blank=True)
+    paid_amount = models.DecimalField(
+        max_digits=14, decimal_places=4, default=Decimal("0")
+    )
     notes = models.TextField(blank=True)
 
     class Meta:
@@ -137,6 +152,80 @@ class MonthlyBill(models.Model):
 
     def __str__(self):
         return f"{self.tenant.schema_name} {self.year}-{self.month:02d}: {self.amount} {self.currency}"
+
+    @property
+    def period_label(self) -> str:
+        return f"{self.year}-{self.month:02d}"
+
+    @property
+    def balance(self) -> Decimal:
+        """Outstanding amount still owed on this bill (net of discount/coupons)."""
+        remaining = (
+            Decimal(self.amount or 0)
+            - Decimal(self.discount_amount or 0)
+            - Decimal(self.paid_amount or 0)
+        )
+        return remaining if remaining > 0 else Decimal("0")
+
+    @property
+    def is_settled(self) -> bool:
+        return (
+            self.status in (self.Status.PAID, self.Status.WAIVED, self.Status.CANCELLED)
+            or self.balance <= 0
+        )
+
+    @property
+    def is_overdue(self) -> bool:
+        if self.status not in (self.Status.ISSUED, self.Status.PARTIAL) or not self.due_date:
+            return False
+        return self.due_date < timezone.localdate()
+
+    @property
+    def effective_status(self) -> str:
+        """Stored status, but unpaid bills past their due date report OVERDUE."""
+        if self.is_overdue:
+            return "OVERDUE"
+        return self.status
+
+    def apply_payment(self, amount):
+        """Register a (possibly partial) payment against this bill.
+
+        Returns the amount actually applied (never more than the balance).
+        """
+        amount = Decimal(str(amount))
+        applied = min(amount, self.balance)
+        if applied <= 0:
+            return Decimal("0")
+        self.paid_amount = Decimal(self.paid_amount or 0) + applied
+        if self.balance <= 0:
+            self.status = self.Status.PAID
+            self.paid_at = timezone.now()
+        else:
+            self.status = self.Status.PARTIAL
+        self.save(update_fields=["paid_amount", "status", "paid_at"])
+        return applied
+
+    def apply_discount(self, amount, note=""):
+        """Reduce the owed amount via a coupon/offer. Returns amount discounted."""
+        amount = Decimal(str(amount))
+        capped = min(amount, self.balance)
+        if capped <= 0:
+            return Decimal("0")
+        self.discount_amount = Decimal(self.discount_amount or 0) + capped
+        if note:
+            self.notes = (self.notes + "\n" if self.notes else "") + note
+        if self.balance <= 0 and self.status in (self.Status.ISSUED, self.Status.PARTIAL, self.Status.DRAFT):
+            self.status = self.Status.PAID
+            self.paid_at = timezone.now()
+        self.save(update_fields=["discount_amount", "notes", "status", "paid_at"])
+        return capped
+
+    def waive(self, reason=""):
+        """Write the bill off entirely — no longer owed or overdue."""
+        self.status = self.Status.WAIVED
+        if reason:
+            self.notes = (self.notes + "\n" if self.notes else "") + f"Waived: {reason}"
+        self.save(update_fields=["status", "notes"])
 
 
 class DoctorCommissionRate(models.Model):
@@ -188,5 +277,100 @@ class DoctorCommissionRate(models.Model):
         )
 
 
+class BillingCoupon(models.Model):
+    """A superadmin-issued discount / offer that a tenant can apply to reduce
+    what they owe on an API usage bill."""
+
+    class DiscountType(models.TextChoices):
+        PERCENT = "percent", "Percentage"
+        FIXED = "fixed", "Fixed amount"
+
+    code = models.CharField(max_length=50, unique=True)
+    description = models.TextField(blank=True)
+    tenant = models.ForeignKey(
+        "tenants.Tenant",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="billing_coupons",
+        help_text="Restrict to a single tenant. Leave empty for any tenant.",
+    )
+    discount_type = models.CharField(
+        max_length=12, choices=DiscountType.choices, default=DiscountType.PERCENT
+    )
+    discount_value = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        help_text="Percentage (0-100) or fixed amount, per discount_type.",
+    )
+    currency = models.CharField(max_length=8, default="KSH")
+    max_uses = models.PositiveIntegerField(default=1)
+    times_used = models.PositiveIntegerField(default=0)
+    min_bill_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal("0"),
+        help_text="Minimum bill balance required to use this coupon.",
+    )
+    valid_from = models.DateTimeField(default=timezone.now)
+    valid_until = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="billing_coupons_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"{self.code} ({self.get_discount_type_display()} {self.discount_value})"
+
+    @property
+    def uses_remaining(self) -> int:
+        return max(self.max_uses - self.times_used, 0)
+
+    def is_valid_for(self, tenant, bill_balance=None):
+        """Return (ok: bool, reason: str)."""
+        now = timezone.now()
+        if not self.is_active:
+            return False, "This coupon is no longer active."
+        if self.valid_from and self.valid_from > now:
+            return False, "This coupon is not yet valid."
+        if self.valid_until and self.valid_until < now:
+            return False, "This coupon has expired."
+        if self.times_used >= self.max_uses:
+            return False, "This coupon has reached its usage limit."
+        if self.tenant_id and tenant and self.tenant_id != tenant.id:
+            return False, "This coupon is not valid for your account."
+        if (
+            bill_balance is not None
+            and self.min_bill_amount
+            and Decimal(str(bill_balance)) < Decimal(self.min_bill_amount)
+        ):
+            return False, f"A minimum bill of {self.min_bill_amount} {self.currency} is required."
+        return True, ""
+
+    def compute_discount(self, amount) -> Decimal:
+        amount = Decimal(str(amount or 0))
+        if amount <= 0:
+            return Decimal("0")
+        if self.discount_type == self.DiscountType.PERCENT:
+            disc = (amount * Decimal(self.discount_value) / Decimal("100"))
+        else:
+            disc = Decimal(self.discount_value)
+        disc = disc.quantize(Decimal("0.01"))
+        return min(disc, amount)
+
+
 # Import referral models so Django discovers them in this app
 from .referral_models import ReferralProfile, Referral, CoinTransaction  # noqa: E402, F401
+
+# Import payment / wallet models so Django discovers them in this app
+from .payment_models import (  # noqa: E402, F401
+    PaymentGatewayConfig,
+    TenantWallet,
+    WalletTransaction,
+    MpesaTransaction,
+)

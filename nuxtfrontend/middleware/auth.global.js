@@ -5,7 +5,9 @@ import { canAccessRoute } from '~/utils/permissions'
 const AUTH_ROUTES = new Set([
   '/welcome',
   '/login',
+  '/get-started',
   '/register',
+  '/register-patient',
   '/register-facility',
   '/register-pharmacy',
   '/register-doctor',
@@ -16,6 +18,7 @@ const AUTH_ROUTES = new Set([
 // Routes accessible to everyone (logged in or not), without redirect.
 const PUBLIC_ROUTES = new Set([
   '/docs',
+  '/pricing',
 ])
 
 function getHomePath(auth) {
@@ -71,6 +74,31 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
   if (auth.isLoggedIn && isAuthRoute) {
     return navigateTo(getHomePath(auth))
+  }
+
+  // ── Billing lock gate ──
+  // When a tenant is past due (or hard-suspended) the whole app is blocked
+  // until the bills are cleared. Tenant admins get the "clear bills" screen;
+  // other staff get a "contact your admin" screen. Super admins bypass.
+  if (auth.isLoggedIn && auth.billingLocked && auth.role !== 'super_admin' && auth.tenantType) {
+    const lockPage = auth.isTenantAdmin ? '/billing/overdue' : '/billing/locked'
+    if (to.path !== lockPage && to.path !== '/billing/overdue' && to.path !== '/billing/locked') {
+      return navigateTo(lockPage)
+    }
+    // If a non-admin lands on the admin overdue screen (or vice-versa), send
+    // them to the correct one.
+    if (to.path === '/billing/overdue' && !auth.isTenantAdmin) return navigateTo('/billing/locked')
+    if (to.path === '/billing/locked' && auth.isTenantAdmin) return navigateTo('/billing/overdue')
+  }
+
+  // When NOT locked, keep the gate pages from being visited directly.
+  if (auth.isLoggedIn && !auth.billingLocked
+      && (to.path === '/billing/overdue' || to.path === '/billing/locked')) {
+    // Allow the overdue page for admins with any outstanding overdue balance
+    // (so they can pre-empt a lock); otherwise send them home.
+    if (!(to.path === '/billing/overdue' && auth.isTenantAdmin && auth.hasOverdue)) {
+      return navigateTo(getHomePath(auth))
+    }
   }
 
   // Pharmacy tenant namespace redirect: if a pharmacy user navigates to

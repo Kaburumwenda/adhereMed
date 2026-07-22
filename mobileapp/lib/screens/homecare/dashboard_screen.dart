@@ -1,968 +1,1054 @@
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
-import 'package:flutter_animate/flutter_animate.dart';
-import '../../core/theme_provider.dart';
-import '../../widgets/common.dart';
-import 'providers.dart';
+import '../../core/api.dart';
+import '../../providers/auth_provider.dart';
+import 'hc_common.dart';
+
+final _dashDoseFilter = StateProvider.autoDispose((_) => '7d');
+final _dashDoseFrom = StateProvider.autoDispose((_) => '');
+final _dashDoseTo = StateProvider.autoDispose((_) => '');
+
+final _dashDosesProvider = FutureProvider.autoDispose((ref) async {
+  final filter = ref.watch(_dashDoseFilter);
+  final now = DateTime.now();
+  DateTime? from;
+  DateTime? to;
+  switch (filter) {
+    case 'today':
+      from = DateTime(now.year, now.month, now.day);
+      to = from.add(const Duration(days: 1));
+    case 'yesterday':
+      from = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 1));
+      to = DateTime(now.year, now.month, now.day);
+    case '7d':
+      from = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 6));
+      to = now.add(const Duration(days: 1));
+    case '30d':
+      from = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 29));
+      to = now.add(const Duration(days: 1));
+    case 'year':
+      from = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 365));
+      to = now.add(const Duration(days: 1));
+    case 'custom':
+      final rawFrom = ref.watch(_dashDoseFrom);
+      final rawTo = ref.watch(_dashDoseTo);
+      if (rawFrom.isNotEmpty) from = DateTime.tryParse(rawFrom)?.toLocal();
+      if (rawTo.isNotEmpty) to = DateTime.tryParse(rawTo)?.toLocal();
+  }
+  final params = <String, dynamic>{'page_size': 2000};
+  if (from != null) params['from'] = from.toUtc().toIso8601String();
+  if (to != null) params['to'] = to.toUtc().toIso8601String();
+  return hcFetchAll(ref, '/homecare/doses/', params: params);
+});
+
+// ── Admin: dashboard summary (kpis, doses, trend, visits, escalations) ──
+final _adminDashProvider = FutureProvider.autoDispose((ref) async {
+  final dio = ref.read(dioProvider);
+  final res = await dio.get('/homecare/dashboard/summary/');
+  return res.data as Map<String, dynamic>;
+});
+
+// ── Caregiver: my-day + my patients + week shifts ──
+final _caregiverHomeProvider = FutureProvider.autoDispose((ref) async {
+  final dio = ref.read(dioProvider);
+  final now = DateTime.now();
+  final monday = DateTime(now.year, now.month, now.day)
+      .subtract(Duration(days: (now.weekday - 1)));
+  final weekEnd = monday.add(const Duration(days: 7));
+  final results = await Future.wait([
+    dio.get('/homecare/caregivers/me/my-day/'),
+    hcFetchAll(ref, '/homecare/patients/',
+        params: {'is_active': 'true', 'page_size': 100}),
+    hcFetchAll(ref, '/homecare/schedules/', params: {
+      'start_after': monday.toUtc().toIso8601String(),
+      'end_before': weekEnd.toUtc().toIso8601String(),
+      'page_size': 200,
+    }),
+    // Pre-warm the shared dose-filtered provider so panels render on load.
+    hcFetchAll(ref, '/homecare/doses/', params: {'page_size': 2000, 'from': DateTime.now().subtract(const Duration(days: 6)).toUtc().toIso8601String(), 'to': DateTime.now().add(const Duration(days: 1)).toUtc().toIso8601String()}),
+  ]);
+  return {
+    'day': (results[0] as dynamic).data as Map<String, dynamic>,
+    'patients': results[1] as List,
+    'week': results[2] as List,
+  };
+});
 
 class HomecareDashboardScreen extends ConsumerWidget {
   const HomecareDashboardScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final dash = ref.watch(homecareDashboardProvider);
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return RefreshIndicator(
-      onRefresh: () async => ref.invalidate(homecareDashboardProvider),
-      child: dash.when(
-        loading: () => const LoadingShimmer(lines: 8),
-        error: (e, _) => ErrorRetry(
-          message: 'Failed to load dashboard',
-          onRetry: () => ref.invalidate(homecareDashboardProvider),
-        ),
-        data: (data) {
-          final kpis = data['kpis'] as Map<String, dynamic>? ?? {};
-          final todayDoses = data['today_doses'] as Map<String, dynamic>? ?? {};
-          final trend = (data['adherence_trend'] as List?) ?? [];
-          final visits = (data['upcoming_visits'] as List?) ?? [];
-          final escalations = (data['recent_escalations'] as List?) ?? [];
-
-          return ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              // ── Hero Header ──
-              _HeroHeader(kpis: kpis, isDark: isDark, cs: cs),
-
-              // ── KPI Strip (horizontal scroll) ──
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                child: Text('Overview', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                height: 120,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  children: [
-                    _KpiChip(icon: Icons.people_alt_rounded, label: 'Patients', value: '${kpis['active_patients'] ?? 0}', color: const Color(0xFF0D9488)),
-                    _KpiChip(icon: Icons.medical_services_rounded, label: 'On Duty', value: '${kpis['caregivers_on_duty'] ?? 0}/${kpis['caregivers_total'] ?? 0}', color: const Color(0xFF6366F1)),
-                    _KpiChip(icon: Icons.medication_rounded, label: 'Adherence', value: kpis['adherence_today'] != null ? '${kpis['adherence_today']}%' : '—', color: const Color(0xFF10B981)),
-                    _KpiChip(icon: Icons.warning_amber_rounded, label: 'Escalations', value: '${kpis['open_escalations'] ?? 0}', color: const Color(0xFFEF4444)),
-                    _KpiChip(icon: Icons.shield_rounded, label: 'Claims', value: '${kpis['open_claims'] ?? 0}', color: const Color(0xFFF59E0B)),
-                  ],
-                ),
-              ),
-
-              // ── Today's Doses ──
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-                child: _DoseSummaryCard(doses: todayDoses, cs: cs),
-              ),
-
-              // ── Adherence Trend Chart ──
-              if (trend.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                  child: _AdherenceChart(trend: trend, cs: cs, isDark: isDark),
-                ),
-
-              // ── Caregiver Workforce Stats ──
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                child: _WorkforceCard(kpis: kpis, cs: cs),
-              ),
-
-              // ── Quick Actions Grid ──
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-                child: _QuickActionsGrid(cs: cs),
-              ),
-
-              // ── Upcoming Visits ──
-              if (visits.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-                  child: _VisitsCard(visits: visits, cs: cs),
-                ),
-
-              // ── Recent Escalations ──
-              if (escalations.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                  child: _EscalationsCard(escalations: escalations, cs: cs),
-                ),
-
-              const SizedBox(height: 100),
-            ],
-          );
-        },
-      ),
-    );
+    final role = ref.watch(authProvider).user?.role ?? '';
+    return role == 'caregiver'
+        ? const _CaregiverHome()
+        : const _AdminDashboard();
   }
 }
 
-// ═══════════════════════════════════════════════════════════
-// Hero Header
-// ═══════════════════════════════════════════════════════════
-class _HeroHeader extends ConsumerWidget {
-  final Map<String, dynamic> kpis;
-  final bool isDark;
-  final ColorScheme cs;
-
-  const _HeroHeader({required this.kpis, required this.isDark, required this.cs});
+// ═════════════════════════════════════════════════════════════════
+//  ADMIN DASHBOARD
+// ═════════════════════════════════════════════════════════════════
+class _AdminDashboard extends ConsumerWidget {
+  const _AdminDashboard();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final now = DateFormat('EEEE, MMM d').format(DateTime.now());
-    final time = DateFormat('h:mm a').format(DateTime.now());
-    return Container(
-      padding: EdgeInsets.fromLTRB(20, MediaQuery.of(context).padding.top + 20, 20, 28),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: isDark
-              ? [const Color(0xFF0F2027), const Color(0xFF203A43), const Color(0xFF2C5364)]
-              : [const Color(0xFF0D9488), const Color(0xFF0EA5E9)],
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(11),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-                ),
-                child: const Icon(Icons.health_and_safety_rounded, color: Colors.white, size: 26),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'HOMECARE COMMAND CENTRE',
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.2),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Welcome back',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                onPressed: () => ref.read(themeModeProvider.notifier).toggle(),
-                icon: Icon(
-                  isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-                  color: Colors.white,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Text(
-            'Live operations · ${kpis['active_patients'] ?? 0} patients in care',
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 13),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: [
-              _HeroChip(icon: Icons.schedule_rounded, label: time),
-              _HeroChip(icon: Icons.calendar_today_rounded, label: now),
-              _HeroChip(icon: Icons.favorite_rounded, label: '${kpis['caregivers_on_duty'] ?? 0} on duty'),
-              _HeroChip(icon: Icons.medication_rounded, label: '${kpis['adherence_today'] ?? 0}% adherence'),
-            ],
-          ),
-        ],
-      ),
-    ).animate().fadeIn(duration: 400.ms);
-  }
-}
+    final dash = ref.watch(_adminDashProvider);
+    final auth = ref.watch(authProvider);
 
-class _HeroChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  const _HeroChip({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: Colors.white.withValues(alpha: 0.9)),
-          const SizedBox(width: 5),
-          Text(label, style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.9), fontWeight: FontWeight.w500)),
-        ],
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-// KPI Chip (horizontal scroll item)
-// ═══════════════════════════════════════════════════════════
-class _KpiChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color color;
-
-  const _KpiChip({required this.icon, required this.label, required this.value, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 130,
-      margin: const EdgeInsets.only(right: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Theme.of(context).dividerColor.withValues(alpha: 0.2)),
-        boxShadow: [
-          BoxShadow(color: color.withValues(alpha: 0.08), blurRadius: 12, offset: const Offset(0, 4)),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [color, color.withValues(alpha: 0.7)]),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, color: Colors.white, size: 16),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Theme.of(context).colorScheme.onSurface)),
-              Text(label, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-// Dose Summary Card with donut
-// ═══════════════════════════════════════════════════════════
-class _DoseSummaryCard extends StatelessWidget {
-  final Map<String, dynamic> doses;
-  final ColorScheme cs;
-
-  const _DoseSummaryCard({required this.doses, required this.cs});
-
-  @override
-  Widget build(BuildContext context) {
-    final total = (doses['total'] as num?)?.toInt() ?? 0;
-    final taken = (doses['taken'] as num?)?.toInt() ?? 0;
-    final missed = (doses['missed'] as num?)?.toInt() ?? 0;
-    final pending = (doses['pending'] as num?)?.toInt() ?? 0;
-    final skipped = (doses['skipped'] as num?)?.toInt() ?? 0;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return HcAsyncBody(
+      value: dash,
+      onRefresh: () async => ref.refresh(_adminDashProvider.future),
+      builder: (d) {
+        final kpis = (d['kpis'] as Map?) ?? {};
+        final doses = (d['today_doses'] as Map?) ?? {};
+        final visits = (d['upcoming_visits'] as List?) ?? [];
+        final escalations = (d['recent_escalations'] as List?) ?? [];
+        return ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.only(bottom: 24),
           children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [Color(0xFF0EA5E9), Color(0xFF0EA5E9CC)]),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.medication_liquid_rounded, color: Colors.white, size: 18),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("Today's Doses", style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-                      Text('Live medication tracking', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(color: cs.primaryContainer, borderRadius: BorderRadius.circular(12)),
-                  child: Text('$total total', style: TextStyle(fontSize: 12, color: cs.onPrimaryContainer, fontWeight: FontWeight.w600)),
-                ),
+            HcHero(
+              eyebrow: 'COMMAND CENTRE',
+              title: 'Hello, ${auth.user?.firstName ?? 'Admin'}',
+              subtitle: DateFormat('EEEE, d MMMM').format(DateTime.now()),
+              icon: Icons.monitor_heart_rounded,
+              chips: [
+                HcHeroChip(
+                    icon: Icons.people_rounded,
+                    label: '${kpis['active_patients'] ?? 0} active patients'),
+                HcHeroChip(
+                    icon: Icons.medical_services_rounded,
+                    label: '${kpis['caregivers_on_duty'] ?? 0} on duty'),
               ],
+            ).animate().fadeIn(duration: 300.ms),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: LayoutBuilder(
+                builder: (context, c) {
+                  final cardW = (c.maxWidth - 10) / 2;
+                  return GridView.count(
+                    crossAxisCount: 2,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    childAspectRatio: cardW / (cardW / 2.2 + 20),
+                    children: [
+                      HcKpi(
+                          label: 'Active patients',
+                      value: '${kpis['active_patients'] ?? 0}',
+                      icon: Icons.favorite_rounded,
+                      color: hcTeal,
+                      onTap: () => context.go('/homecare/patients')),
+                  HcKpi(
+                      label: 'Caregivers',
+                      value:
+                          '${kpis['caregivers_on_duty'] ?? 0}/${kpis['caregivers_total'] ?? 0}',
+                      hint: 'On duty / total',
+                      icon: Icons.medical_services_rounded,
+                      color: hcBlue,
+                      onTap: () => context.go('/homecare/caregivers')),
+                  HcKpi(
+                      label: 'Adherence today',
+                      value: '${kpis['adherence_today'] ?? 0}%',
+                      icon: Icons.pie_chart_rounded,
+                      color: hcPurple),
+                  HcKpi(
+                      label: 'Open escalations',
+                      value: '${kpis['open_escalations'] ?? 0}',
+                      icon: Icons.notification_important_rounded,
+                      color: hcRed,
+                      onTap: () => context.go('/homecare/escalations')),
+                    ],
+                  );
+                },
+              ),
             ),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                SizedBox(
-                  width: 120,
-                  height: 120,
-                  child: total > 0
-                      ? PieChart(PieChartData(
-                          sectionsSpace: 2,
-                          centerSpaceRadius: 32,
-                          sections: [
-                            if (taken > 0) PieChartSectionData(value: taken.toDouble(), color: Colors.green, radius: 20, showTitle: false),
-                            if (pending > 0) PieChartSectionData(value: pending.toDouble(), color: Colors.orange, radius: 20, showTitle: false),
-                            if (missed > 0) PieChartSectionData(value: missed.toDouble(), color: Colors.red, radius: 20, showTitle: false),
-                            if (skipped > 0) PieChartSectionData(value: skipped.toDouble(), color: Colors.grey, radius: 20, showTitle: false),
-                          ],
-                        ))
-                      : Center(child: Text('No data', style: TextStyle(color: cs.onSurfaceVariant))),
-                ),
-                const SizedBox(width: 20),
-                Expanded(
-                  child: Column(
-                    children: [
-                      _DoseLegendRow(label: 'Taken', count: taken, color: Colors.green),
-                      _DoseLegendRow(label: 'Pending', count: pending, color: Colors.orange),
-                      _DoseLegendRow(label: 'Missed', count: missed, color: Colors.red),
-                      _DoseLegendRow(label: 'Skipped', count: skipped, color: Colors.grey),
-                    ],
-                  ),
-                ),
-              ],
+            _TodayDoses(doses: doses),
+            const SizedBox(height: 16),
+            _DoseAdherencePanel(),
+            const SizedBox(height: 16),
+            _FilteredDosesPanel(),
+            const SizedBox(height: 16),
+            HcPanel(
+              title: 'Upcoming visits',
+              subtitle: 'Next scheduled care visits',
+              icon: Icons.event_rounded,
+              color: hcBlue,
+              action: TextButton(
+                  onPressed: () => context.go('/homecare/assignments'),
+                  child: const Text('All shifts')),
+              child: visits.isEmpty
+                  ? const _EmptyLine(text: 'No upcoming visits')
+                  : Column(
+                      children: visits.take(6).map<Widget>((v) {
+                      return _VisitRow(visit: v as Map);
+                    }).toList()),
             ),
-            if (total > 0) ...[
-              const SizedBox(height: 14),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: LinearProgressIndicator(
-                  value: taken / total,
-                  minHeight: 6,
-                  backgroundColor: cs.surfaceContainerHighest,
-                  color: Colors.green,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                '${(taken * 100 ~/ total)}% administered',
-                style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant, fontWeight: FontWeight.w500),
-              ),
-            ],
+            HcPanel(
+              title: 'Recent escalations',
+              subtitle: 'Patients flagged for attention',
+              icon: Icons.warning_amber_rounded,
+              color: hcRed,
+              action: TextButton(
+                  onPressed: () => context.go('/homecare/escalations'),
+                  child: const Text('Triage')),
+              child: escalations.isEmpty
+                  ? const _EmptyLine(text: 'No recent escalations')
+                  : Column(
+                      children: escalations.take(5).map<Widget>((e) {
+                        final m = e as Map;
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                          leading: HcAvatar(
+                              name: m['patient_name']?.toString(),
+                              color: hcSeverityColor(
+                                  m['severity']?.toString())),
+                          title: Text(m['patient_name']?.toString() ?? '—',
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w700, fontSize: 13)),
+                          subtitle: Text(m['reason']?.toString() ?? '',
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                          trailing: HcStatusChip(
+                              label: hcLabel(m['severity']?.toString()),
+                              color:
+                                  hcSeverityColor(m['severity']?.toString())),
+                        );
+                      }).toList(),
+                    ),
+            ),
+            _QuickLinks(isCaregiver: false),
           ],
-        ),
-      ),
+        );
+      },
     );
   }
 }
 
-class _DoseLegendRow extends StatelessWidget {
-  final String label;
-  final int count;
-  final Color color;
-  const _DoseLegendRow({required this.label, required this.count, required this.color});
+// ═════════════════════════════════════════════════════════════════
+//  CAREGIVER HOME (mirrors web CaregiverHomeDashboard)
+// ═════════════════════════════════════════════════════════════════
+class _CaregiverHome extends ConsumerWidget {
+  const _CaregiverHome();
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Container(width: 10, height: 10, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3))),
-          const SizedBox(width: 8),
-          Expanded(child: Text(label, style: const TextStyle(fontSize: 12))),
-          Text('$count', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-        ],
-      ),
-    );
-  }
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final home = ref.watch(_caregiverHomeProvider);
+    final auth = ref.watch(authProvider);
 
-// ═══════════════════════════════════════════════════════════
-// Adherence Trend Chart (Bar chart like web)
-// ═══════════════════════════════════════════════════════════
-class _AdherenceChart extends StatelessWidget {
-  final List trend;
-  final ColorScheme cs;
-  final bool isDark;
+    return HcAsyncBody(
+      value: home,
+      onRefresh: () async => ref.refresh(_caregiverHomeProvider.future),
+      builder: (d) {
+        final day = d['day'] as Map<String, dynamic>;
+        final caregiver = (day['caregiver'] as Map?) ?? {};
+        final visits = (day['visits'] as List?) ?? [];
+        final doses = (day['doses'] as List?) ?? [];
+        final patients = (d['patients'] as List?) ?? [];
+        final week = (d['week'] as List?) ?? [];
 
-  const _AdherenceChart({required this.trend, required this.cs, required this.isDark});
+        final pendingDoses =
+            doses.where((x) => x['status'] == 'pending').length;
+        final doneVisits =
+            visits.where((x) => x['status'] == 'completed').length;
+        final hour = DateTime.now().hour;
+        final greeting = hour < 12
+            ? 'Good morning'
+            : hour < 17
+                ? 'Good afternoon'
+                : 'Good evening';
+        final gradient = hour < 12
+            ? const [Color(0xFF0F766E), Color(0xFF0D9488), Color(0xFF14B8A6)]
+            : hour < 17
+                ? const [Color(0xFF0E7490), Color(0xFF0891B2), Color(0xFF06B6D4)]
+                : const [Color(0xFF3730A3), Color(0xFF4F46E5), Color(0xFF6366F1)];
 
-  @override
-  Widget build(BuildContext context) {
-    final rates = trend.map((t) => (t['rate'] as num?)?.toDouble() ?? 0.0).toList();
-    final avg = rates.isNotEmpty ? (rates.reduce((a, b) => a + b) / rates.length).round() : 0;
-    final best = rates.isNotEmpty ? rates.reduce((a, b) => a > b ? a : b).round() : 0;
-    final worst = rates.isNotEmpty ? rates.reduce((a, b) => a < b ? a : b).round() : 0;
+        // Next visit = earliest non-final today
+        final upcoming = visits
+            .where((v) => !['completed', 'cancelled', 'missed']
+                .contains(v['status']))
+            .toList()
+          ..sort((a, b) => (a['start_at'] ?? '')
+              .toString()
+              .compareTo((b['start_at'] ?? '').toString()));
+        final next = upcoming.isNotEmpty ? upcoming.first as Map : null;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        return ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.only(bottom: 24),
           children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [Color(0xFF0D9488), Color(0xFF0D9488CC)]),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.show_chart_rounded, color: Colors.white, size: 18),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('7-Day Adherence', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-                      Text('Doses taken on time', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-                    ],
-                  ),
-                ),
+            HcHero(
+              eyebrow: greeting.toUpperCase(),
+              title: auth.user?.fullName ?? 'Caregiver',
+              subtitle: DateFormat('EEEE, d MMMM').format(DateTime.now()),
+              icon: Icons.volunteer_activism_rounded,
+              gradient: gradient,
+              chips: [
+                HcHeroChip(
+                    icon: Icons.star_rounded,
+                    label: '${caregiver['rating'] ?? 0} rating'),
+                HcHeroChip(
+                    icon: Icons.people_rounded,
+                    label: '${patients.length} patients'),
+                HcHeroChip(
+                    icon: (caregiver['is_available'] == true)
+                        ? Icons.check_circle_rounded
+                        : Icons.pause_circle_rounded,
+                    label: (caregiver['is_available'] == true)
+                        ? 'Available'
+                        : 'Off duty'),
               ],
+            ).animate().fadeIn(duration: 300.ms),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: LayoutBuilder(
+                builder: (context, c) {
+                  final cardW = (c.maxWidth - 10) / 2;
+                  return GridView.count(
+                    crossAxisCount: 2,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    childAspectRatio: cardW / (cardW / 2.2 + 20),
+                    children: [
+                  HcKpi(
+                      label: 'Visits today',
+                      value: '${visits.length}',
+                      hint: '$doneVisits done',
+                      icon: Icons.calendar_today_rounded,
+                      color: hcTeal,
+                      onTap: () => context.go('/homecare/my-day')),
+                  HcKpi(
+                      label: 'Pending doses',
+                      value: '$pendingDoses',
+                      icon: Icons.medication_rounded,
+                      color: hcBlue,
+                      onTap: () => context.go('/homecare/my-day')),
+                  HcKpi(
+                      label: 'This week',
+                      value: '${week.length}',
+                      hint: 'Scheduled shifts',
+                      icon: Icons.date_range_rounded,
+                      color: hcAmber,
+                      onTap: () => context.go('/homecare/assignments')),
+                  HcKpi(
+                      label: 'Total visits',
+                      value: '${caregiver['total_visits'] ?? 0}',
+                      hint: 'All time',
+                      icon: Icons.verified_rounded,
+                      color: hcGreen),
+                    ],
+                  );
+                },
+              ),
             ),
             const SizedBox(height: 16),
-            SizedBox(
-              height: 180,
-              child: BarChart(
-                BarChartData(
-                  gridData: FlGridData(
-                    show: true,
-                    drawVerticalLine: false,
-                    horizontalInterval: 25,
-                    getDrawingHorizontalLine: (v) => FlLine(color: cs.outlineVariant.withValues(alpha: 0.3), strokeWidth: 1),
-                  ),
-                  titlesData: FlTitlesData(
-                    leftTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 30,
-                        interval: 25,
-                        getTitlesWidget: (v, _) => Text('${v.toInt()}%', style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant)),
+            _DoseAdherencePanel(),
+            const SizedBox(height: 16),
+            _FilteredDosesPanel(),
+            const SizedBox(height: 16),
+            if (next != null)
+              HcPanel(
+                title: 'Up next',
+                subtitle: 'Your next scheduled visit',
+                icon: Icons.near_me_rounded,
+                color: hcTeal,
+                action: TextButton(
+                    onPressed: () => context.go('/homecare/my-day'),
+                    child: const Text('My Day')),
+                child: Column(children: [
+                  _VisitRow(visit: next, showDirections: true),
+                  const SizedBox(height: 8),
+                  Row(children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: () => context.go('/homecare/my-day'),
+                        icon: const Icon(Icons.login_rounded, size: 18),
+                        label: const Text('Check in'),
                       ),
                     ),
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        getTitlesWidget: (v, _) {
-                          final i = v.toInt();
-                          if (i < 0 || i >= trend.length) return const SizedBox();
-                          final date = DateTime.tryParse(trend[i]['date'] ?? '');
-                          if (date == null) return const SizedBox();
-                          return Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: Text(DateFormat('E').format(date), style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant)),
-                          );
-                        },
-                      ),
-                    ),
-                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  ),
-                  borderData: FlBorderData(show: false),
-                  maxY: 100,
-                  barGroups: List.generate(trend.length, (i) {
-                    final rate = (trend[i]['rate'] as num?)?.toDouble() ?? 0;
-                    return BarChartGroupData(
-                      x: i,
-                      barRods: [
-                        BarChartRodData(
-                          toY: rate,
-                          width: 20,
-                          borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
-                          gradient: LinearGradient(
-                            begin: Alignment.bottomCenter,
-                            end: Alignment.topCenter,
-                            colors: [cs.primary.withValues(alpha: 0.6), cs.primary],
+                  ]),
+                ]),
+              ),
+            HcPanel(
+              title: 'My patients',
+              subtitle: 'People currently under your care',
+              icon: Icons.people_alt_rounded,
+              color: hcTeal,
+              action: TextButton(
+                  onPressed: () => context.go('/homecare/patients'),
+                  child: const Text('All')),
+              child: patients.isEmpty
+                  ? const _EmptyLine(text: 'No patients assigned')
+                  : Column(
+                      children: patients.take(6).map<Widget>((p) {
+                        final m = p as Map;
+                        final risk = m['risk_level']?.toString() ?? 'low';
+                        final adherence = m['adherence_rate'];
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                          onTap: () =>
+                              context.go('/homecare/patients/${m['id']}'),
+                          leading: HcAvatar(
+                              name: m['patient_name']?.toString(),
+                              color: hcRiskColor(risk)),
+                          title: Text(m['patient_name']?.toString() ?? '—',
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w700, fontSize: 13)),
+                          subtitle: Text(
+                              m['medical_record_number']?.toString() ?? '',
+                              style: const TextStyle(fontSize: 11)),
+                          trailing: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              HcStatusChip(
+                                  label: '${risk.toUpperCase()} RISK',
+                                  color: hcRiskColor(risk)),
+                              const SizedBox(height: 3),
+                              Text(
+                                  adherence != null
+                                      ? 'Adherence $adherence%'
+                                      : 'Adherence N/A',
+                                  style: const TextStyle(fontSize: 10.5)),
+                            ],
                           ),
-                        ),
-                      ],
-                    );
-                  }),
-                ),
-              ),
+                        );
+                      }).toList(),
+                    ),
             ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                _StatChipSmall(label: 'Avg', value: '$avg%', color: Colors.green),
-                const SizedBox(width: 8),
-                _StatChipSmall(label: 'Best', value: '$best%', color: Colors.blue),
-                const SizedBox(width: 8),
-                _StatChipSmall(label: 'Worst', value: '$worst%', color: Colors.orange),
-              ],
-            ),
+            _QuickLinks(isCaregiver: true),
           ],
+        );
+      },
+    );
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════
+//  Shared pieces
+// ═════════════════════════════════════════════════════════════════
+class _TodayDoses extends StatelessWidget {
+  final Map doses;
+  const _TodayDoses({required this.doses});
+
+  @override
+  Widget build(BuildContext context) {
+    final total = (doses['total'] ?? 0) as num;
+    final taken = (doses['taken'] ?? 0) as num;
+    final pending = (doses['pending'] ?? 0) as num;
+    final missed = (doses['missed'] ?? 0) as num;
+    final pct = total > 0 ? taken / total : 0.0;
+    return HcPanel(
+      title: "Today's doses",
+      subtitle: 'Medication administration across all patients',
+      icon: Icons.medication_rounded,
+      color: hcPurple,
+      child: Column(children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: LinearProgressIndicator(
+              value: pct.toDouble(), minHeight: 8, color: hcGreen),
         ),
-      ),
-    );
-  }
-}
-
-class _StatChipSmall extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color color;
-  const _StatChipSmall({required this.label, required this.value, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('$label: ', style: TextStyle(fontSize: 11, color: color.withValues(alpha: 0.7))),
-          Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color)),
-        ],
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-// Workforce Card
-// ═══════════════════════════════════════════════════════════
-class _WorkforceCard extends StatelessWidget {
-  final Map<String, dynamic> kpis;
-  final ColorScheme cs;
-
-  const _WorkforceCard({required this.kpis, required this.cs});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [Color(0xFF6366F1), Color(0xFF6366F1CC)]),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.groups_rounded, color: Colors.white, size: 18),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Caregiver Workforce', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-                      Text('Field team status', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-                    ],
-                  ),
-                ),
-                TextButton(
-                  onPressed: () => context.push('/homecare/caregivers'),
-                  child: const Text('Manage'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(child: _WorkforceStat(label: 'On Duty', value: '${kpis['caregivers_on_duty'] ?? 0}', color: Colors.teal)),
-                const SizedBox(width: 8),
-                Expanded(child: _WorkforceStat(label: 'Total', value: '${kpis['caregivers_total'] ?? 0}', color: cs.primary)),
-                const SizedBox(width: 8),
-                Expanded(child: _WorkforceStat(label: 'Visits', value: '${kpis['visits_completed_today'] ?? 0}', color: Colors.green)),
-                const SizedBox(width: 8),
-                Expanded(child: _WorkforceStat(label: 'Rating', value: '${kpis['avg_rating'] ?? '—'}', color: Colors.amber.shade700)),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _WorkforceStat extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color color;
-  const _WorkforceStat({required this.label, required this.value, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        children: [
-          Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: color)),
-          const SizedBox(height: 2),
-          Text(label, style: TextStyle(fontSize: 10, color: color.withValues(alpha: 0.8)), textAlign: TextAlign.center),
-        ],
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-// Quick Actions Grid (12 actions matching web)
-// ═══════════════════════════════════════════════════════════
-class _QuickActionsGrid extends StatelessWidget {
-  final ColorScheme cs;
-  const _QuickActionsGrid({required this.cs});
-
-  @override
-  Widget build(BuildContext context) {
-    final actions = [
-      _QA(icon: Icons.person_add_rounded, label: 'Enrol Patient', path: '/homecare/patients/new', color: const Color(0xFF0D9488)),
-      _QA(icon: Icons.calendar_month_rounded, label: 'Schedule Visit', path: '/homecare/schedules', color: const Color(0xFF6366F1)),
-      _QA(icon: Icons.medication_rounded, label: "Today's Doses", path: '/homecare/my-day', color: const Color(0xFF10B981)),
-      _QA(icon: Icons.groups_rounded, label: 'Caregivers', path: '/homecare/caregivers', color: const Color(0xFF0EA5E9)),
-      _QA(icon: Icons.warning_amber_rounded, label: 'Escalations', path: '/homecare/escalations', color: const Color(0xFFEF4444)),
-      _QA(icon: Icons.description_rounded, label: 'Prescriptions', path: '/homecare/patients', color: const Color(0xFF8B5CF6)),
-      _QA(icon: Icons.shield_rounded, label: 'Insurance', path: '/homecare/patients', color: const Color(0xFFF59E0B)),
-      _QA(icon: Icons.monitor_heart_rounded, label: 'Vitals', path: '/homecare/patients', color: const Color(0xFFEF4444)),
-      _QA(icon: Icons.account_tree_rounded, label: 'Assignments', path: '/homecare/assignments', color: const Color(0xFF0D9488)),
-      _QA(icon: Icons.receipt_long_rounded, label: 'Billing', path: '/homecare/patients', color: const Color(0xFF0284C7)),
-      _QA(icon: Icons.devices_rounded, label: 'Equipment', path: '/homecare/patients', color: const Color(0xFF7C3AED)),
-      _QA(icon: Icons.analytics_rounded, label: 'Reports', path: '/homecare/patients', color: const Color(0xFF475569)),
-    ];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+        const SizedBox(height: 10),
         Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            Icon(Icons.flash_on_rounded, color: cs.primary, size: 18),
-            const SizedBox(width: 6),
-            Text('Quick Actions', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+            _DoseStat(label: 'Taken', value: '$taken', color: hcGreen),
+            _DoseStat(label: 'Pending', value: '$pending', color: hcAmber),
+            _DoseStat(label: 'Missed', value: '$missed', color: hcRed),
+            _DoseStat(label: 'Total', value: '$total', color: hcSlate),
           ],
         ),
-        const SizedBox(height: 12),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 4,
-            mainAxisSpacing: 10,
-            crossAxisSpacing: 10,
-            childAspectRatio: 0.85,
-          ),
-          itemCount: actions.length,
-          itemBuilder: (_, i) {
-            final a = actions[i];
-            return InkWell(
-              borderRadius: BorderRadius.circular(14),
-              onTap: () => context.push(a.path),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-                decoration: BoxDecoration(
-                  color: a.color.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: a.color.withValues(alpha: 0.1)),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(colors: [a.color, a.color.withValues(alpha: 0.7)]),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(a.icon, color: Colors.white, size: 18),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      a.label,
-                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: a.color),
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
-      ],
+      ]),
     );
   }
 }
 
-class _QA {
-  final IconData icon;
+class _DoseStat extends StatelessWidget {
   final String label;
-  final String path;
+  final String value;
   final Color color;
-  const _QA({required this.icon, required this.label, required this.path, required this.color});
-}
-
-// ═══════════════════════════════════════════════════════════
-// Visits Card
-// ═══════════════════════════════════════════════════════════
-class _VisitsCard extends StatelessWidget {
-  final List visits;
-  final ColorScheme cs;
-
-  const _VisitsCard({required this.visits, required this.cs});
+  const _DoseStat(
+      {required this.label, required this.value, required this.color});
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [Color(0xFF0D9488), Color(0xFF0D9488CC)]),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.calendar_today_rounded, color: Colors.white, size: 18),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Upcoming Visits', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-                      Text('Next caregiver shifts', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-                    ],
-                  ),
-                ),
-                TextButton(
-                  onPressed: () => context.push('/homecare/schedules'),
-                  child: const Text('View All'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            ...visits.take(5).map((v) => _VisitRow(visit: v, cs: cs)),
-          ],
-        ),
-      ),
-    );
+    return Column(children: [
+      Text(value,
+          style: TextStyle(
+              fontSize: 17, fontWeight: FontWeight.w800, color: color)),
+      Text(label,
+          style: TextStyle(
+              fontSize: 11,
+              color: Theme.of(context).colorScheme.onSurfaceVariant)),
+    ]);
   }
 }
 
 class _VisitRow extends StatelessWidget {
-  final dynamic visit;
-  final ColorScheme cs;
-  const _VisitRow({required this.visit, required this.cs});
+  final Map visit;
+  final bool showDirections;
+  const _VisitRow({required this.visit, this.showDirections = false});
 
   @override
   Widget build(BuildContext context) {
-    final status = visit['status'] ?? '';
-    final patientName = visit['patient_name'] ?? visit['patient']?['user']?['full_name'] ?? 'Unknown';
-    final caregiverName = visit['caregiver_name'] ?? visit['caregiver']?['user']?['full_name'] ?? '';
-    final startAt = DateTime.tryParse(visit['start_at'] ?? '');
-    final timeStr = startAt != null ? DateFormat('h:mm a').format(startAt.toLocal()) : '';
-
-    final Color statusColor;
-    switch (status) {
-      case 'scheduled':
-        statusColor = Colors.blue;
-      case 'checked_in':
-        statusColor = Colors.green;
-      case 'completed':
-        statusColor = Colors.grey;
-      case 'missed':
-        statusColor = Colors.red;
-      default:
-        statusColor = cs.onSurfaceVariant;
-    }
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(12),
+    final status = visit['status']?.toString();
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      dense: true,
+      leading: HcAvatar(
+          name: visit['patient_name']?.toString(),
+          color: hcVisitStatusColor(status)),
+      title: Text(visit['patient_name']?.toString() ?? '—',
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+      subtitle: Text(
+        '${hcTimeRange(visit['start_at'], visit['end_at'])}'
+        '${(visit['patient_address'] ?? '').toString().isNotEmpty ? ' · ${visit['patient_address']}' : ''}',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 11.5),
       ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: Colors.teal.withValues(alpha: 0.1),
-            child: Text(
-              timeStr.isNotEmpty ? timeStr.split(':')[0] : '?',
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.teal),
+      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (showDirections)
+          IconButton(
+            icon: const Icon(Icons.directions_rounded, color: hcIndigo),
+            tooltip: 'Directions',
+            onPressed: () => hcOpenDirections(
+              context,
+              destLat: double.tryParse('${visit['patient_address_lat']}'),
+              destLng: double.tryParse('${visit['patient_address_lng']}'),
+              address: visit['patient_address']?.toString(),
             ),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(patientName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
-                if (caregiverName.isNotEmpty)
-                  Text(caregiverName, style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant), maxLines: 1, overflow: TextOverflow.ellipsis),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
-            child: Text(status.replaceAll('_', ' '), style: TextStyle(fontSize: 10, color: statusColor, fontWeight: FontWeight.w600)),
-          ),
-        ],
+        HcStatusChip(
+            label: hcLabel(status), color: hcVisitStatusColor(status)),
+      ]),
+    );
+  }
+}
+
+class _QuickLinks extends StatelessWidget {
+  final bool isCaregiver;
+  const _QuickLinks({required this.isCaregiver});
+
+  @override
+  Widget build(BuildContext context) {
+    final links = isCaregiver
+        ? const [
+            (_QL(Icons.today_rounded, 'My Day', '/homecare/my-day', hcTeal)),
+            (_QL(Icons.volunteer_activism_rounded, 'Patient Care', '/homecare/patient-care', hcGreen)),
+            (_QL(Icons.medication_rounded, 'Doses', '/homecare/doses', hcBlue)),
+            (_QL(Icons.monitor_heart_rounded, 'Vitals', '/homecare/vitals', hcRose)),
+            (_QL(Icons.assignment_rounded, 'Assessments', '/homecare/assessments', hcPurple)),
+            (_QL(Icons.event_note_rounded, 'My Shifts', '/homecare/assignments', hcAmber)),
+          ]
+        : const [
+            (_QL(Icons.person_add_alt_1_rounded, 'Enroll patient', '/homecare/patients/new', hcTeal)),
+            (_QL(Icons.volunteer_activism_rounded, 'Patient Care', '/homecare/patient-care', hcGreen)),
+            (_QL(Icons.medical_services_rounded, 'Caregivers', '/homecare/caregivers', hcBlue)),
+            (_QL(Icons.medication_rounded, 'Doses', '/homecare/doses', hcIndigo)),
+            (_QL(Icons.monitor_heart_rounded, 'Vitals', '/homecare/vitals', hcRose)),
+            (_QL(Icons.assignment_rounded, 'Assessments', '/homecare/assessments', hcPurple)),
+            (_QL(Icons.event_note_rounded, 'Schedules', '/homecare/schedules', hcAmber)),
+            (_QL(Icons.notification_important_rounded, 'Escalations', '/homecare/escalations', hcRed)),
+          ];
+    return HcPanel(
+      title: 'Quick actions',
+      icon: Icons.bolt_rounded,
+      color: hcPurple,
+      child: GridView.count(
+        crossAxisCount: 2,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        mainAxisSpacing: 10,
+        crossAxisSpacing: 10,
+        childAspectRatio: 2.6,
+        children: links
+            .map((l) => Material(
+                  color: l.color.withValues(alpha: 0.09),
+                  borderRadius: BorderRadius.circular(14),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: () => context.go(l.path),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Row(children: [
+                        Icon(l.icon, color: l.color, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                            child: Text(l.label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    color: l.color,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 12.5))),
+                      ]),
+                    ),
+                  ),
+                ))
+            .toList(),
       ),
     );
   }
 }
 
-// ═══════════════════════════════════════════════════════════
-// Escalations Card
-// ═══════════════════════════════════════════════════════════
-class _EscalationsCard extends StatelessWidget {
-  final List escalations;
-  final ColorScheme cs;
+class _QL {
+  final IconData icon;
+  final String label;
+  final String path;
+  final Color color;
+  const _QL(this.icon, this.label, this.path, this.color);
+}
 
-  const _EscalationsCard({required this.escalations, required this.cs});
+class _EmptyLine extends StatelessWidget {
+  final String text;
+  const _EmptyLine({required this.text});
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [Color(0xFFEF4444), Color(0xFFEF4444CC)]),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.warning_rounded, color: Colors.white, size: 18),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Center(
+          child: Text(text,
+              style: TextStyle(
+                  fontSize: 12.5,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant))),
+    );
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════
+//  Shared dashboard panels — adherence chart + filtered doses
+// ═════════════════════════════════════════════════════════════════
+
+class _DoseAdherencePanel extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final doses = ref.watch(_dashDosesProvider);
+    final filter = ref.watch(_dashDoseFilter);
+    final from = ref.watch(_dashDoseFrom);
+    final to = ref.watch(_dashDoseTo);
+
+    // Daily adherence computation
+    final byDay = <String, int>{};
+    final byDayMissed = <String, int>{};
+    for (final d in (doses.valueOrNull ?? const []).cast<Map>()) {
+      final st = (d['status'] ?? '').toString();
+      if (st != 'taken' && st != 'missed') continue;
+      var ts = d['scheduled_at'] ?? d['administered_at'];
+      if (ts == null) continue;
+      final dt = DateTime.tryParse(ts.toString())?.toLocal();
+      if (dt == null) continue;
+      final key = DateFormat('yyyy-MM-dd').format(dt);
+      byDay[key] = (byDay[key] ?? 0) + 1;
+      if (st == 'missed') byDayMissed[key] = (byDayMissed[key] ?? 0) + 1;
+    }
+    final rates = <Map<String, dynamic>>[];
+    for (final e in byDay.entries) {
+      final missed = byDayMissed[e.key] ?? 0;
+      final taken = e.value - missed;
+      rates.add({
+        'date': e.key,
+        'rate': e.value > 0 ? (taken / e.value * 100).round() : 0,
+        'total': e.value,
+      });
+    }
+    rates.sort((a, b) => (a['date'] as String).compareTo(b['date'] as String));
+    final overall = byDay.values.fold<int>(0, (s, v) => s + v);
+    final overallTaken =
+        overall - byDayMissed.values.fold<int>(0, (s, v) => s + v);
+    final overallPct = overall > 0 ? (overallTaken / overall * 100).round() : 0;
+
+    final cs = Theme.of(context).colorScheme;
+
+    return HcPanel(
+      title: 'Medication adherence',
+      subtitle:
+          '$overallPct% · $overall doses · ${flDateLabel(filter, from, to)}',
+      icon: Icons.show_chart_rounded,
+      color: hcTeal,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Date chips — scrollable row, never overflows
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: EdgeInsets.zero,
+          child: Row(children: [
+            for (final f in const [
+              ('today', 'Today'),
+              ('yesterday', 'Yesterday'),
+              ('7d', '7 days'),
+              ('30d', '30 days'),
+              ('year', 'Year'),
+              ('custom', 'Custom'),
+            ])
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  selected: filter == f.$1,
+                  label: Text(f.$2,
+                      style: const TextStyle(fontSize: 11.5)),
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (_) =>
+                      ref.read(_dashDoseFilter.notifier).state = f.$1,
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Open Escalations', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-                      Text('Patients flagged for review', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-                    ],
-                  ),
-                ),
-                TextButton(
-                  onPressed: () => context.push('/homecare/escalations'),
-                  child: const Text('View All'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            ...escalations.take(5).map((e) => _EscalationRow(esc: e, cs: cs)),
-          ],
+              ),
+          ]),
         ),
+        if (filter == 'custom') ...[
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(
+                child: _DateField(
+                    label: 'From',
+                    value: from,
+                    onChanged: (v) =>
+                        ref.read(_dashDoseFrom.notifier).state = v,
+                    onPick: () async {
+                      final d = await showDatePicker(
+                        context: context,
+                        firstDate: DateTime(2020),
+                        lastDate:
+                            DateTime.now().add(const Duration(days: 2)),
+                        initialDate: DateTime.now()
+                            .subtract(const Duration(days: 7)),
+                      );
+                      if (d != null) {
+                        ref.read(_dashDoseFrom.notifier).state =
+                            DateFormat('yyyy-MM-dd').format(d);
+                      }
+                    })),
+            const SizedBox(width: 8),
+            Expanded(
+                child: _DateField(
+                    label: 'To',
+                    value: to,
+                    onChanged: (v) =>
+                        ref.read(_dashDoseTo.notifier).state = v,
+                    onPick: () async {
+                      final d = await showDatePicker(
+                        context: context,
+                        firstDate: DateTime(2020),
+                        lastDate:
+                            DateTime.now().add(const Duration(days: 2)),
+                        initialDate: DateTime.now(),
+                      );
+                      if (d != null) {
+                        ref.read(_dashDoseTo.notifier).state =
+                            DateFormat('yyyy-MM-dd').format(d);
+                      }
+                    })),
+          ]),
+        ],
+        const SizedBox(height: 12),
+        // Summary row
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+              color: hcTeal.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(14)),
+          child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _Mini(label: 'Pending', value: '${rates.fold<int>(0, (s, r) => s + ((r['total'] as int) - ((r['total'] as int) - (r['rate'] as int) * (r['total'] as int) ~/ 100)))}', color: hcAmber),
+                _Mini(label: 'Adherence', value: '$overallPct%', color: overallPct >= 70 ? hcGreen : hcRed),
+                _Mini(label: 'Doses', value: '$overall', color: hcSlate),
+              ]),
+        ),
+        const SizedBox(height: 14),
+        doses.maybeWhen(
+          loading: () => const _ChartLoading(),
+          orElse: () => rates.length < 2
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(child: Text('Need at least 2 days of data for a chart.')))
+              : SizedBox(
+                  height: 200,
+                  child: LineChart(
+                    LineChartData(
+                      minY: 0,
+                      maxY: 100,
+                      gridData: FlGridData(
+                          show: true,
+                          drawVerticalLine: false,
+                          horizontalInterval: 25,
+                          getDrawingHorizontalLine: (v) => FlLine(
+                              color: cs.outlineVariant, strokeWidth: 0.7)),
+                      borderData: FlBorderData(
+                          show: true,
+                          border: Border.all(
+                              color: cs.outlineVariant, width: 0.7)),
+                      titlesData: FlTitlesData(
+                        topTitles: const AxisTitles(
+                            sideTitles: SideTitles(showTitles: false)),
+                        rightTitles: const AxisTitles(
+                            sideTitles: SideTitles(showTitles: false)),
+                        leftTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 36,
+                            interval: 20,
+                            getTitlesWidget: (v, _) => Text(
+                                '${v.round()}%',
+                                style: const TextStyle(fontSize: 11)),
+                          ),
+                        ),
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            interval: (rates.length / 3)
+                                .ceil()
+                                .toDouble()
+                                .clamp(1, 100),
+                            getTitlesWidget: (v, _) {
+                              final i = v.round();
+                              if (i < 0 || i >= rates.length) {
+                                return const SizedBox.shrink();
+                              }
+                              final date = DateTime.tryParse(
+                                  rates[i]['date'].toString());
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Text(
+                                    date != null
+                                        ? DateFormat('d MMM').format(date)
+                                        : '',
+                                    style: const TextStyle(fontSize: 10)),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                      lineBarsData: [
+                        LineChartBarData(
+                          isCurved: true,
+                          color: hcTeal,
+                          barWidth: 2.8,
+                          dotData: FlDotData(
+                              show: true,
+                              getDotPainter: (s, _, __, ___) =>
+                                  FlDotCirclePainter(
+                                      radius: 3,
+                                      color: Colors.white,
+                                      strokeWidth: 2.2,
+                                      strokeColor: hcTeal)),
+                          belowBarData: BarAreaData(
+                              show: true,
+                              gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    hcTeal.withValues(alpha: 0.18),
+                                    hcTeal.withValues(alpha: 0.0),
+                                  ])),
+                          spots: [
+                            for (var i = 0; i < rates.length; i++)
+                              FlSpot(
+                                  i.toDouble(),
+                                  ((rates[i]['rate'] as num?) ?? 0)
+                                      .toDouble()),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+        ),
+      ]),
+    );
+  }
+}
+
+class _ChartLoading extends StatelessWidget {
+  const _ChartLoading();
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 40),
+        child: Center(child: CircularProgressIndicator()));
+  }
+}
+
+class _DateField extends StatelessWidget {
+  final String label;
+  final String value;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onPick;
+  const _DateField(
+      {required this.label,
+      required this.value,
+      required this.onChanged,
+      required this.onPick});
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: TextEditingController(text: value),
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        labelText: label,
+        isDense: true,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        suffixIcon: IconButton(
+            icon: const Icon(Icons.calendar_today, size: 18),
+            onPressed: onPick),
       ),
     );
   }
 }
 
-class _EscalationRow extends StatelessWidget {
-  final dynamic esc;
-  final ColorScheme cs;
-  const _EscalationRow({required this.esc, required this.cs});
-
+class _Mini extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+  const _Mini(
+      {required this.label, required this.value, required this.color});
   @override
   Widget build(BuildContext context) {
-    final severity = esc['severity'] ?? 'medium';
-    final reason = esc['reason'] ?? '';
-    final patientName = esc['patient_name'] ?? esc['patient']?['user']?['full_name'] ?? 'Unknown';
-    final triggeredAt = DateTime.tryParse(esc['triggered_at'] ?? '');
-    final timeAgo = triggeredAt != null ? _formatRelative(triggeredAt) : '';
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      Text(value,
+          style: TextStyle(
+              fontSize: 16, fontWeight: FontWeight.w800, color: color)),
+      Text(label,
+          style: const TextStyle(fontSize: 11),
+          overflow: TextOverflow.ellipsis),
+    ]);
+  }
+}
 
-    final Color sevColor;
-    switch (severity) {
-      case 'critical':
-        sevColor = Colors.red.shade700;
-      case 'high':
-        sevColor = Colors.orange.shade700;
-      case 'medium':
-        sevColor = Colors.amber.shade700;
-      default:
-        sevColor = Colors.green;
-    }
+// ── flDateLabel defined before panels that use it ──
+String flDateLabel(String filter, String from, String to) {
+  switch (filter) {
+    case 'today':
+      return DateFormat('d MMM').format(DateTime.now());
+    case 'yesterday':
+      return DateFormat('d MMM')
+          .format(DateTime.now().subtract(const Duration(days: 1)));
+    case '7d':
+      final s = DateTime.now().subtract(const Duration(days: 6));
+      return '${DateFormat('d MMM').format(s)} – ${DateFormat('d MMM').format(DateTime.now())}';
+    case '30d':
+      final s = DateTime.now().subtract(const Duration(days: 29));
+      return '${DateFormat('d MMM').format(s)} – ${DateFormat('d MMM').format(DateTime.now())}';
+    case 'year':
+      final s = DateTime.now().subtract(const Duration(days: 365));
+      return '${DateFormat('d MMM y').format(s)} – ${DateFormat('d MMM y').format(DateTime.now())}';
+    case 'custom':
+      if (from.isNotEmpty && to.isNotEmpty) {
+        return '$from – $to';
+      }
+      return 'Pick a date range';
+    default:
+      return '';
+  }
+}
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: sevColor.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: sevColor.withValues(alpha: 0.15)),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: sevColor.withValues(alpha: 0.12),
-            child: Icon(Icons.warning_amber_rounded, color: sevColor, size: 18),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
+class _FilteredDosesPanel extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final doses = ref.watch(_dashDosesProvider);
+
+    return HcPanel(
+      title: 'Dose tracking',
+      subtitle: 'Administration log for the selected range',
+      icon: Icons.medication_liquid_rounded,
+      color: hcBlue,
+      action: TextButton(
+          onPressed: () => context.go('/homecare/doses'),
+          child: const Text('All doses')),
+      child: doses.maybeWhen(
+        loading: () => const _ChartLoading(),
+        data: (list) {
+          final rows = list.cast<Map>().toList()
+            ..sort((a, b) => (b['scheduled_at'] ?? '')
+                .toString()
+                .compareTo((a['scheduled_at'] ?? '').toString()));
+          if (rows.isEmpty) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(child: Text('No doses in this range.')),
+            );
+          }
+          final pending =
+              rows.where((d) => d['status'] == 'pending').length;
+          final taken = rows.where((d) => d['status'] == 'taken').length;
+          final missed = rows.where((d) => d['status'] == 'missed').length;
+          return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(reason, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
-                Text('$patientName · $timeAgo', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant), maxLines: 1, overflow: TextOverflow.ellipsis),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-            decoration: BoxDecoration(color: sevColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(6)),
-            child: Text(severity, style: TextStyle(fontSize: 10, color: sevColor, fontWeight: FontWeight.w700)),
-          ),
-        ],
+                Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _Mini(
+                          label: 'Pending',
+                          value: '$pending',
+                          color: hcAmber),
+                      _Mini(
+                          label: 'Taken',
+                          value: '$taken',
+                          color: hcGreen),
+                      _Mini(
+                          label: 'Missed',
+                          value: '$missed',
+                          color: hcRed),
+                      _Mini(
+                          label: 'Total',
+                          value: '${rows.length}',
+                          color: hcSlate),
+                    ]),
+                const SizedBox(height: 10),
+                ...rows.take(25).map((d) {
+                  final status = d['status']?.toString() ?? '';
+                  final color = hcDoseStatusColor(status);
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(children: [
+                      Container(
+                        width: 4,
+                        height: 36,
+                        decoration: BoxDecoration(
+                            color: color,
+                            borderRadius: BorderRadius.circular(3)),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                  (d['medication_name'] ?? '—')
+                                      .toString(),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 12.5)),
+                              Text(
+                                  '${d['patient_name'] ?? ''} · ${hcTime(d['scheduled_at'])}',
+                                  style: const TextStyle(
+                                      fontSize: 11, color: hcSlate)),
+                            ]),
+                      ),
+                      HcStatusChip(
+                          label: hcLabel(status), color: color),
+                    ]),
+                  );
+                }),
+              ]);
+        },
+        orElse: () => const SizedBox.shrink(),
       ),
     );
-  }
-
-  String _formatRelative(DateTime dt) {
-    final diff = DateTime.now().difference(dt);
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    return '${diff.inDays}d ago';
   }
 }

@@ -128,7 +128,11 @@ const caregiverOptions = computed(() =>
   caregivers.value.map(c => ({ title: c.user?.full_name || c.user?.email, value: c.id }))
 )
 const patientOptions = computed(() =>
-  patients.value.map(p => ({ title: p.user?.full_name || p.medical_record_number, value: p.id }))
+  patients.value.map(p => {
+    const name = p.patient_name || p.user?.full_name || p.medical_record_number || 'Unnamed'
+    const adId = p.adheremed_patient_id || p.medical_record_number
+    return { title: adId ? `${name} · ${adId}` : name, value: p.id }
+  })
 )
 const caregiverCount = computed(() => caregivers.value.length)
 const patientCount = computed(() => patients.value.length)
@@ -260,7 +264,7 @@ onMounted(async () => { await loadOptions(); await load() })
   background: white;
   border: 1px solid rgba(15,23,42,0.06);
 }
-:global(.v-theme--dark) .hc-card {
+:global(.v-theme--dark .hc-card) {
   background: rgb(30,41,59);
   border-color: rgba(255,255,255,0.08);
 }

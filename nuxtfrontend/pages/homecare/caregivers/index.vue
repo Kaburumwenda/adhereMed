@@ -333,7 +333,7 @@ onMounted(load)
   background: white;
   border: 1px solid rgba(15,23,42,0.06);
 }
-:global(.v-theme--dark) .hc-card {
+:global(.v-theme--dark .hc-card) {
   background: rgb(30,41,59);
   border-color: rgba(255,255,255,0.08);
 }
@@ -347,7 +347,7 @@ onMounted(load)
   transform: translateY(-3px);
   box-shadow: 0 12px 24px -10px rgba(15,23,42,0.18);
 }
-:global(.v-theme--dark) .hc-cg-card {
+:global(.v-theme--dark .hc-cg-card) {
   background: rgb(30,41,59);
   border-color: rgba(255,255,255,0.08);
 }

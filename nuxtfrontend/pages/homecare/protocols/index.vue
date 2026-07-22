@@ -855,7 +855,7 @@ function applyToPatient() {
   background: white;
   border: 1px solid rgba(15,23,42,0.06);
 }
-:global(.v-theme--dark) .hc-stat {
+:global(.v-theme--dark .hc-stat) {
   background: rgb(30, 41, 59);
   border-color: rgba(255,255,255,0.08);
 }
@@ -875,7 +875,7 @@ function applyToPatient() {
 .hc-protocol-band { height: 6px; }
 .hc-protocol-icon { box-shadow: 0 6px 18px -8px rgba(0,0,0,0.35); }
 
-:global(.v-theme--dark) .hc-protocol {
+:global(.v-theme--dark .hc-protocol) {
   background: rgb(30, 41, 59);
   border-color: rgba(255,255,255,0.08);
 }
@@ -886,7 +886,7 @@ function applyToPatient() {
   cursor: pointer;
 }
 .hc-protocol-row:hover { background: rgba(13,148,136,0.04); }
-:global(.v-theme--dark) .hc-protocol-row { background: rgb(30, 41, 59); }
+:global(.v-theme--dark .hc-protocol-row) { background: rgb(30, 41, 59); }
 
 .hc-detail-hero { color: white; }
 </style>

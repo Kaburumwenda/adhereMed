@@ -474,7 +474,7 @@ function copyLink() {
   background: rgba(13,148,136,0.06);
   border: 1px dashed rgba(13,148,136,0.3);
 }
-:global(.v-theme--dark) .hc-stat,
-:global(.v-theme--dark) .hc-detail-card { background: rgba(30,41,59,0.7); border-color: rgba(255,255,255,0.06); }
-:global(.v-theme--dark) .hc-room-row { background: rgba(255,255,255,0.04); }
+:global(.v-theme--dark .hc-stat),
+:global(.v-theme--dark .hc-detail-card) { background: rgba(30,41,59,0.7); border-color: rgba(255,255,255,0.06); }
+:global(.v-theme--dark .hc-room-row) { background: rgba(255,255,255,0.04); }
 </style>

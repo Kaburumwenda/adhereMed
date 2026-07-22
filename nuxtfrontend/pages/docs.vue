@@ -118,7 +118,7 @@ const heroTitle = computed(() => {
   return 'AdhereMed Pharmacy Platform'
 })
 const heroSubtitle = computed(() => {
-  if (tab.value === 'homecare') return 'A comprehensive user guide covering every homecare module — from patient enrolment and care plans to medication doses, vitals, teleconsult, and family portal.'
+  if (tab.value === 'homecare') return 'A comprehensive user guide covering every homecare module — from patient enrolment and care plans to medication doses, vitals, and teleconsult.'
   if (tab.value === 'lab') return 'A comprehensive user guide covering every lab module — from requisitions and accessioning to results, QC, instruments, billing and the referring network.'
   return 'A comprehensive user guide covering every pharmacy module — from POS and inventory to deliveries, branches, purchase orders, and analytics.'
 })
@@ -494,7 +494,7 @@ const homecareSections = [
         <li>Create from a blank plan or apply a <b>Care Pathway</b> template.</li>
         <li>Each goal has a target, measurement method, and due date. Mark progress as you review.</li>
         <li>Plans are versioned — every revision keeps an audit trail of who changed what and when.</li>
-        <li>Generate a printable plan summary for the family portal.</li>
+        <li>Generate a printable plan summary to share with the patient.</li>
       </ul>`,
   },
   {
@@ -579,15 +579,6 @@ const homecareSections = [
     tagline: 'Provider email, in-context.',
     body: `
       <p>The Mail module connects an SMTP/IMAP mailbox to your homecare workspace, so referrals, reports, and family correspondence live alongside clinical records. Configure server settings under <i>Mail Settings</i>.</p>`,
-  },
-  {
-    id: 'hc-family',
-    title: 'Family Portal',
-    icon: 'mdi-account-multiple-plus',
-    color: 'green',
-    tagline: 'Engage relatives in the care plan.',
-    body: `
-      <p>Invite family members from the patient profile. They get a limited-scope login that shows the care plan, recent vitals, doses, upcoming visits, and a secure message thread with the care team. Permissions are configurable per relative.</p>`,
   },
   {
     id: 'hc-insurance-billing',

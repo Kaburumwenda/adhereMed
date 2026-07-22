@@ -18,7 +18,6 @@ from .serializers import (
     PasswordResetRequestSerializer,
     PasswordResetConfirmSerializer,
 )
-from .tasks import send_welcome_email
 
 
 class RegisterView(generics.CreateAPIView):
@@ -29,8 +28,6 @@ class RegisterView(generics.CreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-
-        send_welcome_email(user.id)
 
         refresh = RefreshToken.for_user(user)
         return Response({

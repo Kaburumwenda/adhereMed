@@ -458,5 +458,5 @@ function escalate() {
 .hc-row {
   background: rgba(15,23,42,0.03);
 }
-:global(.v-theme--dark) .hc-row { background: rgba(255,255,255,0.04); }
+:global(.v-theme--dark .hc-row) { background: rgba(255,255,255,0.04); }
 </style>

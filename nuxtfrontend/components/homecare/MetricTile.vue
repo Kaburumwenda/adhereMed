@@ -32,7 +32,7 @@ const iconStyle = computed(() => ({
   background: white;
   border: 1px solid rgba(15,23,42,0.06);
 }
-:global(.v-theme--dark) .hc-metric {
+:global(.v-theme--dark .hc-metric) {
   background: rgb(30, 41, 59);
   border-color: rgba(255,255,255,0.08);
 }

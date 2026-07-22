@@ -361,6 +361,6 @@ async function resolve() {
 }
 .hc-esc-card:hover { transform: translateY(-1px); box-shadow: 0 14px 28px -18px rgba(15,23,42,0.25); }
 .hc-esc-band { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; }
-:global(.v-theme--dark) .hc-stat,
-:global(.v-theme--dark) .hc-esc-card { background: rgba(30,41,59,0.7); border-color: rgba(255,255,255,0.06); }
+:global(.v-theme--dark .hc-stat),
+:global(.v-theme--dark .hc-esc-card) { background: rgba(30,41,59,0.7); border-color: rgba(255,255,255,0.06); }
 </style>

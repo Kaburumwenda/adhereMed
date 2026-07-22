@@ -19,6 +19,7 @@ LOINC_VITALS: dict[str, dict] = {
     'height':   {'code': '8302-2',  'display': 'Body height',                   'unit': 'cm'},
     'bmi':      {'code': '39156-5', 'display': 'Body mass index',               'unit': 'kg/m2'},
     'pain':     {'code': '72514-3', 'display': 'Pain severity',                 'unit': '{score}'},
+    'news2':    {'code': '',        'display': 'Early warning score (NEWS2)',    'unit': ''},
 }
 
 

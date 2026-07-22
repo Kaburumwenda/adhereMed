@@ -1,1 +1,0 @@
-void openPrintWindow(String htmlContent) {}

@@ -2,6 +2,12 @@ from django.contrib import admin
 
 from .models import BillingRate, DailyUsage, DoctorCommissionRate, MonthlyBill
 from .referral_models import CoinTransaction, Referral, ReferralProfile
+from .payment_models import (
+    MpesaTransaction,
+    PaymentGatewayConfig,
+    TenantWallet,
+    WalletTransaction,
+)
 
 
 @admin.register(BillingRate)
@@ -49,3 +55,29 @@ class CoinTransactionAdmin(admin.ModelAdmin):
     list_display = ("profile", "type", "amount", "reason", "created_at")
     list_filter = ("type",)
     search_fields = ("profile__tenant__name", "reason")
+
+
+@admin.register(PaymentGatewayConfig)
+class PaymentGatewayConfigAdmin(admin.ModelAdmin):
+    list_display = ("name", "is_active", "stk_push_url", "confirm_url", "source", "updated_at")
+
+
+@admin.register(TenantWallet)
+class TenantWalletAdmin(admin.ModelAdmin):
+    list_display = ("tenant", "balance", "currency", "updated_at")
+    search_fields = ("tenant__name", "tenant__schema_name")
+
+
+@admin.register(WalletTransaction)
+class WalletTransactionAdmin(admin.ModelAdmin):
+    list_display = ("wallet", "type", "amount", "balance_after", "reason", "created_at")
+    list_filter = ("type",)
+    search_fields = ("wallet__tenant__name", "reason")
+
+
+@admin.register(MpesaTransaction)
+class MpesaTransactionAdmin(admin.ModelAdmin):
+    list_display = ("tenant", "purpose", "amount", "currency", "status", "phone", "checkout_request_id", "created_at")
+    list_filter = ("status", "purpose", "currency")
+    search_fields = ("tenant__name", "phone", "checkout_request_id")
+    readonly_fields = ("initiate_response", "confirm_response", "created_at", "completed_at")

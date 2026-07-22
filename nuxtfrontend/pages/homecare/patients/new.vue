@@ -53,6 +53,90 @@
             <section v-show="step === 0">
               <SectionHead title="Personal information" icon="mdi-card-account-details"
                            subtitle="Account & basic demographics for the patient." color="#0d9488" />
+
+              <!-- Search existing patient -->
+              <div class="hc-search-box pa-3 pa-md-4 rounded-xl mb-4">
+                <div class="d-flex align-center ga-2 mb-2">
+                  <v-icon icon="mdi-account-search" color="teal" />
+                  <span class="text-subtitle-2 font-weight-bold">Find an existing patient</span>
+                </div>
+                <v-autocomplete v-model="selectedSearch"
+                                :items="searchResults"
+                                :loading="searching"
+                                @update:search="onPatientSearch"
+                                item-title="full_name"
+                                item-value="key"
+                                return-object
+                                hide-no-data hide-details
+                                clearable
+                                no-filter
+                                variant="outlined" density="comfortable" rounded="lg"
+                                placeholder="Search by patient ID, name, national ID, phone or email…"
+                                prepend-inner-icon="mdi-magnify"
+                                @update:model-value="onSelectExisting">
+                  <template #item="{ item, props: ip }">
+                    <v-list-item v-bind="ip" :title="item.raw.full_name || item.raw.email">
+                      <template #prepend>
+                        <v-avatar size="36"
+                                  :color="item.raw.type === 'homecare' ? 'teal' : 'blue-grey'"
+                                  variant="tonal">
+                          <v-icon :icon="item.raw.type === 'homecare' ? 'mdi-account-heart' : 'mdi-account'" />
+                        </v-avatar>
+                      </template>
+                      <template #subtitle>
+                        <span class="text-caption">
+                          <span v-if="item.raw.medical_record_number" class="mr-2">
+                            {{ item.raw.medical_record_number }}
+                          </span>
+                          <span v-else-if="item.raw.patient_id" class="mr-2">
+                            {{ item.raw.patient_id }}
+                          </span>
+                          <span v-if="item.raw.email" class="mr-2">{{ item.raw.email }}</span>
+                          <span v-if="item.raw.phone">{{ item.raw.phone }}</span>
+                        </span>
+                      </template>
+                      <template #append>
+                        <v-chip size="x-small"
+                                :color="item.raw.type === 'homecare' ? 'success' : 'info'"
+                                variant="tonal">
+                          {{ item.raw.type === 'homecare' ? 'Enrolled here' : 'Has login' }}
+                        </v-chip>
+                      </template>
+                    </v-list-item>
+                  </template>
+                </v-autocomplete>
+
+                <v-alert v-if="alreadyEnrolled" type="warning" variant="tonal"
+                         density="compact" class="mt-3" icon="mdi-alert-circle">
+                  <div class="d-flex align-center flex-wrap ga-2">
+                    <span>
+                      <strong>{{ alreadyEnrolled.full_name }}</strong> is already enrolled in this homecare.
+                    </span>
+                    <v-spacer />
+                    <v-btn size="small" color="warning" variant="flat" class="text-none"
+                           prepend-icon="mdi-open-in-new"
+                           :to="`/homecare/patients/${alreadyEnrolled.patient_id}`">
+                      Open profile
+                    </v-btn>
+                  </div>
+                </v-alert>
+
+                <v-alert v-else-if="linkedAccount" type="success" variant="tonal"
+                         density="compact" class="mt-3" icon="mdi-link-variant">
+                  Linked to existing account <strong>{{ linkedAccount.email }}</strong>.
+                  Their details were prefilled below — complete the enrolment.
+                  <template #append>
+                    <v-btn size="x-small" variant="text" class="text-none" @click="clearLinked">
+                      Unlink
+                    </v-btn>
+                  </template>
+                </v-alert>
+
+                <div v-else class="text-caption text-medium-emphasis mt-2 ml-1">
+                  Can't find them? Just fill in the details below to create a new patient profile.
+                </div>
+              </div>
+
               <v-row dense>
                 <v-col cols="12" md="6">
                   <v-text-field v-model="form.first_name" label="First name *" variant="outlined"
@@ -68,6 +152,9 @@
                   <v-text-field v-model="form.user_email" label="Email *" type="email"
                                 variant="outlined" density="comfortable" rounded="lg"
                                 prepend-inner-icon="mdi-email"
+                                :readonly="!!linkedAccount"
+                                :hint="linkedAccount ? 'Locked — linked to an existing account' : ''"
+                                :persistent-hint="!!linkedAccount"
                                 :error-messages="errors.user_email" />
                 </v-col>
                 <v-col cols="12" md="6">
@@ -159,11 +246,12 @@
                               :return-object="false"
                               @update:search="onDiagnosisSearch"
                               hide-no-data
-                              label="Primary diagnosis"
+                              label="Primary diagnosis *"
                               hint="Pick from the catalog or type your own"
                               persistent-hint
                               variant="outlined" density="comfortable" rounded="lg"
-                              prepend-inner-icon="mdi-clipboard-pulse">
+                              prepend-inner-icon="mdi-clipboard-pulse"
+                              :error-messages="errors.primary_diagnosis">
                     <template #item="{ item, props: ip }">
                       <v-list-item v-bind="ip" :title="item.raw.name">
                         <template #subtitle>
@@ -229,34 +317,74 @@
                            color="#0891b2" />
               <v-row dense>
                 <v-col cols="12" md="6">
-                  <v-textarea v-model="form.history.comorbidities" label="Comorbidities"
-                              rows="2" auto-grow variant="outlined" density="comfortable"
+                  <v-combobox v-model="form.history.comorbidities" label="Comorbidities"
+                              :items="comorbidityOptions"
+                              multiple chips closable-chips
+                              variant="outlined" density="comfortable"
                               rounded="lg" prepend-inner-icon="mdi-format-list-bulleted-type"
-                              hint="Other chronic conditions (e.g. HTN, DM)" persistent-hint />
+                              hint="Select from the list or type & press enter" persistent-hint>
+                    <template #chip="{ props: cp, item }">
+                      <v-chip v-bind="cp" color="cyan-darken-2" variant="tonal" size="small">
+                        {{ item.title }}
+                      </v-chip>
+                    </template>
+                  </v-combobox>
                 </v-col>
                 <v-col cols="12" md="6">
-                  <v-textarea v-model="form.history.presenting_complaint" label="Presenting complaint"
-                              rows="2" auto-grow variant="outlined" density="comfortable"
+                  <v-combobox v-model="form.history.presenting_complaint" label="Presenting complaint"
+                              :items="presentingComplaintOptions"
+                              multiple chips closable-chips
+                              variant="outlined" density="comfortable"
                               rounded="lg" prepend-inner-icon="mdi-comment-alert"
-                              hint="Reason for current homecare enrolment" persistent-hint />
+                              hint="Reason(s) for current homecare enrolment" persistent-hint>
+                    <template #chip="{ props: cp, item }">
+                      <v-chip v-bind="cp" color="cyan-darken-2" variant="tonal" size="small">
+                        {{ item.title }}
+                      </v-chip>
+                    </template>
+                  </v-combobox>
                 </v-col>
                 <v-col cols="12" md="6">
-                  <v-textarea v-model="form.history.past_conditions" label="Past conditions"
-                              rows="2" auto-grow variant="outlined" density="comfortable"
+                  <v-combobox v-model="form.history.past_conditions" label="Past conditions"
+                              :items="pastConditionOptions"
+                              multiple chips closable-chips
+                              variant="outlined" density="comfortable"
                               rounded="lg" prepend-inner-icon="mdi-clipboard-text-clock"
-                              hint="Past illnesses, surgeries, hospitalisations" persistent-hint />
+                              hint="Past illnesses, surgeries, hospitalisations" persistent-hint>
+                    <template #chip="{ props: cp, item }">
+                      <v-chip v-bind="cp" color="cyan-darken-2" variant="tonal" size="small">
+                        {{ item.title }}
+                      </v-chip>
+                    </template>
+                  </v-combobox>
                 </v-col>
                 <v-col cols="12" md="6">
-                  <v-textarea v-model="form.history.social_family_history" label="Social / family history"
-                              rows="2" auto-grow variant="outlined" density="comfortable"
+                  <v-combobox v-model="form.history.social_family_history" label="Social / family history"
+                              :items="socialFamilyOptions"
+                              multiple chips closable-chips
+                              variant="outlined" density="comfortable"
                               rounded="lg" prepend-inner-icon="mdi-account-group"
-                              hint="Lifestyle, occupation, hereditary conditions" persistent-hint />
+                              hint="Lifestyle, occupation, hereditary conditions" persistent-hint>
+                    <template #chip="{ props: cp, item }">
+                      <v-chip v-bind="cp" color="cyan-darken-2" variant="tonal" size="small">
+                        {{ item.title }}
+                      </v-chip>
+                    </template>
+                  </v-combobox>
                 </v-col>
                 <v-col cols="12" md="6">
-                  <v-textarea v-model="form.history.past_medication" label="Past medication"
-                              rows="2" auto-grow variant="outlined" density="comfortable"
+                  <v-combobox v-model="form.history.past_medication" label="Past medication"
+                              :items="pastMedicationOptions"
+                              multiple chips closable-chips
+                              variant="outlined" density="comfortable"
                               rounded="lg" prepend-inner-icon="mdi-pill"
-                              hint="Previous drugs or treatments" persistent-hint />
+                              hint="Previous drugs or treatments" persistent-hint>
+                    <template #chip="{ props: cp, item }">
+                      <v-chip v-bind="cp" color="teal" variant="tonal" size="small">
+                        {{ item.title }}
+                      </v-chip>
+                    </template>
+                  </v-combobox>
                 </v-col>
                 <v-col cols="12" md="6">
                   <v-textarea v-model="form.history.other" label="Any other"
@@ -554,6 +682,46 @@
     <v-snackbar v-model="snack.show" :color="snack.color" location="top" timeout="3500">
       {{ snack.text }}
     </v-snackbar>
+
+    <!-- Login credentials for the newly-created patient -->
+    <v-dialog v-model="credentials.show" max-width="440" persistent>
+      <v-card rounded="xl" class="pa-2">
+        <v-card-title class="d-flex align-center ga-2">
+          <v-avatar size="40" color="teal" variant="tonal">
+            <v-icon icon="mdi-key-variant" />
+          </v-avatar>
+          <span class="text-h6 font-weight-bold">Patient login created</span>
+        </v-card-title>
+        <v-card-text>
+          <p class="text-body-2 text-medium-emphasis mb-3">
+            Share these details with the patient so they can sign in to their
+            dashboard and view their homecare, doses, medications, care team and consents.
+          </p>
+          <v-text-field v-if="credentials.adId" :model-value="credentials.adId"
+                        label="AdhereMed Patient ID" readonly
+                        variant="outlined" density="comfortable" rounded="lg"
+                        prepend-inner-icon="mdi-identifier"
+                        hint="Works across AdhereMed — doctors, hospitals, radiology, labs"
+                        persistent-hint class="mb-2" />
+          <v-text-field :model-value="credentials.email" label="Email" readonly
+                        variant="outlined" density="comfortable" rounded="lg"
+                        prepend-inner-icon="mdi-email" />
+          <v-text-field :model-value="credentials.password" label="Temporary password" readonly
+                        variant="outlined" density="comfortable" rounded="lg"
+                        prepend-inner-icon="mdi-lock" />
+          <v-alert type="info" variant="tonal" density="compact" icon="mdi-information">
+            The patient should change this password after their first login.
+          </v-alert>
+        </v-card-text>
+        <v-card-actions class="px-4 pb-4">
+          <v-btn variant="text" class="text-none" prepend-icon="mdi-content-copy"
+                 @click="copyCredentials">Copy</v-btn>
+          <v-spacer />
+          <v-btn color="teal" variant="flat" class="text-none"
+                 prepend-icon="mdi-arrow-right" @click="goToProfile">Open profile</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -579,11 +747,11 @@ const form = reactive({
   primary_diagnosis: '',
   // Structured medical history (will be serialised into a single text blob for the API).
   history: {
-    comorbidities: '',
-    presenting_complaint: '',
-    past_conditions: '',
-    social_family_history: '',
-    past_medication: '',
+    comorbidities: [],
+    presenting_complaint: [],
+    past_conditions: [],
+    social_family_history: [],
+    past_medication: [],
     other: ''
   },
   allergiesList: [],
@@ -610,6 +778,79 @@ const loadingCaregivers = ref(false)
 const doctors = ref([])
 const loadingDoctors = ref(false)
 const snack = reactive({ show: false, text: '', color: 'info' })
+
+// ─────── Existing-patient search ───────
+const searchResults = ref([])
+const searching = ref(false)
+const searchQuery = ref('')
+const selectedSearch = ref(null)
+const alreadyEnrolled = ref(null)
+const linkedAccount = ref(null)
+let searchTimer = null
+
+const credentials = reactive({ show: false, email: '', password: '', patientId: null, adId: '' })
+function copyCredentials() {
+  const idLine = credentials.adId ? `AdhereMed Patient ID: ${credentials.adId}\n` : ''
+  const txt = `AdhereMed Homecare login\n${idLine}Email: ${credentials.email}\nTemporary password: ${credentials.password}`
+  navigator.clipboard?.writeText(txt).then(() => {
+    snack.text = 'Login details copied'; snack.color = 'success'; snack.show = true
+  }).catch(() => {})
+}
+function goToProfile() {
+  const id = credentials.patientId
+  credentials.show = false
+  if (id) router.push(`/homecare/patients/${id}`)
+}
+
+function onPatientSearch(q) {
+  searchQuery.value = q || ''
+  clearTimeout(searchTimer)
+  const term = (q || '').trim()
+  if (term.length < 2) { searchResults.value = []; return }
+  searchTimer = setTimeout(() => runPatientSearch(term), 250)
+}
+
+async function runPatientSearch(term) {
+  searching.value = true
+  try {
+    const { data } = await $api.get('/homecare/patients/search-existing/', { params: { q: term } })
+    const rows = Array.isArray(data) ? data : (data?.results || [])
+    searchResults.value = rows.map((r, i) => ({
+      ...r,
+      key: `${r.type}-${r.user_id}-${i}`,
+      full_name: r.full_name || `${r.first_name || ''} ${r.last_name || ''}`.trim() || r.email
+    }))
+  } catch { searchResults.value = [] }
+  finally { searching.value = false }
+}
+
+function onSelectExisting(sel) {
+  if (!sel) { alreadyEnrolled.value = null; return }
+  if (sel.type === 'homecare') {
+    alreadyEnrolled.value = sel
+    linkedAccount.value = null
+    return
+  }
+  // Existing shared account → prefill and lock email.
+  alreadyEnrolled.value = null
+  linkedAccount.value = sel
+  form.first_name = sel.first_name || form.first_name
+  form.last_name = sel.last_name || form.last_name
+  form.user_email = sel.email || form.user_email
+  form.phone = sel.phone || form.phone
+  if (sel.date_of_birth) form.date_of_birth = String(sel.date_of_birth).slice(0, 10)
+  if (sel.gender) form.gender = sel.gender
+  if (sel.national_id) {
+    form.id_type = 'national_id'
+    form.id_number = sel.national_id
+  }
+  if (sel.address) form.address = sel.address
+}
+
+function clearLinked() {
+  linkedAccount.value = null
+  selectedSearch.value = null
+}
 
 const riskLevels = [
   { value: 'low',      label: 'Low',      color: 'success', icon: 'mdi-shield-check' },
@@ -675,6 +916,50 @@ const specializationOptions = [
   'Gastroenterology', 'Nephrology', 'Pulmonology', 'Rheumatology',
   'Urology', 'ENT', 'Ophthalmology', 'Anaesthesiology', 'Radiology',
   'Pathology', 'Emergency Medicine', 'Geriatrics', 'Palliative Care', 'Other'
+]
+
+// ─────── Medical history option lists ───────
+const comorbidityOptions = [
+  'Hypertension', 'Type 2 diabetes', 'Type 1 diabetes', 'Asthma',
+  'COPD', 'Chronic kidney disease', 'Heart failure', 'Coronary artery disease',
+  'Atrial fibrillation', 'Previous stroke', 'Hyperlipidaemia', 'Hypothyroidism',
+  'Hyperthyroidism', 'Osteoarthritis', 'Rheumatoid arthritis', 'Osteoporosis',
+  'Depression', 'Anxiety', 'Dementia', 'Epilepsy', 'Parkinson\u2019s disease',
+  'HIV', 'Hepatitis B', 'Hepatitis C', 'Tuberculosis', 'Cancer', 'Obesity',
+  'Sickle cell disease', 'Peptic ulcer disease', 'GERD', 'Anaemia'
+]
+const presentingComplaintOptions = [
+  'Wound care', 'Post-surgical recovery', 'Pain management', 'Medication management',
+  'Mobility assistance', 'Physiotherapy', 'Pressure ulcer care', 'Palliative care',
+  'Chronic disease monitoring', 'Post-stroke rehabilitation', 'Fever', 'Cough',
+  'Shortness of breath', 'Chest pain', 'Fatigue', 'Dizziness', 'Falls',
+  'Confusion', 'Poor appetite', 'Weight loss', 'Swelling / oedema',
+  'Catheter care', 'Feeding tube care', 'Elderly care', 'Maternal / newborn care'
+]
+const pastConditionOptions = [
+  'Appendectomy', 'Cholecystectomy', 'Caesarean section', 'Hysterectomy',
+  'Hernia repair', 'Fracture', 'Joint replacement', 'Cataract surgery',
+  'Myocardial infarction', 'Stroke', 'Pneumonia', 'Malaria', 'Typhoid',
+  'Tuberculosis', 'Hepatitis', 'COVID-19', 'Deep vein thrombosis',
+  'Pulmonary embolism', 'Blood transfusion', 'Previous hospitalisation',
+  'Previous ICU admission', 'Kidney stones', 'Seizure'
+]
+const socialFamilyOptions = [
+  'Non-smoker', 'Current smoker', 'Ex-smoker', 'Occasional alcohol use',
+  'Regular alcohol use', 'No alcohol use', 'Lives alone', 'Lives with family',
+  'Has a caregiver at home', 'Family history of diabetes',
+  'Family history of hypertension', 'Family history of heart disease',
+  'Family history of cancer', 'Family history of stroke',
+  'Family history of kidney disease', 'Family history of mental illness',
+  'Sedentary lifestyle', 'Physically active', 'Retired', 'Unemployed', 'Employed'
+]
+const pastMedicationOptions = [
+  'Metformin', 'Insulin', 'Amlodipine', 'Lisinopril', 'Losartan',
+  'Hydrochlorothiazide', 'Atorvastatin', 'Simvastatin', 'Aspirin', 'Clopidogrel',
+  'Warfarin', 'Salbutamol', 'Prednisolone', 'Levothyroxine', 'Omeprazole',
+  'Furosemide', 'Bisoprolol', 'Carvedilol', 'Digoxin', 'Paracetamol',
+  'Ibuprofen', 'Morphine', 'Tramadol', 'Amoxicillin', 'Ceftriaxone',
+  'Antiretrovirals (ARVs)', 'Anti-TB therapy'
 ]
 
 // ─────── Catalog (API-backed) ───────
@@ -765,8 +1050,39 @@ const completion = computed(() => {
   return Math.round((pts / total) * 100)
 })
 
-function goTo(i) { step.value = i }
-function next()  { step.value = Math.min(steps.length - 1, step.value + 1) }
+function validateStep(i) {
+  const e = {}
+  if (i === 0) {
+    if (alreadyEnrolled.value) {
+      topError.value = 'This patient is already enrolled here. Open their profile instead.'
+      return false
+    }
+    if (!form.first_name) e.first_name = ['Required']
+    if (!form.last_name)  e.last_name  = ['Required']
+    if (!form.user_email) e.user_email = ['Required']
+    if (!form.id_type)    e.id_type    = ['Required']
+    if (!form.id_number)  e.id_number  = ['Required']
+  } else if (i === 1) {
+    if (!form.primary_diagnosis) e.primary_diagnosis = ['Required']
+  }
+  errors.value = e
+  if (Object.keys(e).length) {
+    topError.value = 'Please fill the required fields highlighted in red before continuing.'
+    return false
+  }
+  topError.value = ''
+  return true
+}
+
+function goTo(i) {
+  // Allow going back freely; only permit forward moves once current step is valid.
+  if (i > step.value && !validateStep(step.value)) return
+  step.value = i
+}
+function next() {
+  if (!validateStep(step.value)) return
+  step.value = Math.min(steps.length - 1, step.value + 1)
+}
 function addContact() {
   form.emergency_contacts.push({
     name: '', relationship: '', phone: '', email: '', address: '',
@@ -782,7 +1098,9 @@ function markPrimary(i) {
 function buildMedicalHistory(h) {
   const parts = []
   const push = (label, val) => {
-    const v = (val || '').trim()
+    const v = Array.isArray(val)
+      ? val.map(x => String(x).trim()).filter(Boolean).join(', ')
+      : (val || '').trim()
     if (v) parts.push(`${label}:\n${v}`)
   }
   push('Comorbidities', h.comorbidities)
@@ -806,6 +1124,11 @@ function onContactAddressSelect(contact, place) {
 
 function validate() {
   errors.value = {}
+  if (alreadyEnrolled.value) {
+    step.value = 0
+    topError.value = 'This patient is already enrolled here. Open their profile instead.'
+    return false
+  }
   const e = {}
   if (!form.first_name) e.first_name = ['Required']
   if (!form.last_name)  e.last_name  = ['Required']
@@ -815,6 +1138,12 @@ function validate() {
   errors.value = e
   if (Object.keys(e).length) {
     step.value = 0
+    topError.value = 'Please fill the required fields highlighted in red.'
+    return false
+  }
+  if (!form.primary_diagnosis) {
+    errors.value = { primary_diagnosis: ['Required'] }
+    step.value = 1
     topError.value = 'Please fill the required fields highlighted in red.'
     return false
   }
@@ -868,11 +1197,23 @@ async function submit() {
     snack.text = 'Patient enrolled successfully'
     snack.color = 'success'
     snack.show = true
-    setTimeout(() => router.push(`/homecare/patients/${data.id}`), 600)
+    if (data.temporary_password) {
+      credentials.email = data.login_email || form.user_email
+      credentials.password = data.temporary_password
+      credentials.patientId = data.id
+      credentials.adId = data.adheremed_patient_id || ''
+      credentials.show = true
+    } else {
+      setTimeout(() => router.push(`/homecare/patients/${data.id}`), 600)
+    }
   } catch (e) {
     const data = e?.response?.data
-    if (data && typeof data === 'object' && !data.detail) errors.value = data
-    topError.value = data?.detail || (typeof data === 'string' ? data : 'Enrolment failed.')
+    if (data?.patient_id) {
+      topError.value = data.detail || 'This patient is already enrolled here.'
+    } else if (data && typeof data === 'object' && !data.detail) {
+      errors.value = data
+    }
+    topError.value = topError.value || data?.detail || (typeof data === 'string' ? data : 'Enrolment failed.')
   } finally {
     saving.value = false
   }
@@ -899,11 +1240,16 @@ async function submit() {
 }
 .text-white-soft { color: rgba(255,255,255,0.82) !important; }
 
+.hc-search-box {
+  background: linear-gradient(160deg, rgba(20,184,166,0.06), rgba(56,189,248,0.05));
+  border: 1px dashed rgba(20,184,166,0.35);
+}
+
 .hc-card {
   background: white;
   border: 1px solid rgba(15,23,42,0.06);
 }
-:global(.v-theme--dark) .hc-card {
+:global(.v-theme--dark .hc-card) {
   background: rgb(30, 41, 59);
   border-color: rgba(255,255,255,0.08);
 }
@@ -925,18 +1271,18 @@ async function submit() {
 .hc-step-active .hc-step-num { background: #0d9488; color: white; }
 .hc-step-done .hc-step-num { background: #10b981; color: white; }
 
-:global(.v-theme--dark) .hc-step-num {
+:global(.v-theme--dark .hc-step-num) {
   background: rgba(255,255,255,0.08);
   color: rgba(255,255,255,0.6);
 }
-:global(.v-theme--dark) .hc-step:hover { background: rgba(13,148,136,0.18); }
-:global(.v-theme--dark) .hc-step-active { background: rgba(13,148,136,0.22); }
+:global(.v-theme--dark .hc-step:hover) { background: rgba(13,148,136,0.18); }
+:global(.v-theme--dark .hc-step-active) { background: rgba(13,148,136,0.22); }
 
 .hc-team-card {
   background: rgba(13,148,136,0.06);
   border: 1px solid rgba(13,148,136,0.18);
 }
-:global(.v-theme--dark) .hc-team-card {
+:global(.v-theme--dark .hc-team-card) {
   background: rgba(13,148,136,0.18);
   border-color: rgba(13,148,136,0.35);
 }
@@ -945,7 +1291,7 @@ async function submit() {
   background: rgba(239,68,68,0.04);
   border: 1px dashed rgba(239,68,68,0.35);
 }
-:global(.v-theme--dark) .hc-kin {
+:global(.v-theme--dark .hc-kin) {
   background: rgba(239,68,68,0.10);
   border-color: rgba(239,68,68,0.45);
 }

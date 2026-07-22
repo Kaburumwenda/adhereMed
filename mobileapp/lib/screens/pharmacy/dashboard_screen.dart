@@ -237,7 +237,7 @@ class DashboardScreen extends ConsumerWidget {
                           _QuickAction(icon: Icons.inventory_2_rounded, label: l?.inventory ?? 'Inventory', onTap: () => context.go('/inventory')),
                           _QuickAction(icon: Icons.analytics_rounded, label: l?.analytics ?? 'Analytics', onTap: () => context.go('/analytics')),
                           _QuickAction(icon: Icons.assessment_rounded, label: l?.reports ?? 'Reports', onTap: () => context.go('/reports')),
-                          _QuickAction(icon: Icons.account_balance_rounded, label: l?.billing ?? 'Accounts', onTap: () => context.go('/accounts')),
+                          _QuickAction(icon: Icons.account_balance_rounded, label: 'Financials', onTap: () => context.go('/accounts')),
                           _QuickAction(
                             icon: Icons.credit_card_rounded,
                             label: l?.credit ?? 'Credit',

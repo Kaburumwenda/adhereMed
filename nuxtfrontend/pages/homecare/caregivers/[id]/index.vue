@@ -231,7 +231,7 @@ onMounted(load)
 
 <style scoped>
 .hc-bg { min-height: calc(100vh - 64px); background: rgb(248, 250, 252); }
-:global(.v-theme--dark) .hc-bg { background: rgb(15,23,42); }
+:global(.v-theme--dark .hc-bg) { background: rgb(15,23,42); }
 
 .hc-cg-hero { color: white; position: relative; overflow: hidden; }
 .hc-cg-hero::after {
@@ -255,7 +255,7 @@ onMounted(load)
   background: white;
   border: 1px solid rgba(15,23,42,0.06);
 }
-:global(.v-theme--dark) .hc-card {
+:global(.v-theme--dark .hc-card) {
   background: rgb(30,41,59);
   border-color: rgba(255,255,255,0.08);
 }

@@ -480,7 +480,7 @@ async function withdrawEnrollment(e) {
 .hc-pw-card:hover { transform: translateY(-1px); }
 .hc-pw-band { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; }
 .hc-form-hero { background: linear-gradient(135deg,#0d9488 0%,#0f766e 100%); }
-:global(.v-theme--dark) .hc-pw-card {
+:global(.v-theme--dark .hc-pw-card) {
   background: rgba(30,41,59,0.7); border-color: rgba(255,255,255,0.06);
 }
 </style>

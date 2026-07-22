@@ -28,13 +28,24 @@ from rest_framework.response import Response
 from superadmin.permissions import IsSuperAdmin
 from tenants.models import Tenant
 
-from .models import BillingRate, DailyUsage, DoctorCommissionRate, MonthlyBill
+from .models import BillingRate, DailyUsage, DoctorCommissionRate, MonthlyBill, BillingCoupon
+from .referral_models import CoinTransaction, ReferralProfile
+from .referral_serializers import CoinTransactionSerializer
 from .serializers import (
     BillingRateSerializer,
     DailyUsageSerializer,
     DoctorCommissionRateSerializer,
     MonthlyBillSerializer,
+    BillingCouponSerializer,
 )
+
+
+# Roles that are allowed to clear/pay bills on behalf of their tenant. Other
+# staff hitting an overdue account are shown a "contact your admin" screen.
+TENANT_BILLING_ADMIN_ROLES = {"tenant_admin", "homecare_admin", "admin"}
+
+# Default number of days after a bill's due date before API access is locked.
+OVERDUE_GRACE_DAYS = 7
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -59,6 +70,226 @@ def _project_month_total(total_so_far: int, day: date) -> int:
         return total_so_far
     avg = total_so_far / days_elapsed
     return int(round(avg * days_in_month))
+
+
+def _due_date_for(year: int, month: int) -> date:
+    """Bills are due 14 days after the end of the billed month."""
+    _, last = _month_bounds(year, month)
+    return last + timedelta(days=14)
+
+
+def _last_completed_month(today: date):
+    if today.month == 1:
+        return today.year - 1, 12
+    return today.year, today.month - 1
+
+
+def _ensure_tenant_bills(tenant, rate, today: date):
+    """Backfill ISSUED bills for completed months that have usage but no bill.
+
+    Tenants only ever saw bills once a super-admin ran the generate action.
+    This makes historical bills appear automatically as soon as a month ends.
+    """
+    earliest = (
+        DailyUsage.objects.filter(tenant=tenant, request_count__gt=0)
+        .order_by("date")
+        .values_list("date", flat=True)
+        .first()
+    )
+    if not earliest:
+        return
+
+    last_y, last_m = _last_completed_month(today)
+    existing = set(
+        MonthlyBill.objects.filter(tenant=tenant).values_list("year", "month")
+    )
+
+    y, m = earliest.year, earliest.month
+    to_create = []
+    while (y, m) <= (last_y, last_m):
+        if (y, m) not in existing:
+            start, end = _month_bounds(y, m)
+            total, _ = _aggregate(tenant, start, end)
+            if total > 0:
+                to_create.append(
+                    MonthlyBill(
+                        tenant=tenant,
+                        year=y,
+                        month=m,
+                        total_requests=total,
+                        requests_per_unit=rate.requests_per_unit,
+                        unit_cost=rate.unit_cost,
+                        amount=rate.cost_for(total),
+                        currency=rate.currency,
+                        status=MonthlyBill.Status.ISSUED,
+                        due_date=_due_date_for(y, m),
+                        issued_at=timezone.now(),
+                    )
+                )
+        if m == 12:
+            y, m = y + 1, 1
+        else:
+            m += 1
+
+    if to_create:
+        MonthlyBill.objects.bulk_create(to_create, ignore_conflicts=True)
+
+
+def _billing_summary(tenant, currency):
+    """Outstanding / paid / overdue totals across all of a tenant's bills."""
+    bills = list(MonthlyBill.objects.filter(tenant=tenant))
+    total_billed = Decimal("0")
+    total_paid = Decimal("0")
+    total_outstanding = Decimal("0")
+    total_overdue = Decimal("0")
+    outstanding_count = 0
+    overdue_count = 0
+    paid_count = 0
+    for b in bills:
+        amount = Decimal(b.amount or 0)
+        total_billed += amount
+        total_paid += Decimal(b.paid_amount or 0)
+        if b.status == MonthlyBill.Status.PAID:
+            paid_count += 1
+        elif b.status in (
+            MonthlyBill.Status.ISSUED,
+            MonthlyBill.Status.DRAFT,
+            MonthlyBill.Status.PARTIAL,
+        ):
+            balance = b.balance
+            total_outstanding += balance
+            outstanding_count += 1
+            if b.is_overdue:
+                total_overdue += balance
+                overdue_count += 1
+    return {
+        "currency": currency,
+        "total_bills": len(bills),
+        "total_billed": str(total_billed),
+        "total_paid": str(total_paid),
+        "paid_count": paid_count,
+        "total_outstanding": str(total_outstanding),
+        "outstanding_count": outstanding_count,
+        "total_overdue": str(total_overdue),
+        "overdue_count": overdue_count,
+    }
+
+
+def compute_billing_lock(tenant):
+    """Determine whether a tenant's API access should be locked for billing.
+
+    A tenant is locked when it has any overdue bill AND either the superadmin
+    has hard-suspended it, or the oldest overdue bill is past the grace period
+    with no active grace extension. Returns a JSON-friendly dict.
+    """
+    today = timezone.localdate()
+    overdue_bills = [
+        b for b in MonthlyBill.objects.filter(tenant=tenant)
+        if b.is_overdue and b.balance > 0
+    ]
+    total_overdue = sum((b.balance for b in overdue_bills), Decimal("0"))
+    overdue_count = len(overdue_bills)
+    oldest_due = min((b.due_date for b in overdue_bills), default=None)
+    days_overdue = (today - oldest_due).days if oldest_due else 0
+
+    grace_until = tenant.billing_grace_until
+    grace_active = bool(grace_until and grace_until >= today)
+
+    if tenant.billing_suspended:
+        locked = True
+        reason = tenant.suspension_reason or "Account suspended by administrator."
+    elif overdue_count and not grace_active and days_overdue > OVERDUE_GRACE_DAYS:
+        locked = True
+        reason = (
+            f"You have {overdue_count} overdue bill(s) totalling "
+            f"{total_overdue} — {days_overdue} day(s) past due."
+        )
+    else:
+        locked = False
+        reason = ""
+
+    return {
+        "locked": locked,
+        "reason": reason,
+        "has_overdue": overdue_count > 0,
+        "total_overdue": str(total_overdue),
+        "overdue_count": overdue_count,
+        "oldest_due_date": oldest_due,
+        "days_overdue": days_overdue,
+        "grace_days": OVERDUE_GRACE_DAYS,
+        "grace_until": grace_until,
+        "grace_active": grace_active,
+        "suspended": tenant.billing_suspended,
+    }
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def billing_status(request):
+    """Lightweight overdue / lock status for the current tenant, used by the
+    frontend gate and the overdue clear-bills screen."""
+    tenant = getattr(request, "tenant", None)
+    if tenant is None or getattr(tenant, "schema_name", "public") == "public":
+        return Response({
+            "locked": False, "has_overdue": False, "overdue_count": 0,
+            "total_overdue": "0", "is_billing_admin": True,
+            "tenant_type": None, "tenant_name": None,
+        })
+    rate = BillingRate.current()
+    _ensure_tenant_bills(tenant, rate, timezone.localdate())
+    lock = compute_billing_lock(tenant)
+    lock["is_billing_admin"] = request.user.role in TENANT_BILLING_ADMIN_ROLES
+    lock["tenant_type"] = tenant.type
+    lock["tenant_name"] = tenant.name
+    lock["currency"] = rate.currency
+    return Response(lock)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def apply_coupon(request):
+    """Tenant applies a coupon/offer code to reduce an overdue/outstanding bill."""
+    tenant = getattr(request, "tenant", None)
+    if tenant is None or getattr(tenant, "schema_name", "public") == "public":
+        return Response({"detail": "No tenant context."}, status=status.HTTP_400_BAD_REQUEST)
+
+    code = (request.data.get("code") or "").strip()
+    bill_id = request.data.get("bill_id")
+    if not code:
+        return Response({"detail": "Enter a coupon code."}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        bill = MonthlyBill.objects.get(pk=bill_id, tenant=tenant)
+    except MonthlyBill.DoesNotExist:
+        return Response({"detail": "Bill not found."}, status=status.HTTP_404_NOT_FOUND)
+    if bill.balance <= 0:
+        return Response({"detail": "This bill is already settled."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        coupon = BillingCoupon.objects.get(code__iexact=code)
+    except BillingCoupon.DoesNotExist:
+        return Response({"detail": "Invalid coupon code."}, status=status.HTTP_404_NOT_FOUND)
+
+    ok, why = coupon.is_valid_for(tenant, bill_balance=bill.balance)
+    if not ok:
+        return Response({"detail": why}, status=status.HTTP_400_BAD_REQUEST)
+
+    discount = coupon.compute_discount(bill.balance)
+    if discount <= 0:
+        return Response({"detail": "This coupon has no value for this bill."},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    applied = bill.apply_discount(discount, note=f"Coupon {coupon.code} applied (-{discount} {bill.currency}).")
+    coupon.times_used += 1
+    if coupon.times_used >= coupon.max_uses:
+        coupon.is_active = False
+    coupon.save(update_fields=["times_used", "is_active"])
+
+    return Response({
+        "detail": f"Coupon applied — {applied} {bill.currency} off.",
+        "discount_applied": str(applied),
+        "bill_status": bill.effective_status,
+        "bill_balance": str(bill.balance),
+    })
 
 
 # ── tenant dashboard ──────────────────────────────────────────────────────────
@@ -87,7 +318,12 @@ def tenant_dashboard(request):
     last_30_start = today - timedelta(days=29)
     last_30_total, last_30 = _aggregate(tenant, last_30_start, today)
 
-    recent_bills = MonthlyBill.objects.filter(tenant=tenant).order_by("-year", "-month")[:6]
+    # Backfill bills for completed months so the tenant always sees their
+    # billing history (not just whatever a super-admin happened to generate).
+    _ensure_tenant_bills(tenant, rate, today)
+
+    recent_bills = MonthlyBill.objects.filter(tenant=tenant).order_by("-year", "-month")[:12]
+    billing_summary = _billing_summary(tenant, rate.currency)
 
     # ── Extra analytics ────────────────────────────────────────────────
     # Previous month comparison
@@ -202,6 +438,7 @@ def tenant_dashboard(request):
             "daily_last_30_days": last_30,
             "weekday_breakdown": weekday_breakdown,
             "monthly_history": monthly_history,
+            "billing_summary": billing_summary,
             "recent_bills": MonthlyBillSerializer(recent_bills, many=True).data,
         }
     )
@@ -294,7 +531,162 @@ def tenant_range_usage(request):
     )
 
 
-# ── super-admin: rates ────────────────────────────────────────────────────────
+# ── tenant bill detail ────────────────────────────────────────────────────────
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def tenant_bill_detail(request, pk):
+    """Full breakdown + analysis for a single bill belonging to the tenant."""
+    tenant = getattr(request, "tenant", None)
+    if tenant is None or getattr(tenant, "schema_name", "public") == "public":
+        return Response(
+            {"detail": "No tenant context for this request."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        bill = MonthlyBill.objects.get(pk=pk, tenant=tenant)
+    except MonthlyBill.DoesNotExist:
+        return Response({"detail": "Bill not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    start, end = _month_bounds(bill.year, bill.month)
+    total, daily = _aggregate(tenant, start, end)
+
+    span_days = (end - start).days + 1
+    active_days = [d for d in daily if d["request_count"] > 0]
+    avg_all = round(total / span_days, 2) if span_days else 0
+    avg_active = round(total / len(active_days), 2) if active_days else 0
+    peak = max(daily, key=lambda d: d["request_count"], default=None)
+
+    # Weekday distribution within the billed month
+    weekday_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    weekday_totals = [0] * 7
+    for d in daily:
+        dt = date.fromisoformat(d["date"]) if isinstance(d["date"], str) else d["date"]
+        weekday_totals[dt.weekday()] += d["request_count"]
+    weekday_breakdown = [
+        {"weekday": weekday_names[i], "total": weekday_totals[i]} for i in range(7)
+    ]
+
+    # Cost breakdown: how the amount is derived from the rate.
+    billable_units = (
+        (bill.total_requests + bill.requests_per_unit - 1) // bill.requests_per_unit
+        if bill.requests_per_unit
+        else 0
+    )
+
+    rate = BillingRate.current()
+    profile, _ = ReferralProfile.objects.get_or_create(tenant=tenant)
+
+    return Response(
+        {
+            "bill": MonthlyBillSerializer(bill).data,
+            "rate": BillingRateSerializer(rate).data,
+            "breakdown": {
+                "total_requests": bill.total_requests,
+                "requests_per_unit": bill.requests_per_unit,
+                "billable_units": billable_units,
+                "unit_cost": str(bill.unit_cost),
+                "amount": str(bill.amount),
+                "currency": bill.currency,
+            },
+            "analysis": {
+                "days_in_month": span_days,
+                "active_days": len(active_days),
+                "daily_average": avg_all,
+                "active_day_average": avg_active,
+                "peak_day": peak,
+            },
+            "daily": daily,
+            "weekday_breakdown": weekday_breakdown,
+            "coin_balance": str(profile.coin_balance),
+        }
+    )
+
+
+# ── tenant payments ───────────────────────────────────────────────────────────
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def tenant_payments(request):
+    """Payment history, outstanding bills, and Adhere Coin balance."""
+    tenant = getattr(request, "tenant", None)
+    if tenant is None or getattr(tenant, "schema_name", "public") == "public":
+        return Response(
+            {"detail": "No tenant context for this request."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    today = timezone.localdate()
+    rate = BillingRate.current()
+    _ensure_tenant_bills(tenant, rate, today)
+
+    all_bills = MonthlyBill.objects.filter(tenant=tenant).order_by("-year", "-month")
+    paid_bills = [b for b in all_bills if b.status == MonthlyBill.Status.PAID]
+    outstanding_bills = [
+        b for b in all_bills
+        if b.status in (
+            MonthlyBill.Status.ISSUED,
+            MonthlyBill.Status.DRAFT,
+            MonthlyBill.Status.PARTIAL,
+        )
+    ]
+
+    profile, _ = ReferralProfile.objects.get_or_create(tenant=tenant)
+
+    # Coin transactions that represent bill payments / redemptions.
+    coin_payments = CoinTransaction.objects.filter(
+        profile=profile, type="redeemed"
+    ).order_by("-created_at")[:50]
+
+    from .payment_models import MpesaTransaction, PaymentGatewayConfig, TenantWallet
+    from .payment_serializers import (
+        MpesaTransactionSerializer,
+        PaymentMethodSerializer,
+        WalletTransactionSerializer,
+    )
+
+    wallet, _ = TenantWallet.objects.get_or_create(
+        tenant=tenant, defaults={"currency": rate.currency}
+    )
+    gateway = PaymentGatewayConfig.get_solo()
+    mpesa_txns = MpesaTransaction.objects.filter(tenant=tenant).order_by("-created_at")[:50]
+    wallet_txns = wallet.transactions.all()[:50]
+
+    payment_methods = [
+        {
+            "key": "mpesa",
+            "label": "M-Pesa",
+            "description": "Pay instantly via M-Pesa STK push.",
+            "icon": "mdi-cellphone",
+            "available": gateway.is_active,
+        },
+        {
+            "key": "wallet",
+            "label": "Wallet balance",
+            "description": "Use your pre-funded AdhereMed wallet.",
+            "icon": "mdi-wallet",
+            "available": True,
+        },
+    ]
+
+    return Response(
+        {
+            "summary": _billing_summary(tenant, rate.currency),
+            "coin_balance": str(profile.coin_balance),
+            "coin_to_currency": "1",
+            "currency": rate.currency,
+            "wallet_balance": str(wallet.balance),
+            "phone": getattr(tenant, "phone", "") or "",
+            "payment_methods": PaymentMethodSerializer(payment_methods, many=True).data,
+            "paid_bills": MonthlyBillSerializer(paid_bills, many=True).data,
+            "outstanding_bills": MonthlyBillSerializer(outstanding_bills, many=True).data,
+            "coin_transactions": CoinTransactionSerializer(coin_payments, many=True).data,
+            "mpesa_transactions": MpesaTransactionSerializer(mpesa_txns, many=True).data,
+            "wallet_transactions": WalletTransactionSerializer(wallet_txns, many=True).data,
+        }
+    )
+
 
 class RateListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsSuperAdmin]
@@ -333,6 +725,7 @@ def admin_usage_overview(request):
         projected_cost = rate.cost_for(projected_requests)
         grand_total += total
         grand_projected_cost += projected_cost
+        lock = compute_billing_lock(tenant)
         rows.append(
             {
                 "tenant_id": tenant.id,
@@ -344,6 +737,11 @@ def admin_usage_overview(request):
                 "cost_so_far": str(rate.cost_for(total)),
                 "projected_requests": projected_requests,
                 "projected_cost": str(projected_cost),
+                "billing_suspended": tenant.billing_suspended,
+                "billing_grace_until": tenant.billing_grace_until,
+                "billing_locked": lock["locked"],
+                "overdue_count": lock["overdue_count"],
+                "total_overdue": lock["total_overdue"],
             }
         )
 
@@ -446,6 +844,7 @@ def generate_bills(request):
 
     start, end = _month_bounds(year, month)
     rate = BillingRate.current()
+    due = _due_date_for(year, month)
 
     created, updated, skipped = 0, 0, 0
     out = []
@@ -463,6 +862,8 @@ def generate_bills(request):
                 "amount": amount,
                 "currency": rate.currency,
                 "status": MonthlyBill.Status.ISSUED,
+                "due_date": due,
+                "issued_at": timezone.now(),
             },
         )
         if was_created:
@@ -476,6 +877,8 @@ def generate_bills(request):
             bill.amount = amount
             bill.currency = rate.currency
             bill.status = MonthlyBill.Status.ISSUED
+            if not bill.due_date:
+                bill.due_date = due
             bill.save()
             updated += 1
         out.append(MonthlyBillSerializer(bill).data)
@@ -501,7 +904,8 @@ def mark_bill_paid(request, pk):
         return Response({"detail": "Bill not found."}, status=status.HTTP_404_NOT_FOUND)
     bill.status = MonthlyBill.Status.PAID
     bill.paid_at = timezone.now()
-    bill.save(update_fields=["status", "paid_at"])
+    bill.paid_amount = bill.amount
+    bill.save(update_fields=["status", "paid_at", "paid_amount"])
     return Response(MonthlyBillSerializer(bill).data)
 
 
@@ -981,3 +1385,119 @@ def admin_doctor_commission_overview(request):
             "doctors": rows,
         }
     )
+
+
+# ── super-admin: billing suspension / grace / waive / coupons ─────────────────
+
+def _admin_tenant_or_404(tenant_id):
+    try:
+        return Tenant.objects.exclude(schema_name="public").get(pk=tenant_id), None
+    except Tenant.DoesNotExist:
+        return None, Response({"detail": "Tenant not found."}, status=status.HTTP_404_NOT_FOUND)
+
+
+def _tenant_billing_row(tenant):
+    rate = BillingRate.current()
+    _ensure_tenant_bills(tenant, rate, timezone.localdate())
+    lock = compute_billing_lock(tenant)
+    summary = _billing_summary(tenant, rate.currency)
+    return {
+        "tenant_id": tenant.id,
+        "tenant_name": tenant.name,
+        "tenant_schema": tenant.schema_name,
+        "tenant_type": tenant.type,
+        "is_active": tenant.is_active,
+        "billing_suspended": tenant.billing_suspended,
+        "suspension_reason": tenant.suspension_reason,
+        "billing_grace_until": tenant.billing_grace_until,
+        "lock": lock,
+        "summary": summary,
+    }
+
+
+@api_view(["POST"])
+@permission_classes([IsSuperAdmin])
+def admin_suspend_tenant(request, tenant_id):
+    tenant, err = _admin_tenant_or_404(tenant_id)
+    if err:
+        return err
+    tenant.billing_suspended = True
+    tenant.suspension_reason = (request.data.get("reason") or "Suspended for overdue billing.")[:255]
+    tenant.billing_grace_until = None
+    tenant.save(update_fields=["billing_suspended", "suspension_reason", "billing_grace_until", "updated_at"])
+    return Response(_tenant_billing_row(tenant))
+
+
+@api_view(["POST"])
+@permission_classes([IsSuperAdmin])
+def admin_unsuspend_tenant(request, tenant_id):
+    tenant, err = _admin_tenant_or_404(tenant_id)
+    if err:
+        return err
+    tenant.billing_suspended = False
+    tenant.suspension_reason = ""
+    tenant.save(update_fields=["billing_suspended", "suspension_reason", "updated_at"])
+    return Response(_tenant_billing_row(tenant))
+
+
+@api_view(["POST"])
+@permission_classes([IsSuperAdmin])
+def admin_extend_grace(request, tenant_id):
+    """Grant a tenant continued access despite overdue bills until a given date."""
+    from django.utils.dateparse import parse_date
+    tenant, err = _admin_tenant_or_404(tenant_id)
+    if err:
+        return err
+    raw = request.data.get("until")
+    until = parse_date(raw) if raw else None
+    if not until:
+        return Response({"detail": "Provide a valid `until` date (YYYY-MM-DD)."},
+                        status=status.HTTP_400_BAD_REQUEST)
+    tenant.billing_grace_until = until
+    tenant.billing_suspended = False
+    if request.data.get("reason"):
+        tenant.suspension_reason = str(request.data.get("reason"))[:255]
+    tenant.save(update_fields=["billing_grace_until", "billing_suspended", "suspension_reason", "updated_at"])
+    return Response(_tenant_billing_row(tenant))
+
+
+@api_view(["POST"])
+@permission_classes([IsSuperAdmin])
+def admin_waive_bill(request, pk):
+    try:
+        bill = MonthlyBill.objects.get(pk=pk)
+    except MonthlyBill.DoesNotExist:
+        return Response({"detail": "Bill not found."}, status=status.HTTP_404_NOT_FOUND)
+    bill.waive(reason=request.data.get("reason") or "Waived by administrator.")
+    return Response(MonthlyBillSerializer(bill).data)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsSuperAdmin])
+def admin_coupons(request):
+    if request.method == "POST":
+        serializer = BillingCouponSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(created_by=request.user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    qs = BillingCoupon.objects.all()
+    tenant_id = request.query_params.get("tenant")
+    if tenant_id:
+        qs = qs.filter(tenant_id=tenant_id)
+    return Response(BillingCouponSerializer(qs, many=True).data)
+
+
+@api_view(["PATCH", "DELETE"])
+@permission_classes([IsSuperAdmin])
+def admin_coupon_detail(request, pk):
+    try:
+        coupon = BillingCoupon.objects.get(pk=pk)
+    except BillingCoupon.DoesNotExist:
+        return Response({"detail": "Coupon not found."}, status=status.HTTP_404_NOT_FOUND)
+    if request.method == "DELETE":
+        coupon.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    serializer = BillingCouponSerializer(coupon, data=request.data, partial=True)
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+    return Response(serializer.data)

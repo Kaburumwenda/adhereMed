@@ -4,18 +4,18 @@
     <div class="hc-hero pa-5 pa-md-6 mb-5">
       <div class="d-flex align-center flex-wrap ga-4">
         <v-avatar size="56" class="hc-hero-icon">
-          <v-icon icon="mdi-account-multiple" color="white" size="28" />
+          <v-icon icon="mdi-account-multiple" color="teal-darken-2" size="28" />
         </v-avatar>
         <div class="flex-grow-1">
-          <div class="text-overline text-white-soft">HOMECARE · PATIENTS</div>
-          <h1 class="text-h4 font-weight-bold text-white ma-0">Patients in care</h1>
-          <p class="text-body-2 text-white-soft mb-0 mt-1">
+          <div class="text-overline text-teal font-weight-bold">HOMECARE · PATIENTS</div>
+          <h1 class="text-h4 font-weight-bold ma-0">Patients in care</h1>
+          <p class="text-body-2 text-medium-emphasis mb-0 mt-1">
             {{ stats.total }} enrolled · {{ stats.active }} active · {{ stats.critical }} critical
           </p>
         </div>
         <v-btn variant="flat" rounded="pill" prepend-icon="mdi-account-plus"
-               color="white" class="text-none" to="/homecare/patients/new">
-          <span class="text-teal-darken-2 font-weight-bold">Enrol patient</span>
+               color="teal" class="text-none font-weight-bold" to="/homecare/patients/new">
+          Enrol patient
         </v-btn>
       </div>
     </div>
@@ -288,23 +288,28 @@ function riskColor(level) {
   position: relative;
   border-radius: 24px;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 0% 0%, rgba(255,255,255,0.18) 0%, transparent 45%),
-    linear-gradient(135deg, #0d9488 0%, #0ea5a4 35%, #0284c7 100%);
-  box-shadow: 0 18px 40px -18px rgba(13,148,136,0.55);
+  background: white;
+  border: 1px solid rgba(15,23,42,0.06);
+  box-shadow: 0 1px 2px rgba(15,23,42,0.04);
 }
 .hc-hero-icon {
-  background: rgba(255,255,255,0.18) !important;
-  border: 1px solid rgba(255,255,255,0.28);
-  backdrop-filter: blur(12px);
+  background: rgba(13,148,136,0.12) !important;
+  border: 1px solid rgba(13,148,136,0.2);
 }
-.text-white-soft { color: rgba(255,255,255,0.82) !important; }
+:global(.v-theme--dark .hc-hero) {
+  background: rgb(30, 41, 59);
+  border-color: rgba(255,255,255,0.08);
+}
+:global(.v-theme--dark .hc-hero-icon) {
+  background: rgba(13,148,136,0.22) !important;
+  border-color: rgba(13,148,136,0.4);
+}
 
 .hc-card {
   background: white;
   border: 1px solid rgba(15,23,42,0.06);
 }
-:global(.v-theme--dark) .hc-card {
+:global(.v-theme--dark .hc-card) {
   background: rgb(30, 41, 59);
   border-color: rgba(255,255,255,0.08);
 }
@@ -320,11 +325,11 @@ function riskColor(level) {
   border-color: rgba(13,148,136,0.4);
   box-shadow: 0 16px 32px -18px rgba(13,148,136,0.45) !important;
 }
-:global(.v-theme--dark) .hc-pcard {
+:global(.v-theme--dark .hc-pcard) {
   background: rgb(30, 41, 59);
   border-color: rgba(255,255,255,0.08);
 }
-:global(.v-theme--dark) .hc-pcard:hover {
+:global(.v-theme--dark .hc-pcard:hover) {
   border-color: rgba(13,148,136,0.55);
   box-shadow: 0 16px 32px -18px rgba(13,148,136,0.7) !important;
 }

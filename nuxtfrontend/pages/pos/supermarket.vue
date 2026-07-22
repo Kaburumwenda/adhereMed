@@ -1012,11 +1012,19 @@ onMounted(load)
 watch(() => branchStore.currentBranchId, () => { load() })
 
 // ===== Persist cart & sale state to localStorage =====
-const LS_KEY = 'smkt_pos_state_v1'
+// Scope the key to the current user + tenant so one cashier's cart never
+// leaks into another account that logs in on the same browser.
+const lsKey = computed(() => {
+  const uid = auth.user?.id ?? 'anon'
+  const tenant = auth.tenantSchema || 'public'
+  return `smkt_pos_state_v1::${tenant}::${uid}`
+})
 onMounted(() => {
   if (typeof window === 'undefined') return
+  // Drop the legacy un-scoped key so stale shared carts disappear once.
+  try { localStorage.removeItem('smkt_pos_state_v1') } catch (e) {}
   try {
-    const raw = localStorage.getItem(LS_KEY)
+    const raw = localStorage.getItem(lsKey.value)
     if (!raw) return
     const s = JSON.parse(raw)
     if (Array.isArray(s.cart)) cart.value = s.cart
@@ -1039,7 +1047,7 @@ watch(
   }),
   (s) => {
     if (typeof window === 'undefined') return
-    try { localStorage.setItem(LS_KEY, JSON.stringify(s)) } catch (e) {}
+    try { localStorage.setItem(lsKey.value, JSON.stringify(s)) } catch (e) {}
   },
   { deep: true }
 )

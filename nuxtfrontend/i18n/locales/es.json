@@ -1342,7 +1342,8 @@
   "topbar": {
     "fullscreen": "Pantalla completa",
     "exitFullscreen": "Salir de pantalla completa",
-    "theme": "Tema"
+    "theme": "Tema",
+    "refresh": "Actualizar"
   },
   "sidenav": {
     "collapse": "Contraer"

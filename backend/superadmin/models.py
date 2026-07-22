@@ -73,3 +73,54 @@ class CoinTransaction(models.Model):
 
     def __str__(self):
         return f"{self.tx_type} {self.amount} → {self.wallet.tenant}"
+
+
+class MailConfiguration(models.Model):
+    """Platform-wide outgoing/incoming mail configuration (public schema).
+
+    Singleton: there is a single active configuration row used to send
+    transactional emails such as patient welcome messages. Managed from the
+    superadmin dashboard.
+    """
+    from_name = models.CharField(
+        max_length=120, default="AdhereMed",
+        help_text="Friendly From name shown to recipients.")
+    from_email = models.EmailField(
+        default="info@adheremed.co",
+        help_text="Address used as the From / login address.")
+    username = models.CharField(
+        max_length=255, default="info@adheremed.co",
+        help_text="IMAP/SMTP username.")
+    password = models.CharField(
+        max_length=512, blank=True, default="",
+        help_text="Plain-text mailbox password. Stored at rest.")
+    imap_host = models.CharField(max_length=255, default="mail.adheremed.co")
+    imap_port = models.PositiveIntegerField(default=993)
+    imap_use_ssl = models.BooleanField(default=True)
+    smtp_host = models.CharField(max_length=255, default="mail.adheremed.co")
+    smtp_port = models.PositiveIntegerField(default=465)
+    smtp_use_ssl = models.BooleanField(default=True)
+    is_active = models.BooleanField(
+        default=True,
+        help_text="If false, Django settings defaults are used instead.")
+    last_verified_at = models.DateTimeField(null=True, blank=True)
+    last_verified_ok = models.BooleanField(default=False)
+    last_error = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Mail configuration"
+        verbose_name_plural = "Mail configuration"
+
+    def __str__(self):
+        return self.from_email or "Mail configuration"
+
+    @classmethod
+    def get_solo(cls):
+        """Return the single configuration row, creating it with sensible
+        AdhereMed defaults on first access."""
+        obj = cls.objects.first()
+        if obj is None:
+            obj = cls.objects.create()
+        return obj

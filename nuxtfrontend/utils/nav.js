@@ -16,7 +16,9 @@ export function getNavSections(role, tenantType, t = (x) => x) {
           icon: 'mdi-cash-multiple', label: 'Usage Billing', path: '/superadmin/billing',
           children: [
             { icon: 'mdi-chart-line', label: 'Overview', path: '/superadmin/billing' },
+            { icon: 'mdi-cash-fast', label: 'Payments', path: '/superadmin/billing/payments' },
             { icon: 'mdi-tune', label: 'Rates', path: '/superadmin/billing/rates' },
+            { icon: 'mdi-ticket-percent', label: 'Coupons', path: '/superadmin/billing/coupons' },
             { icon: 'mdi-stethoscope', label: 'Doctor Commissions', path: '/superadmin/billing/doctors' }
           ]
         },
@@ -25,6 +27,7 @@ export function getNavSections(role, tenantType, t = (x) => x) {
         { icon: 'mdi-database', label: 'Seed Data', path: '/superadmin/seed' },
         { icon: 'mdi-hospital-box', label: 'Clinical Catalog', path: '/superadmin/clinical-catalog' },
         { icon: 'mdi-bookshelf', label: 'Catalog Manager', path: '/admin/catalog' },
+        { icon: 'mdi-email-cog', label: 'Mail Settings', path: '/superadmin/mail' },
         { icon: 'mdi-domain-plus', label: 'New Tenant', path: '/superadmin/tenants/new' }
       ]
     })
@@ -126,7 +129,13 @@ export function getNavSections(role, tenantType, t = (x) => x) {
           ]
         },
         { icon: 'mdi-clipboard-text', label: t('nav.reports'), path: '/pharmacy/reports' },
-        { icon: 'mdi-cash-multiple', label: t('nav.apiBilling'), path: '/pharmacy/billing/usage' },
+        {
+          icon: 'mdi-cash-multiple', label: t('nav.apiBilling'), path: '/pharmacy/billing/usage',
+          children: [
+            { icon: 'mdi-chart-box', label: 'Usage & Bills', path: '/pharmacy/billing/usage' },
+            { icon: 'mdi-credit-card-outline', label: 'Payments', path: '/pharmacy/billing/payments' }
+          ]
+        },
         { icon: 'mdi-truck', label: t('nav.deliveries'), path: '/pharmacy/deliveries' },
         {
           icon: 'mdi-clipboard-check', label: t('nav.dispensing'), path: '/pharmacy/dispensing',
@@ -300,29 +309,13 @@ export function getNavSections(role, tenantType, t = (x) => x) {
           icon: 'mdi-account-group', label: 'Patients', path: '/homecare/patients',
           children: [
             { icon: 'mdi-account-multiple',        label: 'All Patients',    path: '/homecare/patients' },
-            { icon: 'mdi-account-plus',            label: 'Enrol Patient',   path: '/homecare/patients/new' },
-            { icon: 'mdi-account-tie',             label: 'Care Team',       path: '/homecare/caregivers' },
-            { icon: 'mdi-clipboard-text',          label: 'Treatment Plans', path: '/homecare/treatment-plans' },
-            { icon: 'mdi-pill',                    label: 'Medications',     path: '/homecare/medications' },
-            { icon: 'mdi-pill-multiple',           label: 'Doses',           path: '/homecare/doses' },
-            { icon: 'mdi-heart-pulse',             label: 'Vitals',          path: '/homecare/vitals' },
-            { icon: 'mdi-note-edit',               label: 'Care Notes',      path: '/homecare/notes' },
-            { icon: 'mdi-file-document-check',     label: 'Consents',        path: '/homecare/consents' },
-            { icon: 'mdi-shield-account',          label: 'Insurance',       path: '/homecare/insurance' }
+            { icon: 'mdi-account-plus',            label: 'Enrol Patient',   path: '/homecare/patients/new' }
           ]
         },
-        { icon: 'mdi-account-heart', label: 'Caregivers', path: '/homecare/caregivers' },
-        { icon: 'mdi-account-switch', label: 'Assignments', path: '/homecare/assignments' },
-        {
-          icon: 'mdi-calendar-clock', label: 'Schedules', path: '/homecare/schedules',
-          children: [
-            { icon: 'mdi-format-list-bulleted', label: 'Visit list', path: '/homecare/schedules' },
-            { icon: 'mdi-calendar-month', label: 'Calendar', path: '/homecare/calendar' }
-          ]
-        },
-        { icon: 'mdi-clipboard-text', label: 'Treatment Plans', path: '/homecare/treatment-plans' },
         { icon: 'mdi-heart-pulse', label: 'Vitals & Observations', path: '/homecare/vitals' },
-        { icon: 'mdi-note-edit', label: 'Care Notes', path: '/homecare/notes' }
+        { icon: 'mdi-note-edit', label: 'Care Notes', path: '/homecare/notes' },
+        { icon: 'mdi-clipboard-list-outline', label: 'Assessments', path: '/homecare/assessments' },
+        { icon: 'mdi-hand-heart', label: 'Patient Care', path: '/homecare/patient-care' }
       ]
     })
     sections.push({
@@ -335,7 +328,8 @@ export function getNavSections(role, tenantType, t = (x) => x) {
             { icon: 'mdi-pill-multiple', label: 'Doses', path: '/homecare/doses' }
           ]
         },
-        { icon: 'mdi-prescription', label: 'Prescriptions', path: '/homecare/prescriptions' }
+        { icon: 'mdi-prescription', label: 'Prescriptions', path: '/homecare/prescriptions' },
+        { icon: 'mdi-clipboard-text', label: 'Treatment Plans', path: '/homecare/treatment-plans' }
       ]
     })
     sections.push({
@@ -354,36 +348,76 @@ export function getNavSections(role, tenantType, t = (x) => x) {
       ]
     })
     sections.push({
-      label: 'FAMILY & ADMIN',
+      label: 'ADMIN & MANAGEMENT',
       items: [
-        { icon: 'mdi-account-multiple-plus', label: 'Family Portal', path: '/homecare/family' },
-        { icon: 'mdi-shield-account', label: 'Insurance', path: '/homecare/insurance' },
-        { icon: 'mdi-cash-register', label: 'Billing', path: '/homecare/billing' },
-        { icon: 'mdi-cash-multiple', label: 'API Billing', path: '/billing/usage' },
+        { icon: 'mdi-account-switch', label: 'Assignments', path: '/homecare/assignments' },
+        { icon: 'mdi-monitor-eye', label: 'Caregiver Monitor', path: '/homecare/caregiver-monitor' },
         {
-          icon: 'mdi-cash-minus', label: 'Expenses', path: '/expenses',
+          icon: 'mdi-calendar-clock', label: 'Schedules', path: '/homecare/schedules',
           children: [
-            { icon: 'mdi-format-list-bulleted', label: 'View Expenses', path: '/expenses' },
-            { icon: 'mdi-plus-circle', label: 'New Expense', path: '/expenses/new' },
-            { icon: 'mdi-shape', label: 'Categories', path: '/expenses/categories' }
+            { icon: 'mdi-format-list-bulleted', label: 'Visit list', path: '/homecare/schedules' },
+            { icon: 'mdi-calendar-month', label: 'Calendar', path: '/homecare/calendar' }
+          ]
+        },
+        {
+          icon: 'mdi-finance', label: 'Financials', path: '/homecare/accounts',
+          children: [
+            { icon: 'mdi-bank', label: 'Accounts', path: '/homecare/accounts' },
+            { icon: 'mdi-receipt-text', label: 'Patient Bills', path: '/homecare/billing/patient-bills' },
+            { icon: 'mdi-cash-register', label: 'Billing', path: '/homecare/billing' },
+            { icon: 'mdi-chart-areaspline', label: 'API Billing', path: '/homecare/billing/usage' },
+            { icon: 'mdi-credit-card-outline', label: 'API Payments', path: '/homecare/billing/payments' },
+            { icon: 'mdi-cash-minus', label: 'Expenses', path: '/expenses' }
           ]
         },
         { icon: 'mdi-medical-bag', label: 'Equipment', path: '/homecare/equipment' },
-        { icon: 'mdi-file-document-check', label: 'Consents', path: '/homecare/consents' }
+        { icon: 'mdi-shield-account', label: 'Insurance', path: '/homecare/insurance' },
+        {
+          icon: 'mdi-chart-box-outline', label: 'Analytics', path: '/homecare/analytics',
+          children: [
+            { icon: 'mdi-view-dashboard-variant', label: 'Overview', path: '/homecare/analytics' },
+            { icon: 'mdi-account-group',          label: 'Patients', path: '/homecare/analytics/patients' },
+            { icon: 'mdi-account-heart',          label: 'Workforce', path: '/homecare/analytics/caregivers' },
+            { icon: 'mdi-calendar-clock',         label: 'Visits', path: '/homecare/analytics/visits' },
+            { icon: 'mdi-pill-multiple',          label: 'Adherence', path: '/homecare/analytics/adherence' },
+            { icon: 'mdi-alert-octagram',         label: 'Escalations', path: '/homecare/analytics/escalations' },
+            { icon: 'mdi-cash-multiple',          label: 'Financials', path: '/homecare/analytics/financials' },
+            { icon: 'mdi-shield-account-outline', label: 'Insurance Claims', path: '/homecare/analytics/insurance' },
+            { icon: 'mdi-devices',                label: 'Equipment', path: '/homecare/analytics/equipment' }
+          ]
+        },
+        {
+          icon: 'mdi-account-group', label: 'HR', path: '/homecare/hr',
+          children: [
+            { icon: 'mdi-view-dashboard-outline', label: 'HR Dashboard', path: '/homecare/hr' },
+            { icon: 'mdi-account-heart', label: 'Caregivers', path: '/homecare/caregivers' },
+            { icon: 'mdi-account-plus-outline', label: 'Recruitment', path: '/homecare/hr/recruitment' },
+            { icon: 'mdi-school-outline', label: 'Onboarding & Training', path: '/homecare/hr/onboarding' },
+            { icon: 'mdi-account', label: 'Employees', path: '/homecare/hr/employees' },
+            { icon: 'mdi-calendar-clock-outline', label: 'Scheduling & Time', path: '/homecare/hr/scheduling' },
+            { icon: 'mdi-cash-multiple', label: 'Payroll & Benefits', path: '/homecare/hr/payroll' },
+            { icon: 'mdi-calendar-remove-outline', label: 'Leave Management', path: '/homecare/hr/leave' },
+            { icon: 'mdi-chart-timeline-variant-shimmer', label: 'Performance', path: '/homecare/hr/performance' },
+            { icon: 'mdi-file-document-multiple-outline', label: 'Documents', path: '/homecare/hr/documents' },
+            { icon: 'mdi-gavel', label: 'Compliance', path: '/homecare/hr/compliance' }
+          ]
+        },
+        { icon: 'mdi-chart-box', label: 'Reports', path: '/homecare/reports' }
       ]
     })
     sections.push({
-      label: 'ANALYTICS',
+      label: 'SECURITY & PRIVACY',
       items: [
-        { icon: 'mdi-chart-box', label: 'Reports', path: '/homecare/reports' },
-        { icon: 'mdi-history', label: 'Audit Log', path: '/homecare/audit' },
-        { icon: 'mdi-book-cog', label: 'Clinical Catalog', path: '/homecare/catalog' },
-        { icon: 'mdi-domain', label: 'Company Profile', path: '/homecare/company-profile' }
+        { icon: 'mdi-file-document-check', label: 'Consents', path: '/homecare/consents' },
+        { icon: 'mdi-share-variant', label: 'Data Sharing', path: '/homecare/data-sharing' },
+        { icon: 'mdi-history', label: 'Audit Log', path: '/homecare/audit' }
       ]
     })
     sections.push({
       label: 'CLINICAL TOOLS',
       items: [
+        { icon: 'mdi-book-cog', label: 'Clinical Catalog', path: '/homecare/catalog' },
+        { icon: 'mdi-domain', label: 'Company Profile', path: '/homecare/company-profile' },
         { icon: 'mdi-clipboard-pulse', label: 'Clinical Protocols', path: '/homecare/protocols' },
         { icon: 'mdi-pulse',           label: 'EWS Scoring',        path: '/homecare/ews' }
       ]

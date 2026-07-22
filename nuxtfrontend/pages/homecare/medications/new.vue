@@ -717,15 +717,15 @@ async function save() {
   z-index: 5;
 }
 
-:global(.v-theme--dark) .hc-rx-section + .hc-rx-section {
+:global(.v-theme--dark .hc-rx-section + .hc-rx-section) {
   border-top-color: rgba(255,255,255,0.08);
 }
-:global(.v-theme--dark) .hc-rx-section-title { color: rgba(255,255,255,0.75); }
-:global(.v-theme--dark) .hc-summary {
+:global(.v-theme--dark .hc-rx-section-title) { color: rgba(255,255,255,0.75); }
+:global(.v-theme--dark .hc-summary) {
   background: rgba(30,41,59,0.7);
   border-color: rgba(255,255,255,0.06);
 }
-:global(.v-theme--dark) .hc-action-bar {
+:global(.v-theme--dark .hc-action-bar) {
   background: rgba(15,23,42,0.85);
   border-top-color: rgba(255,255,255,0.08);
 }

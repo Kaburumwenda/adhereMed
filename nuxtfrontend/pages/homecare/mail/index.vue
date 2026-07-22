@@ -626,7 +626,7 @@ onMounted(async () => {
 }
 .hc-mail-row { background: white; border: 1px solid rgba(15,23,42,0.06); }
 .hc-mail-row:hover { background: rgba(13,148,136,0.04); }
-:global(.v-theme--dark) .hc-mail-row {
+:global(.v-theme--dark .hc-mail-row) {
   background: rgb(30, 41, 59);
   border-color: rgba(255,255,255,0.08);
 }

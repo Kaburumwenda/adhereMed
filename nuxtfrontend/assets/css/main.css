@@ -82,7 +82,60 @@ html, body, #__nuxt {
 .v-theme--dark .hc-mini-stat,
 .v-theme--dark .hc-cg-stat,
 .v-theme--dark .hc-dose,
+.v-theme--dark .hc-dose-row,
 .v-theme--dark .hc-visit {
   background: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Generic homecare cards + KPI / quick-action tiles.
+   These components hardcode `background: white` with no dark override,
+   which made them appear whitish (with invisible text) and left many
+   sub-pages looking blank in dark mode. */
+.v-theme--dark .hc-card,
+.v-theme--dark .hc-kpi,
+.v-theme--dark .hc-quick {
+  background: rgb(30, 41, 59) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: rgba(255, 255, 255, 0.92);
+}
+.v-theme--dark .hc-kpi:hover,
+.v-theme--dark .hc-quick:hover {
+  border-color: rgba(13, 148, 136, 0.45) !important;
+}
+/* Base list-row background (not just hover) so rows are visible on dark cards */
+.v-theme--dark .hc-list-row {
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+/* Table headers inside homecare cards use a near-black tint that vanishes
+   on a dark surface — lift them so column headers stay legible. */
+.v-theme--dark .hc-table th,
+.v-theme--dark .hc-card thead th {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: rgba(255, 255, 255, 0.82) !important;
+}
+
+/* `backdrop-filter` on a translucent surface is composited as a SOLID BLACK
+   box by Chromium/Electron in dark mode. Several homecare cards (.hc-stat,
+   .hc-dose-card, hero chips, etc.) use it, which produced a black overlay
+   covering the top of pages like /homecare/doses. Neutralise it and give
+   the surfaces opaque backgrounds so content stays visible. */
+.v-theme--dark .hc-bg [class*="hc-"] {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.v-theme--dark .hc-stat,
+.v-theme--dark .hc-dose-card,
+.v-theme--dark .hc-rx-card,
+.v-theme--dark .hc-detail-card,
+.v-theme--dark .hc-block,
+.v-theme--dark .hc-plan-card,
+.v-theme--dark .hc-board-col,
+.v-theme--dark .hc-protocol,
+.v-theme--dark .hc-protocol-row,
+.v-theme--dark .hc-room-row,
+.v-theme--dark .hc-week-head,
+.v-theme--dark .hc-cg-card {
+  background: rgb(30, 41, 59) !important;
   border-color: rgba(255, 255, 255, 0.08) !important;
 }

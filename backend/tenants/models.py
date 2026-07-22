@@ -24,6 +24,15 @@ class Tenant(TenantMixin):
     email = models.EmailField(blank=True)
     website = models.URLField(blank=True)
     is_active = models.BooleanField(default=True)
+    # ── Billing / API-access suspension ──
+    billing_suspended = models.BooleanField(
+        default=False,
+        help_text='Superadmin hard-lock of API access due to unpaid/overdue bills.')
+    suspension_reason = models.CharField(max_length=255, blank=True)
+    billing_grace_until = models.DateField(
+        null=True, blank=True,
+        help_text='Access is permitted despite overdue bills until this date '
+                  '(superadmin-granted grace / extended suspension).')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

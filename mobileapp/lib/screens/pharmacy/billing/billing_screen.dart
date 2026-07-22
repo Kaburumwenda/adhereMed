@@ -83,6 +83,13 @@ final _paymentsProvider = FutureProvider.autoDispose((ref) async {
   ).toList();
 });
 
+// ── API Billing payments (M-Pesa / wallet / coins) ──
+final _apiBillingProvider = FutureProvider.autoDispose((ref) async {
+  final dio = ref.read(dioProvider);
+  final res = await dio.get('/usage-billing/payments/');
+  return res.data as Map<String, dynamic>;
+});
+
 // ── Patient search (for invoice form) ──
 final _patientQueryProvider = StateProvider<String>((ref) => '');
 final _patientSearchProvider = FutureProvider.autoDispose((ref) async {
@@ -917,7 +924,7 @@ class _InvoiceCard extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  TAB 3: PAYMENTS
+//  TAB 3: API BILLING PAYMENTS  (M-Pesa / Wallet / Adhere Coins)
 // ═══════════════════════════════════════════════════════════════════════════
 class _PaymentsTab extends ConsumerStatefulWidget {
   const _PaymentsTab();
@@ -925,145 +932,1211 @@ class _PaymentsTab extends ConsumerStatefulWidget {
   ConsumerState<_PaymentsTab> createState() => _PaymentsTabState();
 }
 
-class _PaymentsTabState extends ConsumerState<_PaymentsTab> with AutomaticKeepAliveClientMixin {
+class _PaymentsTabState extends ConsumerState<_PaymentsTab>
+    with AutomaticKeepAliveClientMixin, TickerProviderStateMixin {
   @override
   bool get wantKeepAlive => true;
-  Timer? _debounce;
+
+  late final TabController _sub;
 
   @override
-  void dispose() { _debounce?.cancel(); super.dispose(); }
+  void initState() {
+    super.initState();
+    _sub = TabController(length: 4, vsync: this);
+  }
+
+  @override
+  void dispose() { _sub.dispose(); super.dispose(); }
+
+  Future<void> _reload() async => ref.invalidate(_apiBillingProvider);
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
     final cs = Theme.of(context).colorScheme;
-    final data = ref.watch(_paymentsProvider);
-    final methodFilter = ref.watch(_payMethodProvider);
+    final async = ref.watch(_apiBillingProvider);
 
-    return Column(children: [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(10, 12, 10, 0),
-        child: Row(children: [
-          Expanded(
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: 'Search payments...',
-                prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                isDense: true, filled: true,
-                fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.5),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              ),
-              style: const TextStyle(fontSize: 14),
-              onChanged: (v) {
-                _debounce?.cancel();
-                _debounce = Timer(const Duration(milliseconds: 300), () => ref.read(_paySearchProvider.notifier).state = v);
-              },
-            ),
-          ),
-          const SizedBox(width: 8),
-          PopupMenuButton<String>(
-            icon: Badge(
-              isLabelVisible: methodFilter.isNotEmpty,
-              child: Icon(Icons.filter_list_rounded, color: methodFilter.isNotEmpty ? cs.primary : null),
-            ),
-            onSelected: (v) => ref.read(_payMethodProvider.notifier).state = v,
-            itemBuilder: (_) => [
-              const PopupMenuItem(value: '', child: Text('All Methods')),
-              ..._payMethods.map((m) => PopupMenuItem(
-                value: m,
-                child: Row(children: [
-                  Icon(_methodIcon(m), size: 16, color: _methodColor(m)),
-                  const SizedBox(width: 8),
-                  Text(_payMethodLabels[m] ?? m),
-                ]),
-              )),
-            ],
-          ),
-        ]),
+    return async.when(
+      loading: () => const LoadingShimmer(),
+      error: (e, _) => ErrorRetry(
+        message: 'Failed to load payments',
+        onRetry: () => ref.invalidate(_apiBillingProvider),
       ),
-      const SizedBox(height: 8),
-      const Divider(height: 1),
-      Expanded(
-        child: data.when(
-          loading: () => const LoadingShimmer(),
-          error: (e, _) => ErrorRetry(message: 'Failed to load payments', onRetry: () => ref.invalidate(_paymentsProvider)),
-          data: (items) {
-            if (items.isEmpty) return const EmptyState(icon: Icons.payments_rounded, title: 'No payments found');
-            return RefreshIndicator(
-              onRefresh: () async => ref.invalidate(_paymentsProvider),
-              child: ListView.builder(
-                padding: const EdgeInsets.fromLTRB(10, 8, 10, 80),
-                itemCount: items.length,
-                itemBuilder: (_, i) => _PaymentCard(payment: items[i])
-                  .animate().fadeIn(duration: 300.ms, delay: Duration(milliseconds: (40 * i).clamp(0, 400))).slideY(begin: 0.05, end: 0),
+      data: (d) {
+        final summary = (d['summary'] as Map?) ?? {};
+        final currency = (d['currency'] ?? 'KSH').toString();
+        final wallet = d['wallet_balance'];
+        final coins = d['coin_balance'];
+        final outstanding = (d['outstanding_bills'] as List?) ?? const [];
+        final paid = (d['paid_bills'] as List?) ?? const [];
+        final mpesa = (d['mpesa_transactions'] as List?) ?? const [];
+        final walletTx = (d['wallet_transactions'] as List?) ?? const [];
+
+        return RefreshIndicator(
+          onRefresh: _reload,
+          child: Column(children: [
+            // ── Action bar ──
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
+              child: Row(children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () => _showAddFundsDialog(context, ref, d),
+                    icon: const Icon(Icons.account_balance_wallet_outlined, size: 18),
+                    label: const Text('Add funds'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF22C55E),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filledTonal(
+                  onPressed: _reload,
+                  icon: const Icon(Icons.refresh_rounded),
+                  tooltip: 'Refresh',
+                ),
+              ]),
+            ),
+
+            // ── KPI summary cards ──
+            _KpiRow(items: [
+              _Kpi('Outstanding', 0, const Color(0xFFF59E0B),
+                  money: _fmtMoney(summary['total_outstanding'])),
+              _Kpi('Overdue', 0, const Color(0xFFEF4444),
+                  money: _fmtMoney(summary['total_overdue'])),
+              _Kpi('Wallet', 0, const Color(0xFF10B981),
+                  money: _fmtMoney(wallet)),
+              _Kpi('Coins', 0, const Color(0xFF6366F1),
+                  money: _fmtNumAny(coins)),
+            ]),
+
+            // ── Sub-tabs ──
+            Container(
+              decoration: BoxDecoration(
+                color: cs.surface,
+                border: Border(bottom: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5))),
               ),
-            );
-          },
-        ),
-      ),
-    ]);
+              child: TabBar(
+                controller: _sub,
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
+                labelColor: cs.primary,
+                unselectedLabelColor: cs.onSurfaceVariant,
+                indicatorSize: TabBarIndicatorSize.label,
+                indicatorWeight: 2.5,
+                labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5),
+                unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 12.5),
+                tabs: [
+                  Tab(
+                    height: 42,
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.receipt_long_rounded, size: 16),
+                      const SizedBox(width: 6),
+                      const Text('Outstanding'),
+                      if (outstanding.isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        _CountBadge(count: outstanding.length, color: const Color(0xFFF59E0B)),
+                      ],
+                    ]),
+                  ),
+                  const Tab(
+                    height: 42,
+                    icon: Icon(Icons.history_rounded, size: 16),
+                    iconMargin: EdgeInsets.zero,
+                    text: 'History',
+                  ),
+                  const Tab(
+                    height: 42,
+                    icon: Icon(Icons.phone_iphone_rounded, size: 16),
+                    iconMargin: EdgeInsets.zero,
+                    text: 'M-Pesa',
+                  ),
+                  const Tab(
+                    height: 42,
+                    icon: Icon(Icons.account_balance_wallet_rounded, size: 16),
+                    iconMargin: EdgeInsets.zero,
+                    text: 'Wallet',
+                  ),
+                ],
+              ),
+            ),
+
+            Expanded(
+              child: TabBarView(
+                controller: _sub,
+                children: [
+                  _OutstandingBillsList(
+                    bills: outstanding,
+                    currency: currency,
+                    onPay: (bill) => _showPayBillDialog(context, ref, d, bill),
+                  ),
+                  _PaidBillsList(bills: paid, currency: currency),
+                  _MpesaTransactionsList(items: mpesa, currency: currency),
+                  _WalletActivityList(items: walletTx, currency: currency),
+                ],
+              ),
+            ),
+          ]),
+        );
+      },
+    );
   }
 }
 
-// ── Payment Card ──
-class _PaymentCard extends StatelessWidget {
-  const _PaymentCard({required this.payment});
-  final dynamic payment;
+// ── KPI count badge ──
+class _CountBadge extends StatelessWidget {
+  const _CountBadge({required this.count, required this.color});
+  final int count;
+  final Color color;
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+    decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(10)),
+    child: Text('$count',
+      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700)),
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PAYMENT SUB-TAB LISTS
+// ═══════════════════════════════════════════════════════════════════════════
+class _OutstandingBillsList extends StatelessWidget {
+  const _OutstandingBillsList({required this.bills, required this.currency, required this.onPay});
+  final List bills;
+  final String currency;
+  final void Function(dynamic bill) onPay;
+
+  @override
+  Widget build(BuildContext context) {
+    if (bills.isEmpty) {
+      return const EmptyState(
+        icon: Icons.check_circle_outline_rounded,
+        title: "You're all caught up",
+        subtitle: 'No outstanding bills right now.',
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 80),
+      itemCount: bills.length,
+      itemBuilder: (_, i) => _OutstandingBillCard(bill: bills[i], currency: currency, onPay: onPay)
+        .animate().fadeIn(duration: 300.ms, delay: Duration(milliseconds: (40 * i).clamp(0, 400))).slideY(begin: 0.05, end: 0),
+    );
+  }
+}
+
+class _OutstandingBillCard extends StatelessWidget {
+  const _OutstandingBillCard({required this.bill, required this.currency, required this.onPay});
+  final dynamic bill;
+  final String currency;
+  final void Function(dynamic bill) onPay;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final method = payment['method'] ?? 'cash';
-    final mc = _methodColor(method);
+    final isOverdue = bill['is_overdue'] == true;
+    final status = (bill['effective_status'] ?? bill['status'] ?? 'ISSUED').toString().toLowerCase();
+    final accent = isOverdue ? const Color(0xFFEF4444) : const Color(0xFFF59E0B);
+    final balance = bill['balance'] ?? bill['amount'];
+    final period = bill['period_label'] ??
+        '${bill['year'] ?? ''}-${'${bill['month'] ?? ''}'.padLeft(2, '0')}';
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: Container(
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
-        ),
-        padding: const EdgeInsets.all(14),
-        child: Row(children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: mc.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
-            child: Icon(_methodIcon(method), color: mc, size: 20),
+          border: Border.all(color: accent.withValues(alpha: 0.25)),
+          gradient: LinearGradient(
+            colors: [accent.withValues(alpha: 0.04), Colors.transparent],
+            begin: Alignment.topLeft, end: Alignment.bottomRight,
           ),
-          const SizedBox(width: 14),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('KSH ${_fmtMoney(payment['amount'])}',
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-            const SizedBox(height: 2),
-            Row(children: [
-              _StatusChip(label: _payMethodLabels[method] ?? method, color: mc),
-              if ((payment['reference'] ?? '').toString().isNotEmpty) ...[
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+              child: Icon(isOverdue ? Icons.warning_amber_rounded : Icons.receipt_long_rounded,
+                color: accent, size: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(period, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+              const SizedBox(height: 2),
+              Row(children: [
+                _StatusChip(label: status.replaceAll('_', ' '), color: accent),
+                if (bill['due_date'] != null) ...[
+                  const SizedBox(width: 8),
+                  Flexible(child: Text(
+                    'Due ${_fmtDate(bill['due_date']?.toString())}',
+                    style: TextStyle(fontSize: 11,
+                      color: isOverdue ? const Color(0xFFEF4444) : cs.onSurfaceVariant,
+                      fontWeight: isOverdue ? FontWeight.w600 : FontWeight.w400),
+                    overflow: TextOverflow.ellipsis,
+                  )),
+                ],
+              ]),
+            ])),
+          ]),
+          const SizedBox(height: 14),
+          Row(children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Balance', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+              Text('$currency ${_fmtMoney(balance)}',
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+              if ((bill['paid_amount'] ?? 0).toString() != '0' &&
+                  (bill['paid_amount'] ?? 0).toString() != '0.0000')
+                Text('Paid so far: $currency ${_fmtMoney(bill['paid_amount'])}',
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+            ])),
+            FilledButton.icon(
+              onPressed: () => onPay(bill),
+              icon: const Icon(Icons.flash_on_rounded, size: 16),
+              label: const Text('Pay'),
+              style: FilledButton.styleFrom(
+                backgroundColor: cs.primary,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              ),
+            ),
+          ]),
+        ]),
+      ),
+    );
+  }
+}
+
+class _PaidBillsList extends StatelessWidget {
+  const _PaidBillsList({required this.bills, required this.currency});
+  final List bills;
+  final String currency;
+
+  @override
+  Widget build(BuildContext context) {
+    if (bills.isEmpty) {
+      return const EmptyState(
+        icon: Icons.history_rounded,
+        title: 'No payments yet',
+        subtitle: 'Your paid bills will appear here.',
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 80),
+      itemCount: bills.length,
+      itemBuilder: (_, i) {
+        final b = bills[i];
+        final period = b['period_label'] ?? '${b['year']}-${'${b['month']}'.padLeft(2, '0')}';
+        final cs = Theme.of(context).colorScheme;
+        return Card(
+          margin: const EdgeInsets.only(bottom: 10),
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
+            ),
+            padding: const EdgeInsets.all(14),
+            child: Row(children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 22),
+              ),
+              const SizedBox(width: 14),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(period, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                const SizedBox(height: 2),
+                Text('Paid ${_fmtDateTime(b['paid_at']?.toString())}',
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+              ])),
+              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                Text('$currency ${_fmtMoney(b['amount'])}',
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                const SizedBox(height: 4),
+                const _StatusChip(label: 'PAID', color: Color(0xFF10B981)),
+              ]),
+            ]),
+          ),
+        ).animate().fadeIn(duration: 300.ms, delay: Duration(milliseconds: (40 * i).clamp(0, 400)));
+      },
+    );
+  }
+}
+
+class _MpesaTransactionsList extends StatelessWidget {
+  const _MpesaTransactionsList({required this.items, required this.currency});
+  final List items;
+  final String currency;
+
+  Color _statusC(String s) => switch (s) {
+    'success' => const Color(0xFF10B981),
+    'failed' => const Color(0xFFEF4444),
+    'pending' => const Color(0xFFF59E0B),
+    _ => const Color(0xFF94A3B8),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) {
+      return const EmptyState(
+        icon: Icons.phone_iphone_rounded,
+        title: 'No M-Pesa payments',
+        subtitle: 'STK push transactions will appear here.',
+      );
+    }
+    final cs = Theme.of(context).colorScheme;
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 80),
+      itemCount: items.length,
+      itemBuilder: (_, i) {
+        final t = items[i];
+        final st = (t['status'] ?? 'pending').toString();
+        final sc = _statusC(st);
+        return Card(
+          margin: const EdgeInsets.only(bottom: 10),
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
+            ),
+            padding: const EdgeInsets.all(14),
+            child: Row(children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  width: 44, height: 44,
+                  color: const Color(0xFF22C55E).withValues(alpha: 0.1),
+                  padding: const EdgeInsets.all(6),
+                  child: Image.asset('assets/images/mpesa-logo.png', fit: BoxFit.contain),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(t['purpose_display']?.toString() ?? 'Payment',
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                const SizedBox(height: 2),
+                Text(t['phone']?.toString() ?? '—',
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                const SizedBox(height: 2),
+                Text(_fmtDateTime(t['created_at']?.toString()),
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+              ])),
+              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                Text('$currency ${_fmtMoney(t['amount'])}',
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                const SizedBox(height: 4),
+                _StatusChip(label: st, color: sc),
+              ]),
+            ]),
+          ),
+        ).animate().fadeIn(duration: 300.ms, delay: Duration(milliseconds: (40 * i).clamp(0, 400)));
+      },
+    );
+  }
+}
+
+class _WalletActivityList extends StatelessWidget {
+  const _WalletActivityList({required this.items, required this.currency});
+  final List items;
+  final String currency;
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) {
+      return const EmptyState(
+        icon: Icons.account_balance_wallet_rounded,
+        title: 'No wallet activity',
+        subtitle: 'Top-ups and bill payments will appear here.',
+      );
+    }
+    final cs = Theme.of(context).colorScheme;
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 80),
+      itemCount: items.length,
+      itemBuilder: (_, i) {
+        final t = items[i];
+        final isCredit = (t['type']?.toString() ?? 'credit') == 'credit';
+        final color = isCredit ? const Color(0xFF10B981) : const Color(0xFFEF4444);
+        return Card(
+          margin: const EdgeInsets.only(bottom: 10),
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
+            ),
+            padding: const EdgeInsets.all(14),
+            child: Row(children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+                child: Icon(isCredit ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
+                  color: color, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(t['reason']?.toString() ?? (isCredit ? 'Top-up' : 'Bill payment'),
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                const SizedBox(height: 2),
+                Text(_fmtDateTime(t['created_at']?.toString()),
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+              ])),
+              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                Text('${isCredit ? '+' : '-'} $currency ${_fmtMoney(t['amount'])}',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: color)),
+                const SizedBox(height: 2),
+                Text('Bal: $currency ${_fmtMoney(t['balance_after'])}',
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+              ]),
+            ]),
+          ),
+        ).animate().fadeIn(duration: 300.ms, delay: Duration(milliseconds: (40 * i).clamp(0, 400)));
+      },
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PAY BILL DIALOG  (M-Pesa / Wallet / Coins)
+// ═══════════════════════════════════════════════════════════════════════════
+void _showPayBillDialog(BuildContext context, WidgetRef ref, Map<String, dynamic> data, dynamic bill) {
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => _PayBillDialog(data: data, bill: bill, parentRef: ref),
+  );
+}
+
+class _PayBillDialog extends ConsumerStatefulWidget {
+  const _PayBillDialog({required this.data, required this.bill, required this.parentRef});
+  final Map<String, dynamic> data;
+  final dynamic bill;
+  final WidgetRef parentRef;
+  @override
+  ConsumerState<_PayBillDialog> createState() => _PayBillDialogState();
+}
+
+class _PayBillDialogState extends ConsumerState<_PayBillDialog> {
+  String _method = 'mpesa';
+  late final TextEditingController _amount;
+  late final TextEditingController _phone;
+  bool _submitting = false;
+  String? _err;
+
+  double get _balance => double.tryParse('${widget.bill['balance'] ?? widget.bill['amount'] ?? 0}') ?? 0;
+  double get _walletBal => double.tryParse('${widget.data['wallet_balance'] ?? 0}') ?? 0;
+  double get _coinBal => double.tryParse('${widget.data['coin_balance'] ?? 0}') ?? 0;
+  String get _currency => (widget.data['currency'] ?? 'KSH').toString();
+
+  @override
+  void initState() {
+    super.initState();
+    _amount = TextEditingController(text: _balance.toStringAsFixed(2));
+    _phone = TextEditingController(text: (widget.data['phone'] ?? '').toString());
+  }
+
+  @override
+  void dispose() { _amount.dispose(); _phone.dispose(); super.dispose(); }
+
+  bool get _canPay {
+    if (_submitting) return false;
+    if (_method == 'coins') return _coinBal >= _balance;
+    final amt = double.tryParse(_amount.text) ?? 0;
+    if (amt <= 0) return false;
+    if (_method == 'wallet') return _walletBal >= amt;
+    if (_method == 'mpesa') return _phone.text.trim().isNotEmpty;
+    return false;
+  }
+
+  Future<void> _confirm() async {
+    setState(() { _submitting = true; _err = null; });
+    final dio = ref.read(dioProvider);
+    final billId = widget.bill['id'];
+    final amt = double.tryParse(_amount.text) ?? 0;
+    final nav = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final rootCtx = nav.context;
+    try {
+      if (_method == 'coins') {
+        final res = await dio.post('/usage-billing/referral/redeem/pay-bill/', data: {'bill_id': billId});
+        nav.pop();
+        widget.parentRef.invalidate(_apiBillingProvider);
+        messenger.showSnackBar(SnackBar(
+          content: Text((res.data['detail'] ?? 'Bill paid with coins').toString()),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFF6366F1),
+        ));
+      } else if (_method == 'wallet') {
+        final res = await dio.post('/usage-billing/payments/wallet/pay-bill/', data: {
+          'bill_id': billId,
+          'amount': amt,
+        });
+        nav.pop();
+        widget.parentRef.invalidate(_apiBillingProvider);
+        messenger.showSnackBar(SnackBar(
+          content: Text((res.data['detail'] ?? 'Bill paid from wallet').toString()),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFF10B981),
+        ));
+      } else {
+        // M-Pesa STK push
+        nav.pop();
+        _startMpesa(rootCtx, widget.parentRef,
+          purpose: 'bill', billId: billId, amount: amt, phone: _phone.text.trim());
+      }
+    } on DioException catch (e) {
+      setState(() {
+        _err = (e.response?.data is Map ? e.response?.data['detail'] : null)?.toString()
+            ?? e.message ?? 'Payment failed.';
+        _submitting = false;
+      });
+    } catch (e) {
+      setState(() { _err = '$e'; _submitting = false; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final period = widget.bill['period_label'] ??
+        '${widget.bill['year']}-${'${widget.bill['month']}'.padLeft(2, '0')}';
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: cs.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                  child: Icon(Icons.flash_on_rounded, color: cs.primary, size: 20),
+                ),
+                const SizedBox(width: 10),
+                Expanded(child: Text('Pay bill — $period',
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16))),
+              ]),
+              const SizedBox(height: 16),
+              // Bill summary
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(children: [
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                    Text('Bill amount', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                    Text('$_currency ${_fmtMoney(widget.bill['amount'])}',
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                  ]),
+                  const SizedBox(height: 6),
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                    Text('Balance due', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                    Text('$_currency ${_fmtMoney(_balance)}',
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFFF59E0B))),
+                  ]),
+                ]),
+              ),
+              const SizedBox(height: 16),
+              Text('Payment method', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              Row(children: [
+                Expanded(child: _MethodTile(
+                  selected: _method == 'mpesa',
+                  onTap: () => setState(() => _method = 'mpesa'),
+                  iconWidget: Image.asset('assets/images/mpesa-logo.png', height: 24, fit: BoxFit.contain),
+                  label: 'M-Pesa',
+                  sub: 'STK push',
+                  color: const Color(0xFF22C55E),
+                )),
                 const SizedBox(width: 8),
-                Expanded(child: Text('Ref: ${payment['reference']}',
-                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
-                  maxLines: 1, overflow: TextOverflow.ellipsis)),
+                Expanded(child: _MethodTile(
+                  selected: _method == 'wallet',
+                  onTap: () => setState(() => _method = 'wallet'),
+                  iconWidget: const Icon(Icons.account_balance_wallet_rounded, size: 24, color: Color(0xFF10B981)),
+                  label: 'Wallet',
+                  sub: '$_currency ${_fmtMoney(_walletBal)}',
+                  color: const Color(0xFF10B981),
+                )),
+                const SizedBox(width: 8),
+                Expanded(child: _MethodTile(
+                  selected: _method == 'coins',
+                  onTap: () => setState(() => _method = 'coins'),
+                  iconWidget: const Icon(Icons.toll_rounded, size: 24, color: Color(0xFF6366F1)),
+                  label: 'Coins',
+                  sub: _fmtNumAny(_coinBal),
+                  color: const Color(0xFF6366F1),
+                )),
+              ]),
+              const SizedBox(height: 16),
+              if (_method != 'coins') ...[
+                TextField(
+                  controller: _amount,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    labelText: 'Amount to pay',
+                    prefixText: '$_currency  ',
+                    helperText: 'Partial payments allowed. Max $_currency ${_fmtMoney(_balance)}',
+                    helperMaxLines: 2,
+                    suffixIcon: TextButton(
+                      onPressed: () { _amount.text = _balance.toStringAsFixed(2); setState(() {}); },
+                      child: const Text('Max', style: TextStyle(fontSize: 12)),
+                    ),
+                  ),
+                ),
+              ] else
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(children: [
+                    const Icon(Icons.info_outline_rounded, size: 16, color: Color(0xFF6366F1)),
+                    const SizedBox(width: 8),
+                    const Expanded(child: Text(
+                      'The full balance will be redeemed from your coin balance.',
+                      style: TextStyle(fontSize: 12),
+                    )),
+                  ]),
+                ),
+              if (_method == 'mpesa') ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _phone,
+                  keyboardType: TextInputType.phone,
+                  onChanged: (_) => setState(() {}),
+                  decoration: const InputDecoration(
+                    labelText: 'M-Pesa phone number',
+                    hintText: '07XXXXXXXX',
+                    prefixIcon: Icon(Icons.phone_iphone_rounded, size: 20),
+                  ),
+                ),
+              ],
+              if (_method == 'wallet' && _walletBal < (double.tryParse(_amount.text) ?? 0)) ...[
+                const SizedBox(height: 10),
+                _InlineAlert(
+                  color: const Color(0xFFF59E0B),
+                  icon: Icons.warning_amber_rounded,
+                  text: 'Insufficient wallet balance. Top up or pick another method.',
+                ),
+              ],
+              if (_method == 'coins' && _coinBal < _balance) ...[
+                const SizedBox(height: 10),
+                _InlineAlert(
+                  color: const Color(0xFFF59E0B),
+                  icon: Icons.warning_amber_rounded,
+                  text: 'Insufficient coins. Earn more by referring other facilities.',
+                ),
+              ],
+              if (_err != null) ...[
+                const SizedBox(height: 10),
+                _InlineAlert(color: const Color(0xFFEF4444), icon: Icons.error_outline_rounded, text: _err!),
+              ],
+              const SizedBox(height: 18),
+              Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                TextButton(
+                  onPressed: _submitting ? null : () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                const SizedBox(width: 6),
+                FilledButton.icon(
+                  onPressed: _canPay ? _confirm : null,
+                  icon: _submitting
+                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : Icon(_method == 'mpesa' ? Icons.send_rounded : Icons.check_rounded, size: 16),
+                  label: Text(_method == 'mpesa' ? 'Send M-Pesa request' : 'Confirm payment'),
+                ),
+              ]),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Method picker tile ──
+class _MethodTile extends StatelessWidget {
+  const _MethodTile({
+    required this.selected,
+    required this.onTap,
+    required this.iconWidget,
+    required this.label,
+    required this.sub,
+    required this.color,
+  });
+  final bool selected;
+  final VoidCallback onTap;
+  final Widget iconWidget;
+  final String label;
+  final String sub;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          color: selected ? color.withValues(alpha: 0.1) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? color : cs.outlineVariant.withValues(alpha: 0.5),
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Column(children: [
+          SizedBox(height: 28, child: Center(child: iconWidget)),
+          const SizedBox(height: 6),
+          Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+          Text(sub,
+            style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
+            maxLines: 1, overflow: TextOverflow.ellipsis),
+        ]),
+      ),
+    );
+  }
+}
+
+class _InlineAlert extends StatelessWidget {
+  const _InlineAlert({required this.color, required this.icon, required this.text});
+  final Color color;
+  final IconData icon;
+  final String text;
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(10),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.1),
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: color.withValues(alpha: 0.3)),
+    ),
+    child: Row(children: [
+      Icon(icon, size: 16, color: color),
+      const SizedBox(width: 8),
+      Expanded(child: Text(text, style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w500))),
+    ]),
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  ADD FUNDS DIALOG
+// ═══════════════════════════════════════════════════════════════════════════
+void _showAddFundsDialog(BuildContext context, WidgetRef ref, Map<String, dynamic> data) {
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => _AddFundsDialog(data: data, parentRef: ref),
+  );
+}
+
+class _AddFundsDialog extends ConsumerStatefulWidget {
+  const _AddFundsDialog({required this.data, required this.parentRef});
+  final Map<String, dynamic> data;
+  final WidgetRef parentRef;
+  @override
+  ConsumerState<_AddFundsDialog> createState() => _AddFundsDialogState();
+}
+
+class _AddFundsDialogState extends ConsumerState<_AddFundsDialog> {
+  late final TextEditingController _amount;
+  late final TextEditingController _phone;
+  String? _err;
+
+  String get _currency => (widget.data['currency'] ?? 'KSH').toString();
+
+  @override
+  void initState() {
+    super.initState();
+    _amount = TextEditingController();
+    _phone = TextEditingController();
+  }
+
+  @override
+  void dispose() { _amount.dispose(); _phone.dispose(); super.dispose(); }
+
+  bool get _canSubmit =>
+      (double.tryParse(_amount.text) ?? 0) > 0 &&
+      _phone.text.trim().isNotEmpty;
+
+  void _submit() {
+    final amt = double.tryParse(_amount.text) ?? 0;
+    if (amt <= 0) return;
+    Navigator.pop(context);
+    _startMpesa(context, widget.parentRef, purpose: 'wallet', amount: amt, phone: _phone.text.trim());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 440),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF22C55E).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.account_balance_wallet_outlined, color: Color(0xFF22C55E), size: 20),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(child: Text('Add funds to wallet',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16))),
+            ]),
+            const SizedBox(height: 14),
+            Text(
+              'Top up your AdhereMed wallet via M-Pesa and use the balance to pay future bills.',
+              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+            ),
+            const SizedBox(height: 12),
+            Row(children: [
+              Image.asset('assets/images/mpesa-logo.png', height: 28),
+              const SizedBox(width: 10),
+              const Text('Lipa na M-Pesa', style: TextStyle(fontWeight: FontWeight.w600)),
+            ]),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _amount,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                labelText: 'Amount',
+                prefixText: '$_currency  ',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _phone,
+              keyboardType: TextInputType.phone,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                labelText: 'M-Pesa phone number',
+                hintText: '07XXXXXXXX',
+                helperText: '0795********',
+                prefixIcon: Icon(Icons.phone_iphone_rounded, size: 20),
+              ),
+            ),
+            if (_err != null) ...[
+              const SizedBox(height: 10),
+              _InlineAlert(color: const Color(0xFFEF4444), icon: Icons.error_outline_rounded, text: _err!),
+            ],
+            const SizedBox(height: 18),
+            Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+              const SizedBox(width: 6),
+              FilledButton.icon(
+                onPressed: _canSubmit ? _submit : null,
+                style: FilledButton.styleFrom(backgroundColor: const Color(0xFF22C55E), foregroundColor: Colors.white),
+                icon: const Icon(Icons.send_rounded, size: 16),
+                label: const Text('Send M-Pesa request'),
+              ),
+            ]),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  M-PESA PROCESSING OVERLAY  (STK push initiate + poll)
+// ═══════════════════════════════════════════════════════════════════════════
+void _startMpesa(
+  BuildContext context,
+  WidgetRef parentRef, {
+  required String purpose,
+  int? billId,
+  required double amount,
+  required String phone,
+}) {
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => _MpesaProcessingDialog(
+      purpose: purpose,
+      billId: billId,
+      amount: amount,
+      phone: phone,
+      parentRef: parentRef,
+    ),
+  );
+}
+
+class _MpesaProcessingDialog extends ConsumerStatefulWidget {
+  const _MpesaProcessingDialog({
+    required this.purpose,
+    this.billId,
+    required this.amount,
+    required this.phone,
+    required this.parentRef,
+  });
+  final String purpose;
+  final int? billId;
+  final double amount;
+  final String phone;
+  final WidgetRef parentRef;
+  @override
+  ConsumerState<_MpesaProcessingDialog> createState() => _MpesaProcessingDialogState();
+}
+
+class _MpesaProcessingDialogState extends ConsumerState<_MpesaProcessingDialog> {
+  // ignore: constant_identifier_names
+  static const _Processing = 'processing', _Success = 'success', _Failed = 'failed';
+
+  String _state = _Processing;
+  String _message = 'Initiating M-Pesa STK push...';
+  int? _txnId;
+  int _timeout = 60;
+  int _interval = 6;
+  int _elapsed = 0;
+  Timer? _tick;
+  Timer? _poll;
+  bool _cancelled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initiate();
+  }
+
+  @override
+  void dispose() {
+    _cancelled = true;
+    _tick?.cancel();
+    _poll?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _initiate() async {
+    try {
+      final dio = ref.read(dioProvider);
+      final body = <String, dynamic>{
+        'purpose': widget.purpose,
+        'amount': widget.amount,
+        'phone': widget.phone,
+      };
+      if (widget.billId != null) body['bill_id'] = widget.billId;
+      final res = await dio.post('/usage-billing/payments/mpesa/initiate/', data: body);
+      final data = res.data as Map<String, dynamic>;
+      if (!mounted) return;
+      setState(() {
+        _txnId = data['transaction_id'] is int
+            ? data['transaction_id'] as int
+            : int.tryParse('${data['transaction_id']}');
+        _timeout = (data['timeout_seconds'] is int ? data['timeout_seconds'] : 60) as int;
+        _interval = (data['poll_interval_seconds'] is int ? data['poll_interval_seconds'] : 6) as int;
+        _message = (data['detail'] ?? 'Check your phone for the STK push.').toString();
+      });
+      _startTicker();
+      _schedulePoll();
+    } on DioException catch (e) {
+      if (!mounted) return;
+      final detail = e.response?.data is Map ? (e.response?.data as Map)['detail'] : null;
+      setState(() {
+        _state = _Failed;
+        _message = (detail ?? e.message ?? 'Could not start M-Pesa payment.').toString();
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() { _state = _Failed; _message = '$e'; });
+    }
+  }
+
+  void _startTicker() {
+    _tick?.cancel();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      if (_state == _Processing) {
+        setState(() {
+          _elapsed = (_elapsed + 1).clamp(0, _timeout);
+        });
+      }
+    });
+  }
+
+  void _schedulePoll() {
+    _poll?.cancel();
+    _poll = Timer(Duration(seconds: _interval), _pollOnce);
+  }
+
+  Future<void> _pollOnce() async {
+    if (_cancelled || !mounted || _txnId == null) return;
+    try {
+      final dio = ref.read(dioProvider);
+      final res = await dio.post('/usage-billing/payments/mpesa/confirm/',
+        data: {'transaction_id': _txnId});
+      final data = res.data as Map<String, dynamic>;
+      final status = (data['status'] ?? 'pending').toString();
+      if (!mounted) return;
+      if (status == 'success') {
+        _stopTimers();
+        setState(() {
+          _state = _Success;
+          _message = (data['detail'] ?? 'Payment confirmed.').toString();
+        });
+        widget.parentRef.invalidate(_apiBillingProvider);
+        return;
+      }
+      if (status == 'failed') {
+        _stopTimers();
+        setState(() {
+          _state = _Failed;
+          _message = (data['detail'] ?? 'Payment failed.').toString();
+        });
+        return;
+      }
+      // Pending — keep polling unless timed out
+      if (_elapsed >= _timeout) {
+        _stopTimers();
+        setState(() {
+          _state = _Failed;
+          _message = 'Payment timed out. If you were charged, it will reflect shortly — please refresh.';
+        });
+        return;
+      }
+      _schedulePoll();
+    } catch (_) {
+      if (!mounted) return;
+      if (_elapsed >= _timeout) {
+        _stopTimers();
+        setState(() { _state = _Failed; _message = 'Payment timed out.'; });
+        return;
+      }
+      _schedulePoll();
+    }
+  }
+
+  void _stopTimers() {
+    _cancelled = true;
+    _tick?.cancel();
+    _poll?.cancel();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final remaining = (_timeout - _elapsed).clamp(0, _timeout);
+    final progress = _timeout == 0 ? 0.0 : (_elapsed / _timeout).clamp(0.0, 1.0);
+
+    return PopScope(
+      canPop: _state != _Processing,
+      child: Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Image.asset('assets/images/mpesa-logo.png', height: 40),
+              const SizedBox(height: 18),
+              if (_state == _Processing) ...[
+                const SizedBox(
+                  width: 64, height: 64,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 5,
+                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF22C55E)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text('Awaiting your confirmation',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+                const SizedBox(height: 6),
+                Text(_message,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.warning_amber_rounded, size: 14, color: Color(0xFFB45309)),
+                    SizedBox(width: 6),
+                    Text('Please do not close or leave the app',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFFB45309))),
+                  ]),
+                ),
+                const SizedBox(height: 14),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 6,
+                    backgroundColor: const Color(0xFF22C55E).withValues(alpha: 0.15),
+                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF22C55E)),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text('${remaining}s remaining',
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+              ] else if (_state == _Success) ...[
+                const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 72),
+                const SizedBox(height: 12),
+                const Text('Payment successful',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+                const SizedBox(height: 6),
+                Text(_message, textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+                const SizedBox(height: 18),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: FilledButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Text('Done'),
+                  ),
+                ),
+              ] else ...[
+                const Icon(Icons.cancel_rounded, color: Color(0xFFEF4444), size: 72),
+                const SizedBox(height: 12),
+                const Text('Payment not completed',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+                const SizedBox(height: 6),
+                Text(_message, textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+                const SizedBox(height: 18),
+                FilledButton(
+                  onPressed: () { widget.parentRef.invalidate(_apiBillingProvider); Navigator.pop(context); },
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Text('Close'),
+                  ),
+                ),
               ],
             ]),
-            const SizedBox(height: 4),
-            Row(children: [
-              if ((payment['invoice_number'] ?? '').toString().isNotEmpty)
-                Text('${payment['invoice_number']}',
-                  style: TextStyle(fontSize: 12, color: cs.primary, fontWeight: FontWeight.w500)),
-              const Spacer(),
-              Text(_fmtDateTime(payment['paid_at']?.toString()),
-                style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-            ]),
-            if ((payment['received_by_name'] ?? '').toString().isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text('by ${payment['received_by_name']}',
-                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-              ),
-          ])),
-        ]),
+          ),
+        ),
       ),
     );
   }

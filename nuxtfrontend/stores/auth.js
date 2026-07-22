@@ -23,6 +23,22 @@ function setItem(key, value) {
   else localStorage.setItem(key, value)
 }
 
+// Flattens a DRF error response into a single readable message.
+// Handles { detail: '...' }, { field: ['msg', ...] } and plain strings.
+function extractApiError(data) {
+  if (!data) return null
+  if (typeof data === 'string') return data
+  if (data.detail) return data.detail
+  const labels = { email: 'Email', national_id: 'National ID', password: 'Password' }
+  for (const [field, val] of Object.entries(data)) {
+    const msg = Array.isArray(val) ? val[0] : val
+    if (!msg) continue
+    const label = labels[field] || null
+    return label ? `${label}: ${msg}` : String(msg)
+  }
+  return null
+}
+
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     user: null,
@@ -37,6 +53,11 @@ export const useAuthStore = defineStore('auth', {
     tenantType: (s) => s.user?.tenant_type || null,
     tenantSchema: (s) => s.user?.tenant_schema || null,
     tenantName: (s) => s.user?.tenant_name || '',
+    isTenantAdmin: (s) => !!s.user?.is_tenant_admin,
+    billing: (s) => s.user?.billing || null,
+    billingLocked: (s) => !!s.user?.billing?.locked,
+    hasOverdue: (s) => !!s.user?.billing?.has_overdue,
+    overdueTotal: (s) => s.user?.billing?.total_overdue || '0',
     fullName: (s) => {
       if (!s.user) return ''
       return `${s.user.first_name || ''} ${s.user.last_name || ''}`.trim()
@@ -82,6 +103,20 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
+    // Force a fresh /auth/me fetch (e.g. to re-check billing lock after a payment).
+    async refresh() {
+      const token = typeof window !== 'undefined'
+        ? localStorage.getItem(KEYS.accessToken) : null
+      if (!token) return null
+      try {
+        const { data } = await this._api().get('/auth/me/')
+        this._persistUser(data)
+        return data
+      } catch (_) {
+        return null
+      }
+    },
+
     async login(email, password) {
       this.loading = true
       this.error = null
@@ -122,7 +157,7 @@ export const useAuthStore = defineStore('auth', {
         this._persistUser(data.user)
         return true
       } catch (err) {
-        this.error = err?.response?.data?.detail || 'Registration failed.'
+        this.error = extractApiError(err?.response?.data) || 'Registration failed.'
         return false
       } finally {
         this.loading = false

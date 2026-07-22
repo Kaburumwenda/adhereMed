@@ -9,7 +9,7 @@
           {{ label }}
         </div>
         <div class="d-flex align-baseline ga-2 mt-1">
-          <span class="text-h4 font-weight-bold">{{ value }}</span>
+          <span class="hc-kpi-value font-weight-bold">{{ value }}</span>
           <span v-if="suffix" class="text-body-2 text-medium-emphasis">{{ suffix }}</span>
         </div>
         <div v-if="trend != null" class="d-flex align-center mt-1">
@@ -74,5 +74,9 @@ function shade(hex, percent) {
   width: 44px; height: 44px;
   border-radius: 12px;
   display: flex; align-items: center; justify-content: center;
+}
+.hc-kpi-value {
+  font-size: 0.85rem;
+  line-height: 1.2;
 }
 </style>

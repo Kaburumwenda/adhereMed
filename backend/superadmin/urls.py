@@ -42,4 +42,8 @@ urlpatterns = [
     path("referrals/profiles/<int:pk>/regenerate-code/", views.regenerate_referral_code, name="referral-regenerate-code"),
     path("referrals/earnings-history/", views.referral_earnings_history, name="referral-earnings-history"),
     path("referrals/monthly-projections/", views.referral_monthly_projections, name="referral-monthly-projections"),
+
+    # Mail configuration
+    path("mail/config/", views.mail_config, name="mail-config"),
+    path("mail/test/", views.mail_config_test, name="mail-config-test"),
 ]

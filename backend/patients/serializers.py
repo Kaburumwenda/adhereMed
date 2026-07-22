@@ -21,14 +21,15 @@ class PatientSerializer(serializers.ModelSerializer):
         model = Patient
         fields = [
             'id', 'user', 'user_email', 'user_name',
-            'patient_number', 'date_of_birth', 'gender', 'blood_type',
+            'patient_id', 'patient_number', 'registration_source',
+            'date_of_birth', 'gender', 'blood_type',
             'national_id', 'address', 'allergies', 'chronic_conditions',
             'emergency_contact_name', 'emergency_contact_phone',
             'emergency_contact_relation',
             'insurance_provider', 'insurance_number',
             'notes', 'created_at', 'updated_at',
         ]
-        read_only_fields = ['id', 'patient_number', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'patient_id', 'patient_number', 'created_at', 'updated_at']
 
 
 class PatientRegistrationSerializer(serializers.Serializer):
@@ -86,7 +87,7 @@ class PatientRegistrationSerializer(serializers.Serializer):
             date_of_birth=validated_data['date_of_birth'],
             gender=validated_data['gender'],
             blood_type=validated_data.get('blood_type', ''),
-            national_id=validated_data.get('national_id', ''),
+            national_id=validated_data.get('national_id') or None,
             address=validated_data.get('address', ''),
             allergies=validated_data.get('allergies', []),
             chronic_conditions=validated_data.get('chronic_conditions', []),
@@ -96,4 +97,9 @@ class PatientRegistrationSerializer(serializers.Serializer):
             insurance_provider=validated_data.get('insurance_provider', ''),
             insurance_number=validated_data.get('insurance_number', ''),
         )
+        try:
+            from superadmin.mailer import send_patient_welcome_email
+            send_patient_welcome_email(user, patient)
+        except Exception:
+            pass
         return patient

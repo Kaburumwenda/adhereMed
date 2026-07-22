@@ -526,6 +526,6 @@ async function recordResponse() {
 }
 .hc-claim-band { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; }
 .hc-form-hero { background: linear-gradient(135deg,#0d9488 0%,#0f766e 100%); }
-:global(.v-theme--dark) .hc-stat,
-:global(.v-theme--dark) .hc-claim-card { background: rgba(30,41,59,0.7); border-color: rgba(255,255,255,0.06); }
+:global(.v-theme--dark .hc-stat),
+:global(.v-theme--dark .hc-claim-card) { background: rgba(30,41,59,0.7); border-color: rgba(255,255,255,0.06); }
 </style>

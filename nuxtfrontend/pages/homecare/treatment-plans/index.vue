@@ -1021,11 +1021,11 @@ async function doDelete() {
 .hc-row { background: rgba(15,23,42,0.03); }
 .hc-table :deep(thead th) { background: rgba(13,148,136,0.06); }
 
-:global(.v-theme--dark) .hc-plan-card,
-:global(.v-theme--dark) .hc-stat,
-:global(.v-theme--dark) .hc-board-col {
+:global(.v-theme--dark .hc-plan-card),
+:global(.v-theme--dark .hc-stat),
+:global(.v-theme--dark .hc-board-col) {
   background: rgba(30,41,59,0.7);
   border-color: rgba(255,255,255,0.06);
 }
-:global(.v-theme--dark) .hc-row { background: rgba(255,255,255,0.04); }
+:global(.v-theme--dark .hc-row) { background: rgba(255,255,255,0.04); }
 </style>

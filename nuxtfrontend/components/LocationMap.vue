@@ -107,7 +107,7 @@ watch(() => props.center, () => {
 
 <style>
 .hc-map { border: 1px solid rgba(0,0,0,0.06); }
-:global(.v-theme--dark) .hc-map { border-color: rgba(255,255,255,0.08); }
+:global(.v-theme--dark .hc-map) { border-color: rgba(255,255,255,0.08); }
 .hc-leaflet-pin .hc-pin {
   width: 26px; height: 26px;
   border-radius: 50% 50% 50% 0;

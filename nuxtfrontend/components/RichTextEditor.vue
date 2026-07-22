@@ -333,18 +333,18 @@ defineExpose({ mdToHtml })
 .rte__preview :deep(.rte__checks) { list-style: none; padding-left: 0.2em; }
 .rte__preview :deep(.rte__empty) { color: rgba(15,23,42,0.45); font-style: italic; }
 
-:global(.v-theme--dark) .rte {
+:global(.v-theme--dark .rte) {
   background: rgb(30, 41, 59);
   border-color: rgba(255, 255, 255, 0.12);
 }
-:global(.v-theme--dark) .rte__toolbar {
+:global(.v-theme--dark .rte__toolbar) {
   background: rgba(255, 255, 255, 0.04);
   border-bottom-color: rgba(255, 255, 255, 0.08);
 }
-:global(.v-theme--dark) .rte__textarea,
-:global(.v-theme--dark) .rte__preview { color: rgb(226, 232, 240); }
-:global(.v-theme--dark) .rte__preview :deep(code) { background: rgba(255,255,255,0.08); }
-:global(.v-theme--dark) .rte__preview :deep(blockquote) {
+:global(.v-theme--dark .rte__textarea),
+:global(.v-theme--dark .rte__preview) { color: rgb(226, 232, 240); }
+:global(.v-theme--dark .rte__preview code) { background: rgba(255,255,255,0.08); }
+:global(.v-theme--dark .rte__preview blockquote) {
   background: rgba(13,148,136,0.1); color: rgba(226,232,240,0.85);
 }
 </style>

@@ -42,12 +42,12 @@
                   :items="branchOptions"
                   item-title="label"
                   item-value="value"
-                  label="Branch *"
+                  label="Branch"
                   variant="outlined"
                   density="comfortable"
                   prepend-inner-icon="mdi-store"
                   :disabled="branchLocked"
-                  :rules="req"
+                  clearable
                   hide-details="auto"
                 />
               </v-col>
@@ -651,8 +651,7 @@ const totalQty = computed(() => form.items.reduce((s, it) => s + Number(it.qty |
 const avgUnitCost = computed(() => totalQty.value ? grandSubtotal.value / totalQty.value : 0)
 const canSave = computed(() => {
   const hasSupplier = (supplierPick.value && (supplierPick.value.id || (typeof supplierPick.value === 'string' && supplierPick.value.trim())))
-  const hasBranch = !!form.branch
-  return !!hasSupplier && hasBranch && form.items.length > 0 && form.items.every(it => (it.stock_id || (it.name && it.name.trim())) && Number(it.qty) > 0)
+  return !!hasSupplier && form.items.length > 0 && form.items.every(it => (it.stock_id || (it.name && it.name.trim())) && Number(it.qty) > 0)
 })
 
 function hydrateFromServer(data) {

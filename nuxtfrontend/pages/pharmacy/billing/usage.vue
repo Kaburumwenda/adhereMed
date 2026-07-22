@@ -387,25 +387,121 @@
         </v-col>
       </v-row>
 
+      <!-- Billing summary -->
+      <v-row v-if="data.billing_summary" dense class="mt-1">
+        <v-col cols="12" sm="6" md="3">
+          <v-card rounded="lg" class="pa-4">
+            <div class="d-flex align-center justify-space-between">
+              <div class="text-caption text-medium-emphasis">Total billed</div>
+              <v-icon size="20" color="primary">mdi-receipt-text</v-icon>
+            </div>
+            <div class="text-h5 font-weight-bold mt-1">
+              {{ formatMoney(data.billing_summary.total_billed, data.billing_summary.currency) }}
+            </div>
+            <div class="text-caption text-medium-emphasis mt-1">
+              {{ data.billing_summary.total_bills }} bill(s) all-time
+            </div>
+          </v-card>
+        </v-col>
+
+        <v-col cols="12" sm="6" md="3">
+          <v-card rounded="lg" class="pa-4">
+            <div class="d-flex align-center justify-space-between">
+              <div class="text-caption text-medium-emphasis">Outstanding</div>
+              <v-icon size="20" color="warning">mdi-cash-clock</v-icon>
+            </div>
+            <div class="text-h5 font-weight-bold mt-1">
+              {{ formatMoney(data.billing_summary.total_outstanding, data.billing_summary.currency) }}
+            </div>
+            <div class="text-caption text-medium-emphasis mt-1">
+              {{ data.billing_summary.outstanding_count }} unpaid bill(s)
+            </div>
+          </v-card>
+        </v-col>
+
+        <v-col cols="12" sm="6" md="3">
+          <v-card
+            rounded="lg"
+            class="pa-4"
+            :color="Number(data.billing_summary.total_overdue) > 0 ? 'error' : undefined"
+            :variant="Number(data.billing_summary.total_overdue) > 0 ? 'tonal' : undefined"
+          >
+            <div class="d-flex align-center justify-space-between">
+              <div class="text-caption text-medium-emphasis">Overdue</div>
+              <v-icon size="20" color="error">mdi-alert-circle</v-icon>
+            </div>
+            <div class="text-h5 font-weight-bold mt-1">
+              {{ formatMoney(data.billing_summary.total_overdue, data.billing_summary.currency) }}
+            </div>
+            <div class="text-caption text-medium-emphasis mt-1">
+              {{ data.billing_summary.overdue_count }} overdue bill(s)
+            </div>
+          </v-card>
+        </v-col>
+
+        <v-col cols="12" sm="6" md="3">
+          <v-card rounded="lg" class="pa-4">
+            <div class="d-flex align-center justify-space-between">
+              <div class="text-caption text-medium-emphasis">Paid</div>
+              <v-icon size="20" color="success">mdi-cash-check</v-icon>
+            </div>
+            <div class="text-h5 font-weight-bold mt-1">
+              {{ formatMoney(data.billing_summary.total_paid, data.billing_summary.currency) }}
+            </div>
+            <div class="text-caption text-medium-emphasis mt-1">
+              {{ data.billing_summary.paid_count }} paid bill(s)
+            </div>
+          </v-card>
+        </v-col>
+      </v-row>
+
       <!-- Recent bills -->
       <v-card rounded="lg" class="mt-4">
         <v-card-title class="d-flex align-center">
           <v-icon class="mr-2">mdi-receipt</v-icon>
           Recent monthly bills
+          <v-spacer />
+          <v-btn
+            size="small"
+            variant="tonal"
+            color="primary"
+            prepend-icon="mdi-credit-card-outline"
+            to="/pharmacy/billing/payments"
+          >
+            Payments
+          </v-btn>
         </v-card-title>
         <v-data-table
           :headers="billHeaders"
           :items="data.recent_bills"
           density="comfortable"
-          :items-per-page="6"
+          :items-per-page="12"
           hide-default-footer
         >
           <template #item.period="{ item }">
-            {{ item.year }}-{{ String(item.month).padStart(2, '0') }}
+            {{ item.period_label || (item.year + '-' + String(item.month).padStart(2, '0')) }}
           </template>
           <template #item.total_requests="{ item }">{{ fmt(item.total_requests) }}</template>
           <template #item.amount="{ item }">{{ formatMoney(item.amount, item.currency) }}</template>
-          <template #item.status="{ item }"><StatusChip :status="item.status" /></template>
+          <template #item.due_date="{ item }">
+            <span :class="{ 'text-error font-weight-medium': item.is_overdue }">
+              {{ item.due_date ? formatDate(item.due_date) : '—' }}
+            </span>
+          </template>
+          <template #item.status="{ item }">
+            <StatusChip :status="item.effective_status || item.status" />
+          </template>
+          <template #item.actions="{ item }">
+            <v-btn
+              size="small"
+              variant="text"
+              color="primary"
+              append-icon="mdi-arrow-right"
+              :to="`/pharmacy/billing/bills/${item.id}`"
+            >
+              View
+            </v-btn>
+          </template>
           <template #no-data>
             <div class="text-medium-emphasis py-4 text-center">No bills issued yet.</div>
           </template>
@@ -478,7 +574,9 @@ const billHeaders = [
   { title: 'Period', key: 'period' },
   { title: 'Requests', key: 'total_requests' },
   { title: 'Amount', key: 'amount' },
-  { title: 'Status', key: 'status' }
+  { title: 'Due date', key: 'due_date' },
+  { title: 'Status', key: 'status' },
+  { title: '', key: 'actions', sortable: false, align: 'end' }
 ]
 
 function fmt(v) {

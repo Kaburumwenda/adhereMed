@@ -23,6 +23,7 @@ const cards = [
   { label: 'Referrals', icon: 'mdi-account-arrow-right', color: 'purple', desc: 'Referral chains, profiles & leaderboard', to: '/superadmin/referrals' },
   { label: 'Clinical Catalog', icon: 'mdi-medical-bag', color: 'success', desc: 'Diagnoses, procedures, medications', to: '/superadmin/clinical-catalog' },
   { label: 'Admin Catalog', icon: 'mdi-tag-multiple', color: 'warning', desc: 'Lookups, taxonomies', to: '/superadmin/admin-catalog' },
+  { label: 'Mail Settings', icon: 'mdi-email-cog', color: 'teal', desc: 'SMTP/IMAP & transactional emails', to: '/superadmin/mail' },
   { label: 'Seed Data', icon: 'mdi-database-import', color: 'error', desc: 'Populate sample data', to: '/superadmin/seed' }
 ]
 </script>
