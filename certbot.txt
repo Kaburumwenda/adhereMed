@@ -1,6 +1,6 @@
 sudo apt install certbot
 sudo apt install python3-certbot-nginx
-sudo certbot --nginx --agree-tos --redirect --hsts --staple-ocsp --email yuskaburu@gmail.com -d aws.gecss.v3engine.gecss-ke.com
+sudo certbot --nginx --agree-tos --redirect --hsts --staple-ocsp --email yuskaburu@gmail.com -d apisys.adheremed.co
 
 
 ##### last report
