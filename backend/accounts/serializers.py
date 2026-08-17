@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
+from django.contrib.auth.models import Group, Permission
 from .models import User
 
 
@@ -58,6 +59,45 @@ class UserSerializer(serializers.ModelSerializer):
             }
         except Exception:
             return default
+
+
+class UserManagementSerializer(serializers.ModelSerializer):
+    """Write serializer for tenant admins managing staff users."""
+    password = serializers.CharField(min_length=8, write_only=True, required=False, allow_blank=True)
+    full_name = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = User
+        fields = [
+            'id', 'email', 'phone', 'first_name', 'last_name',
+            'role', 'is_active', 'password', 'full_name',
+        ]
+        read_only_fields = ['id', 'date_joined', 'pin']
+
+    def get_full_name(self, obj):
+        return f'{obj.first_name} {obj.last_name}'.strip() or obj.email
+
+    def create(self, validated_data):
+        password = validated_data.pop('password', None)
+        user = User(**validated_data)
+        if password:
+            user.set_password(password)
+        else:
+            # Staff users must have a password; generate a random one if omitted.
+            import secrets, string
+            user.set_password(''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(12)))
+        user.is_staff = True
+        user.save()
+        return user
+
+    def update(self, instance, validated_data):
+        password = validated_data.pop('password', None)
+        if password:
+            instance.set_password(password)
+        for k, v in validated_data.items():
+            setattr(instance, k, v)
+        instance.save()
+        return instance
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -123,3 +163,45 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
     uid = serializers.CharField()
     token = serializers.CharField()
     new_password = serializers.CharField(min_length=8, write_only=True)
+
+
+# ---------------------------------------------------------------------------
+# Roles & Permissions (IAM & Security)
+#
+# Uses Django's built-in auth.Group / auth.Permission models which are
+# already per-tenant (auth is listed in TENANT_APPS). A Group is a "Role"
+# that bundles a set of Permissions; users are assigned to one or more
+# roles through user.groups.
+# ---------------------------------------------------------------------------
+
+class PermissionSerializer(serializers.ModelSerializer):
+    app_label = serializers.CharField(source='content_type.app_label', read_only=True)
+    model = serializers.CharField(source='content_type.model', read_only=True)
+
+    class Meta:
+        model = Permission
+        fields = ['id', 'name', 'codename', 'app_label', 'model']
+        read_only_fields = fields
+
+
+class RoleSerializer(serializers.ModelSerializer):
+    """Serializer for auth.Group, treated as a 'Role'."""
+    permissions = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=Permission.objects.all(),
+        required=False, allow_empty=True
+    )
+    user_count = serializers.SerializerMethodField()
+    permission_details = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Group
+        fields = ['id', 'name', 'permissions', 'user_count', 'permission_details']
+        read_only_fields = ['id', 'user_count', 'permission_details']
+
+    def get_user_count(self, obj):
+        return obj.user_set.count() if hasattr(obj, 'user_set') else 0
+
+    def get_permission_details(self, obj):
+        return [{'id': p.id, 'name': p.name, 'codename': p.codename}
+                for p in obj.permissions.all()]
+

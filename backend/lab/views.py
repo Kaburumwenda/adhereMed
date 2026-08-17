@@ -44,17 +44,79 @@ class LabTestCatalogViewSet(viewsets.ModelViewSet):
     search_fields = ['name', 'code']
     ordering_fields = ['name', 'code']
 
+    @action(detail=False, methods=['post'])
+    def seed_demo(self, request):
+        """Seed the current tenant's lab catalog with the standard demo tests and panels.
+
+        Idempotent: existing records are updated in place, new ones are created.
+        """
+        from .seed_data import seed_lab_catalog
+        result = seed_lab_catalog()
+        return Response({
+            'detail': 'Lab catalog seeded successfully.',
+            **result,
+        }, status=status.HTTP_200_OK)
+
 
 class LabOrderViewSet(viewsets.ModelViewSet):
     queryset = LabOrder.objects.select_related('patient__user', 'ordered_by', 'consultation').prefetch_related('tests', 'results').all()
     serializer_class = LabOrderSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['status', 'patient', 'priority', 'is_home_collection']
+    filterset_fields = ['status', 'patient', 'priority', 'is_home_collection', 'ordered_by']
     search_fields = ['patient__user__first_name', 'patient__user__last_name']
     ordering_fields = ['created_at', 'priority']
 
     def perform_create(self, serializer):
         serializer.save(ordered_by=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        """Cancel a lab order that is not yet completed."""
+        lab_order = self.get_object()
+        if lab_order.status == LabOrder.Status.COMPLETED:
+            return Response(
+                {'detail': 'Cannot cancel a completed order.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        lab_order.status = LabOrder.Status.CANCELLED
+        lab_order.save(update_fields=['status', 'updated_at'])
+        return Response(LabOrderSerializer(lab_order).data)
+
+    @action(detail=True, methods=['post'])
+    def advance_status(self, request, pk=None):
+        """Advance the order to the next status in the workflow."""
+        lab_order = self.get_object()
+        flow = {
+            LabOrder.Status.PENDING: LabOrder.Status.SAMPLE_COLLECTED,
+            LabOrder.Status.SAMPLE_COLLECTED: LabOrder.Status.PROCESSING,
+            LabOrder.Status.PROCESSING: LabOrder.Status.COMPLETED,
+        }
+        if lab_order.status not in flow:
+            return Response(
+                {'detail': f'No next status for {lab_order.status}.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        lab_order.status = flow[lab_order.status]
+        lab_order.save(update_fields=['status', 'updated_at'])
+        return Response(LabOrderSerializer(lab_order).data)
+
+    @action(detail=True, methods=['post'])
+    def add_result(self, request, pk=None):
+        """Add a result for a single test on this order."""
+        lab_order = self.get_object()
+        test_id = request.data.get('test')
+        if not test_id:
+            return Response({'detail': 'test is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        result = LabResult.objects.create(
+            order=lab_order,
+            test_id=test_id,
+            result_value=request.data.get('result_value', ''),
+            unit=request.data.get('unit', ''),
+            is_abnormal=request.data.get('is_abnormal', False),
+            comments=request.data.get('comments', ''),
+            performed_by=request.user,
+        )
+        return Response(LabResultSerializer(result).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'])
     def send_to_lab(self, request, pk=None):
@@ -121,12 +183,42 @@ class LabResultViewSet(viewsets.ModelViewSet):
     search_fields = ['test__name']
     ordering_fields = ['result_date']
 
+    def _audit(self, result, new_value, reason):
+        LabResultAudit.objects.create(
+            result=result, changed_by=self.request.user,
+            previous_value=result.result_value or '', new_value=new_value,
+            reason=reason or 'Amendment',
+        )
+
+    def perform_update(self, serializer):
+        old = serializer.instance.result_value or ''
+        serializer.save()
+        if serializer.instance.result_value != old:
+            self._audit(serializer.instance, serializer.instance.result_value, 'Edited')
+
+    @action(detail=True, methods=['post'])
+    def verify(self, request, pk=None):
+        """Pathologist / supervisor verifies a result."""
+        result = self.get_object()
+        result.verified_by = request.user
+        result.save(update_fields=['verified_by'])
+        return Response(LabResultSerializer(result).data)
+
+    @action(detail=True, methods=['post'])
+    def unverify(self, request, pk=None):
+        """Remove verification (e.g., needs correction)."""
+        result = self.get_object()
+        result.verified_by = None
+        result.save(update_fields=['verified_by'])
+        self._audit(result, result.result_value, 'Unverified')
+        return Response(LabResultSerializer(result).data)
+
 
 class HomeSampleVisitViewSet(viewsets.ModelViewSet):
     queryset = HomeSampleVisit.objects.select_related('lab_order', 'patient__user', 'assigned_lab_tech', 'scheduled_by').all()
     serializer_class = HomeSampleVisitSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['status', 'scheduled_date', 'assigned_lab_tech']
+    filterset_fields = ['status', 'scheduled_date', 'assigned_lab_tech', 'lab_order']
     search_fields = ['patient__user__first_name', 'patient__user__last_name']
     ordering_fields = ['scheduled_date', 'scheduled_time']
 
@@ -257,7 +349,7 @@ class LabInvoiceViewSet(viewsets.ModelViewSet):
     ).prefetch_related('items', 'payments').all()
     serializer_class = LabInvoiceSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['status', 'payer_type', 'patient']
+    filterset_fields = ['status', 'payer_type', 'patient', 'lab_order']
     search_fields = ['invoice_number', 'patient__user__first_name', 'patient__user__last_name']
     ordering_fields = ['created_at', 'total']
 

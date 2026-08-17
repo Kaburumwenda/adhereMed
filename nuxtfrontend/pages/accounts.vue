@@ -28,8 +28,14 @@
         />
         <v-btn rounded="lg" variant="flat" color="primary" prepend-icon="mdi-refresh" class="text-none"
                  :loading="loading" @click="loadAll">Refresh</v-btn>
-      <v-btn rounded="lg" v-bind="props" variant="flat" color="primary" class="text-none"
-                     prepend-icon="mdi-download">Export</v-btn>
+      <v-btn rounded="lg" variant="flat" color="primary" class="text-none"
+                     prepend-icon="mdi-download"
+                     @click="exportCsv(tab === 'pnl' ? 'pnl'
+                                       : tab === 'receivables' ? 'receivables'
+                                       : tab === 'payables' ? 'payables'
+                                       : tab === 'transactions' ? 'ledger'
+                                       : tab === 'roi' ? 'roi'
+                                       : tab === 'cashflow' ? 'cashflow' : 'pnl')">Export</v-btn>
       </div>
     </div>
 
@@ -85,6 +91,8 @@
         <v-tab value="pnl" prepend-icon="mdi-chart-box">Profit &amp; Loss</v-tab>
         <v-tab value="balance" prepend-icon="mdi-scale-balance">Balance Sheet</v-tab>
         <v-tab value="ledger" prepend-icon="mdi-book-open-page-variant">General Ledger</v-tab>
+        <v-tab value="roi" prepend-icon="mdi-chart-timeline-variant-shimmer">ROI</v-tab>
+        <v-tab value="cashflow" prepend-icon="mdi-cash-multiple">Cash Flow</v-tab>
       </v-tabs>
     </v-card>
 
@@ -1119,6 +1127,558 @@
       </v-row>
     </template>
 
+    <!-- ===================== ROI ===================== -->
+    <template v-if="tab === 'roi'">
+      <EmptyState v-if="!roiLoading && !roiData"
+                 icon="mdi-chart-off"
+                 title="No ROI data"
+                 message="Adjust the date range or check back after you've recorded sales." />
+
+      <template v-else>
+        <!-- KPI tiles -->
+        <v-row dense class="mb-3">
+          <v-col cols="6" md="3">
+            <v-card flat rounded="xl" class="pa-4 kpi-card h-100"
+                    :loading="roiLoading"
+                    style="border:1px solid rgba(22,163,74,0.12)">
+              <div class="d-flex align-center justify-space-between">
+                <div>
+                  <div class="text-caption text-medium-emphasis text-uppercase">ROI</div>
+                  <div class="text-h5 font-weight-bold mt-1"
+                       :class="roiDeltaPositive ? 'text-success' : 'text-error'">
+                    {{ (kpis.roi_pct ?? 0).toFixed(2) }}%
+                  </div>
+                  <div class="text-caption text-medium-emphasis mt-1">
+                    vs inventory value
+                  </div>
+                </div>
+                <v-avatar color="success" variant="tonal" rounded="lg" size="40">
+                  <v-icon>mdi-chart-timeline-variant-shimmer</v-icon>
+                </v-avatar>
+              </div>
+            </v-card>
+          </v-col>
+          <v-col cols="6" md="3">
+            <v-card flat rounded="xl" class="pa-4 kpi-card h-100"
+                    style="border:1px solid rgba(99,102,241,0.12)">
+              <div class="d-flex align-center justify-space-between">
+                <div>
+                  <div class="text-caption text-medium-emphasis text-uppercase">Net profit</div>
+                  <div class="text-h5 font-weight-bold mt-1"
+                       :class="(kpis.net_profit ?? 0) >= 0 ? 'text-success' : 'text-error'">
+                    {{ formatMoney(kpis.net_profit ?? 0) }}
+                  </div>
+                </div>
+                <v-avatar color="indigo" variant="tonal" rounded="lg" size="40">
+                  <v-icon>mdi-cash-plus</v-icon>
+                </v-avatar>
+              </div>
+            </v-card>
+          </v-col>
+          <v-col cols="6" md="3">
+            <v-card flat rounded="xl" class="pa-4 kpi-card h-100"
+                    style="border:1px solid rgba(239,68,68,0.12)">
+              <div class="d-flex align-center justify-space-between">
+                <div>
+                  <div class="text-caption text-medium-emphasis text-uppercase">Cost of goods</div>
+                  <div class="text-h5 font-weight-bold mt-1">{{ formatMoney(kpis.cogs ?? 0) }}</div>
+                </div>
+                <v-avatar color="error" variant="tonal" rounded="lg" size="40">
+                  <v-icon>mdi-package-variant-closed</v-icon>
+                </v-avatar>
+              </div>
+            </v-card>
+          </v-col>
+          <v-col cols="6" md="3">
+            <v-card flat rounded="xl" class="pa-4 kpi-card h-100"
+                    style="border:1px solid rgba(245,158,11,0.12)">
+              <div class="d-flex align-center justify-space-between">
+                <div>
+                  <div class="text-caption text-medium-emphasis text-uppercase">Gross margin</div>
+                  <div class="text-h5 font-weight-bold mt-1">{{ (kpis.gross_margin_pct ?? 0).toFixed(1) }}%</div>
+                </div>
+                <v-avatar color="warning" variant="tonal" rounded="lg" size="40">
+                  <v-icon>mdi-percent-outline</v-icon>
+                </v-avatar>
+              </div>
+            </v-card>
+          </v-col>
+        </v-row>
+
+        <!-- Trend chart + cost breakdown donut -->
+        <v-row dense class="mb-3">
+          <v-col cols="12" md="8">
+            <v-card flat rounded="xl" border class="pa-3 h-100">
+              <div class="d-flex align-center justify-space-between mb-2">
+                <div class="text-subtitle-2 font-weight-bold">
+                  <v-icon size="18" class="mr-1" color="success">mdi-chart-line</v-icon>
+                  ROI trend (7-day rolling net ÷ inventory value)
+                </div>
+                <v-select v-model="roiTrendDays" :items="roiRangeOptions"
+                          item-title="label" item-value="value"
+                          density="compact" hide-details flat variant="solo-filled"
+                          style="max-width:160px" @update:model-value="loadRoi" />
+              </div>
+              <div class="trend-chart">
+                <SparkArea :values="roiTrendValues" :labels="roiTrendLabels"
+                           :height="220" color="#16a34a" />
+              </div>
+              <div class="text-caption text-medium-emphasis mt-1">
+                Per-day ROI uses the current inventory snapshot as a constant denominator.
+              </div>
+            </v-card>
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-card flat rounded="xl" border class="pa-3 h-100">
+              <div class="text-subtitle-2 font-weight-bold mb-2">
+                <v-icon size="18" class="mr-1" color="indigo">mdi-chart-donut</v-icon>
+                Cost breakdown
+              </div>
+              <div class="d-flex justify-center mb-3 mt-2">
+                <DonutRing :segments="roiCostSegments" :size="200">
+                  <div class="text-center">
+                    <div class="text-caption text-medium-emphasis">Total cost</div>
+                    <div class="text-h6 font-weight-bold">{{ formatMoney(roiCostTotal) }}</div>
+                  </div>
+                </DonutRing>
+              </div>
+              <div v-for="s in roiCostSegments" :key="s.label"
+                   class="d-flex align-center mb-2">
+                <span class="legend-dot" :style="{ background: s.color }"></span>
+                <span class="text-body-2 ml-2 flex-grow-1 text-truncate">{{ s.label }}</span>
+                <span class="text-body-2 font-weight-medium">{{ formatMoney(s.value) }}</span>
+              </div>
+              <div v-if="!roiCostSegments.length" class="text-caption text-medium-emphasis pa-3 text-center">
+                No cost recorded in this range
+              </div>
+            </v-card>
+          </v-col>
+        </v-row>
+
+        <!-- Revenue vs Cost bars -->
+        <v-card flat rounded="xl" border class="pa-3 mb-3">
+          <div class="text-subtitle-2 font-weight-bold mb-2">
+            <v-icon size="18" class="mr-1" color="primary">mdi-chart-bar</v-icon>
+            Revenue vs cost
+            <span class="text-caption text-medium-emphasis ml-2">
+              {{ roiBarsAreWeekly ? 'weekly buckets' : 'daily buckets' }}
+            </span>
+          </div>
+          <BarChart v-if="roiBarsValues.length"
+                    :values="roiBarsValues" :labels="roiBarsLabels"
+                    :colors="roiBarsColors" :height="240" show-values money-axis />
+          <EmptyState v-else icon="mdi-chart-bar-off" title="No revenue or cost in range"
+                      message="Record some sales to see revenue vs cost bars." />
+        </v-card>
+
+        <!-- Investment & Payback + Top contributors -->
+        <v-row dense class="mb-3">
+          <v-col cols="12" md="6">
+            <v-card flat rounded="xl" border class="pa-3 h-100">
+              <div class="text-subtitle-2 font-weight-bold mb-2">
+                <v-icon size="18" class="mr-1" color="deep-purple">mdi-bank-outline</v-icon>
+                Investment &amp; payback
+              </div>
+              <v-list density="compact" class="pa-0">
+                <v-list-item density="compact" class="px-1">
+                  <v-list-item-title class="text-body-2">Inventory value (at cost)</v-list-item-title>
+                  <template #append>
+                    <span class="text-body-2 font-weight-medium">{{ formatMoney(kpis.inventory_cost_value ?? 0) }}</span>
+                  </template>
+                </v-list-item>
+                <v-list-item density="compact" class="px-1">
+                  <v-list-item-title class="text-body-2">Inventory value (at retail)</v-list-item-title>
+                  <template #append>
+                    <span class="text-body-2 font-weight-medium">{{ formatMoney(kpis.inventory_sale_value ?? 0) }}</span>
+                  </template>
+                </v-list-item>
+                <v-list-item density="compact" class="px-1">
+                  <v-list-item-title class="text-body-2">Potential gross profit</v-list-item-title>
+                  <template #append>
+                    <span class="text-body-2 font-weight-medium">{{ formatMoney(kpis.potential_gross_profit ?? 0) }}</span>
+                  </template>
+                </v-list-item>
+                <v-list-item density="compact" class="px-1">
+                  <v-list-item-title class="text-body-2">Capital turnover</v-list-item-title>
+                  <template #append>
+                    <span class="text-body-2 font-weight-medium">{{ (kpis.capital_turnover ?? 0).toFixed(4) }}×</span>
+                  </template>
+                </v-list-item>
+                <v-list-item density="compact" class="px-1">
+                  <v-list-item-title class="text-body-2">Payback period</v-list-item-title>
+                  <template #append>
+                    <span class="text-body-2 font-weight-medium">
+                      {{ (kpis.payback_months ?? 0) > 0 ? (kpis.payback_months ?? 0).toFixed(1) + ' mo' : '—' }}
+                    </span>
+                  </template>
+                </v-list-item>
+                <v-list-item density="compact" class="px-1">
+                  <v-list-item-title class="text-body-2">Revenue (in range)</v-list-item-title>
+                  <template #append>
+                    <span class="text-body-2 font-weight-medium">{{ formatMoney(kpis.revenue ?? 0) }}</span>
+                  </template>
+                </v-list-item>
+              </v-list>
+              <v-divider class="my-2" />
+              <div class="text-caption text-medium-emphasis">
+                ROI = net profit ÷ inventory cost value × 100.
+                Inventory value is a current snapshot (per StockBatch).
+              </div>
+            </v-card>
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-card flat rounded="xl" border class="pa-3 h-100">
+              <div class="text-subtitle-2 font-weight-bold mb-2">
+                <v-icon size="18" class="mr-1" color="primary">mdi-account-star</v-icon>
+                Top ROI contributors
+              </div>
+              <v-list density="compact" class="px-0">
+                <v-list-item v-for="c in topContributors" :key="c.name" density="compact" class="px-1">
+                  <template #prepend>
+                    <v-avatar size="32" :color="avatarColor(c.name)" variant="tonal">
+                      <span class="text-caption font-weight-bold">{{ initials(c.name) }}</span>
+                    </v-avatar>
+                  </template>
+                  <v-list-item-title class="text-body-2">{{ c.name }}</v-list-item-title>
+                  <v-list-item-subtitle class="text-caption text-medium-emphasis">
+                    {{ c.qty_sold }} units · ROI {{ Math.round(c.roi_pct) }}% · profit {{ formatMoney(c.profit) }}
+                  </v-list-item-subtitle>
+                  <template #append>
+                    <v-progress-circular :model-value="contribProfitShare(c.profit)"
+                                         size="36" color="primary" width="3">
+                      <span class="text-caption font-weight-bold">{{ Math.round(contribProfitShare(c.profit)) }}%</span>
+                    </v-progress-circular>
+                  </template>
+                </v-list-item>
+                <v-list-item v-if="!topContributors.length" density="compact">
+                  <v-list-item-title class="text-caption text-medium-emphasis">
+                    No sales recorded in this range
+                  </v-list-item-title>
+                </v-list-item>
+              </v-list>
+            </v-card>
+          </v-col>
+        </v-row>
+      </template>
+    </template>
+
+    <!-- ===================== Cash Flow tab ===================== -->
+    <template v-if="tab === 'cashflow'">
+      <EmptyState v-if="!cashflowLoading && !cashflowData"
+                 icon="mdi-cash-off"
+                 title="No cash flow data"
+                 message="Adjust the date range or record sales and expenses to see your cash flow." />
+
+      <template v-else>
+        <!-- KPI tiles -->
+        <v-row dense class="mb-3">
+          <v-col cols="6" md="3">
+            <v-card flat rounded="xl" class="pa-4 kpi-card h-100"
+                    :loading="cashflowLoading"
+                    border>
+              <div class="d-flex align-start">
+                <div class="flex-grow-1">
+                  <div class="text-caption text-medium-emphasis text-uppercase">Total inflow</div>
+                  <div class="text-h5 font-weight-bold mt-1 text-success">{{ formatMoney(cfKpis.total_inflow ?? 0) }}</div>
+                  <div class="text-caption text-medium-emphasis mt-1">{{ cfKpis.inflow_count ?? 0 }} transactions</div>
+                </div>
+                <v-avatar size="40" color="success" variant="tonal">
+                  <v-icon>mdi-trending-up</v-icon>
+                </v-avatar>
+              </div>
+            </v-card>
+          </v-col>
+          <v-col cols="6" md="3">
+            <v-card flat rounded="xl" class="pa-4 kpi-card h-100"
+                    :loading="cashflowLoading"
+                    border>
+              <div class="d-flex align-start">
+                <div class="flex-grow-1">
+                  <div class="text-caption text-medium-emphasis text-uppercase">Total outflow</div>
+                  <div class="text-h5 font-weight-bold mt-1 text-error">{{ formatMoney(cfKpis.total_outflow ?? 0) }}</div>
+                  <div class="text-caption text-medium-emphasis mt-1">{{ cfKpis.outflow_count ?? 0 }} transactions</div>
+                </div>
+                <v-avatar size="40" color="error" variant="tonal">
+                  <v-icon>mdi-trending-down</v-icon>
+                </v-avatar>
+              </div>
+            </v-card>
+          </v-col>
+          <v-col cols="6" md="3">
+            <v-card flat rounded="xl" class="pa-4 kpi-card h-100"
+                    :loading="cashflowLoading"
+                    border>
+              <div class="d-flex align-start">
+                <div class="flex-grow-1">
+                  <div class="text-caption text-medium-emphasis text-uppercase">Net cash flow</div>
+                  <div class="text-h5 font-weight-bold mt-1"
+                       :class="cfNetPositive ? 'text-success' : 'text-error'">{{ formatMoney(cfKpis.net_cash_flow ?? 0) }}</div>
+                  <div class="text-caption text-medium-emphasis mt-1">inflow minus outflow</div>
+                </div>
+                <v-avatar size="40" :color="cfNetPositive ? 'success' : 'error'" variant="tonal">
+                  <v-icon>{{ cfNetPositive ? 'mdi-cash-plus' : 'mdi-cash-minus' }}</v-icon>
+                </v-avatar>
+              </div>
+            </v-card>
+          </v-col>
+          <v-col cols="6" md="3">
+            <v-card flat rounded="xl" class="pa-4 kpi-card h-100"
+                    :loading="cashflowLoading"
+                    border>
+              <div class="d-flex align-start">
+                <div class="flex-grow-1">
+                  <div class="text-caption text-medium-emphasis text-uppercase">Burn rate / day</div>
+                  <div class="text-h5 font-weight-bold mt-1">{{ formatMoney(cfKpis.burn_rate ?? 0) }}</div>
+                  <div class="text-caption text-medium-emphasis mt-1">runway {{ cfKpis.runway_days ?? 0 }} days</div>
+                </div>
+                <v-avatar size="40" color="warning" variant="tonal">
+                  <v-icon>mdi-fire</v-icon>
+                </v-avatar>
+              </div>
+            </v-card>
+          </v-col>
+        </v-row>
+
+        <!-- Trend chart + Outflow donut -->
+        <v-row dense class="mb-3">
+          <v-col cols="12" md="8">
+            <v-card flat rounded="xl" border class="pa-3 h-100">
+              <div class="d-flex align-center justify-space-between mb-2">
+                <div class="text-subtitle-2 font-weight-bold">
+                  <v-icon size="18" class="mr-1" color="primary">mdi-chart-line-variant</v-icon>
+                  Cumulative cash position (in range)
+                </div>
+              </div>
+              <div class="trend-chart">
+                <SparkArea :values="cfTrendValues"
+                           :labels="cfTrendLabels"
+                           :height="240"
+                           color="#0ea5e9" />
+              </div>
+              <div class="text-caption text-medium-emphasis pa-2">Running cumulative net cash across the selected range. Positive slope = healthy cash position.</div>
+            </v-card>
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-card flat rounded="xl" border class="pa-3 h-100">
+              <div class="text-subtitle-2 font-weight-bold mb-2">
+                <v-icon size="18" class="mr-1" color="error">mdi-cash-remove</v-icon>
+                Outflow breakdown
+              </div>
+              <div class="d-flex align-center justify-center my-2">
+                <DonutRing :segments="cfOutflowSegments" :size="200">
+                  <div class="text-caption text-medium-emphasis text-uppercase">Outflow</div>
+                  <div class="text-h6 font-weight-bold">{{ formatMoney(cfOutflowTotal) }}</div>
+                </DonutRing>
+              </div>
+              <div v-for="s in cfOutflowSegments" :key="s.label"
+                   class="d-flex align-center justify-space-between py-1">
+                <div class="d-flex align-center">
+                  <span class="legend-dot" :style="{ background: s.color }"></span>
+                  <span class="text-caption font-weight-medium ml-2">{{ s.label }}</span>
+                </div>
+                <span class="text-caption font-weight-bold">{{ formatMoney(s.value) }}</span>
+              </div>
+              <div v-if="!cfOutflowSegments.length" class="text-caption text-medium-emphasis pa-3 text-center">
+                No outflows in this range
+              </div>
+            </v-card>
+          </v-col>
+        </v-row>
+
+        <!-- Inflow vs Outflow bars + Inflow donut -->
+        <v-row dense class="mb-3">
+          <v-col cols="12" md="8">
+            <v-card flat rounded="xl" border class="pa-3 h-100">
+              <div class="text-subtitle-2 font-weight-bold mb-2">
+                <v-icon size="18" class="mr-1" color="primary">mdi-chart-bar</v-icon>
+                Inflow vs outflow by period
+              </div>
+              <BarChart :values="cfBarsValues"
+                         :labels="cfBarsLabels"
+                         :colors="cfBarsColors"
+                         :height="240"
+                         :show-values="false"
+                         money-axis />
+            </v-card>
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-card flat rounded="xl" border class="pa-3 h-100">
+              <div class="text-subtitle-2 font-weight-bold mb-2">
+                <v-icon size="18" class="mr-1" color="success">mdi-cash-multiple</v-icon>
+                Inflow sources
+              </div>
+              <div class="d-flex align-center justify-center my-2">
+                <DonutRing :segments="cfInflowSegments" :size="200">
+                  <div class="text-caption text-medium-emphasis text-uppercase">Inflow</div>
+                  <div class="text-h6 font-weight-bold">{{ formatMoney(cfInflowTotal) }}</div>
+                </DonutRing>
+              </div>
+              <div v-for="s in cfInflowSegments" :key="s.label"
+                   class="d-flex align-center justify-space-between py-1">
+                <div class="d-flex align-center">
+                  <span class="legend-dot" :style="{ background: s.color }"></span>
+                  <span class="text-caption font-weight-medium ml-2">{{ s.label }}</span>
+                </div>
+                <span class="text-caption font-weight-bold">{{ formatMoney(s.value) }}</span>
+              </div>
+              <div v-if="!cfInflowSegments.length" class="text-caption text-medium-emphasis pa-3 text-center">
+                No inflows in this range
+              </div>
+            </v-card>
+          </v-col>
+        </v-row>
+
+        <!-- Payment methods + Cash summary -->
+        <v-row dense class="mb-3">
+          <v-col cols="12" md="6">
+            <v-card flat rounded="xl" border class="pa-3 h-100">
+              <div class="text-subtitle-2 font-weight-bold mb-2">
+                <v-icon size="18" class="mr-1" color="primary">mdi-credit-card-chip</v-icon>
+                Payment method mix
+              </div>
+              <div class="d-flex align-center justify-center my-2">
+                <DonutRing :segments="cfMethodSegments" :size="200">
+                  <div class="text-caption text-medium-emphasis text-uppercase">Total</div>
+                  <div class="text-h6 font-weight-bold">{{ formatMoney(cfMethodTotal) }}</div>
+                </DonutRing>
+              </div>
+              <div v-for="s in cfMethodSegments" :key="s.label"
+                   class="d-flex align-center justify-space-between py-1">
+                <div class="d-flex align-center">
+                  <span class="legend-dot" :style="{ background: s.color }"></span>
+                  <span class="text-caption font-weight-medium ml-2 text-capitalize">{{ s.label }}</span>
+                </div>
+                <span class="text-caption font-weight-bold">{{ formatMoney(s.value) }}</span>
+              </div>
+              <div v-if="!cfMethodSegments.length" class="text-caption text-medium-emphasis pa-3 text-center">
+                No payments in this range
+              </div>
+            </v-card>
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-card flat rounded="xl" border class="pa-3 h-100">
+              <div class="text-subtitle-2 font-weight-bold mb-2">
+                <v-icon size="18" class="mr-1" color="primary">mdi-bank</v-icon>
+                Cash position summary
+              </div>
+              <v-list density="compact" class="px-0">
+                <v-list-item density="compact" class="px-1">
+                  <v-list-item-title class="text-body-2">Total inflow</v-list-item-title>
+                  <template #append>
+                    <span class="text-body-2 font-weight-medium text-success">{{ formatMoney(cfKpis.total_inflow ?? 0) }}</span>
+                  </template>
+                </v-list-item>
+                <v-list-item density="compact" class="px-1">
+                  <v-list-item-title class="text-body-2">Total outflow</v-list-item-title>
+                  <template #append>
+                    <span class="text-body-2 font-weight-medium text-error">{{ formatMoney(cfKpis.total_outflow ?? 0) }}</span>
+                  </template>
+                </v-list-item>
+                <v-list-item density="compact" class="px-1">
+                  <v-list-item-title class="text-body-2">Net cash flow</v-list-item-title>
+                  <template #append>
+                    <span class="text-body-2 font-weight-medium"
+                          :class="cfNetPositive ? 'text-success' : 'text-error'">{{ formatMoney(cfKpis.net_cash_flow ?? 0) }}</span>
+                  </template>
+                </v-list-item>
+                <v-list-item density="compact" class="px-1">
+                  <v-list-item-title class="text-body-2">Operating cash flow</v-list-item-title>
+                  <template #append>
+                    <span class="text-body-2 font-weight-medium">{{ formatMoney(cfKpis.operating_cash_flow ?? 0) }}</span>
+                  </template>
+                </v-list-item>
+                <v-list-item density="compact" class="px-1">
+                  <v-list-item-title class="text-body-2">Ending cash proxy</v-list-item-title>
+                  <template #append>
+                    <span class="text-body-2 font-weight-medium">{{ formatMoney(cfKpis.ending_cash_proxy ?? 0) }}</span>
+                  </template>
+                </v-list-item>
+                <v-list-item density="compact" class="px-1">
+                  <v-list-item-title class="text-body-2">Daily burn rate</v-list-item-title>
+                  <template #append>
+                    <span class="text-body-2 font-weight-medium">{{ formatMoney(cfKpis.burn_rate ?? 0) }}</span>
+                  </template>
+                </v-list-item>
+                <v-list-item density="compact" class="px-1">
+                  <v-list-item-title class="text-body-2">Runway (days)</v-list-item-title>
+                  <template #append>
+                    <span class="text-body-2 font-weight-medium">{{ (cfKpis.runway_days ?? 0) > 0 ? cfKpis.runway_days + ' d' : '—' }}</span>
+                  </template>
+                </v-list-item>
+              </v-list>
+              <v-divider />
+              <div class="text-caption text-medium-emphasis pa-2">
+                Cash flow = actual cash received minus cash paid out within the range. Operating cash excludes purchase orders.
+              </div>
+            </v-card>
+          </v-col>
+        </v-row>
+
+        <!-- Transactions table -->
+        <v-card flat rounded="xl" border class="pa-3">
+          <div class="d-flex align-center justify-space-between mb-2 flex-wrap ga-2">
+            <div class="text-subtitle-2 font-weight-bold">
+              <v-icon size="18" class="mr-1" color="primary">mdi-format-list-bulleted</v-icon>
+              Cash flow transactions
+            </div>
+            <div class="d-flex align-center flex-wrap ga-2">
+              <v-select v-model="cfTxTypeFilter" :items="cfTxTypeOptions" density="compact"
+                        variant="outlined" hide-details single-line
+                        prepend-inner-icon="mdi-swap-vertical"
+                        style="max-width: 140px" />
+              <v-select v-model="cfTxMethodFilter" :items="cfTxMethodOptions" density="compact"
+                        variant="outlined" hide-details single-line
+                        prepend-inner-icon="mdi-credit-card-chip"
+                        style="max-width: 160px" />
+              <v-text-field v-model="cfTxSearch" density="compact" variant="outlined"
+                            placeholder="Search source or reference…" prepend-inner-icon="mdi-magnify"
+                            hide-details single-line style="max-width: 260px" />
+            </div>
+          </div>
+          <v-data-table :headers="cfTxHeaders" :items="filteredCfTx" :items-per-page="10"
+                         density="compact" class="elevation-0" :loading="cashflowLoading"
+                         hover>
+            <template #item.date="{ item }">
+              <span class="text-caption">{{ (item.date || '').slice(5) }}</span>
+            </template>
+            <template #item.direction="{ item }">
+              <v-chip size="x-small" :color="item.direction === 'inflow' ? 'success' : 'error'"
+                      variant="tonal">
+                <v-icon size="12" start>{{ item.direction === 'inflow' ? 'mdi-arrow-down' : 'mdi-arrow-up' }}</v-icon>
+                {{ item.direction === 'inflow' ? 'In' : 'Out' }}
+              </v-chip>
+            </template>
+            <template #item.source="{ item }">
+              <div class="d-flex align-center">
+                <v-avatar size="24" :color="item.direction === 'inflow' ? 'success' : 'error'" variant="tonal" class="mr-2">
+                  <v-icon size="14">{{ cfSourceIcon(item.source) }}</v-icon>
+                </v-avatar>
+                <div>
+                  <div class="text-body-2 font-weight-medium">{{ item.source }}</div>
+                  <div class="text-caption text-medium-emphasis">{{ item.reference || '—' }}</div>
+                </div>
+              </div>
+            </template>
+            <template #item.method="{ item }">
+              <span class="text-caption text-capitalize">{{ item.method || '—' }}</span>
+            </template>
+            <template #item.amount="{ item }">
+              <span class="text-body-2 font-weight-bold"
+                    :class="item.amount >= 0 ? 'text-success' : 'text-error'">
+                {{ item.amount >= 0 ? '+' : '−' }}{{ formatMoney(Math.abs(item.amount)) }}
+              </span>
+            </template>
+            <template #no-data>
+              <div class="text-center text-medium-emphasis pa-4">
+                <v-icon size="32" color="grey-lighten-1">mdi-cash-off</v-icon>
+                <div class="text-caption mt-2">No transactions in this range</div>
+              </div>
+            </template>
+          </v-data-table>
+        </v-card>
+      </template>
+    </template>
+
     <!-- ===================== Record payment dialog ===================== -->
     <v-dialog v-model="payDialog" max-width="520" persistent>
       <v-card v-if="payTarget" rounded="xl">
@@ -1292,6 +1852,8 @@ import { useRoute } from 'vue-router'
 import { formatMoney, formatDate, formatDateTime } from '~/utils/format'
 import EmptyState from '~/components/EmptyState.vue'
 import SparkArea from '~/components/SparkArea.vue'
+import BarChart from '~/components/BarChart.vue'
+import DonutRing from '~/components/DonutRing.vue'
 import { useBranchStore } from '~/stores/branch'
 import { useAuthStore } from '~/stores/auth'
 
@@ -1314,11 +1876,11 @@ const branchFilterItems = computed(() => {
 
 const loading = ref(false)
 const saving = ref(false)
-const tab = ref(['overview', 'receivables', 'payables', 'transactions', 'pnl'].includes(route.query.tab)
+const tab = ref(['overview', 'receivables', 'payables', 'transactions', 'pnl', 'roi', 'cashflow'].includes(route.query.tab)
   ? route.query.tab : 'overview')
 
 watch(() => route.query.tab, (v) => {
-  if (['overview', 'receivables', 'payables', 'transactions', 'pnl'].includes(v)) tab.value = v
+  if (['overview', 'receivables', 'payables', 'transactions', 'pnl', 'roi', 'cashflow'].includes(v)) tab.value = v
 })
 
 // ────── Date range
@@ -1367,6 +1929,8 @@ watch(rangeKey, (v) => {
   if (v === 'custom') { customDialog.value = true; return }
   data.value.range = resolveRange()
   loadAll()
+  loadRoi()
+  loadCashFlow()
 })
 
 function applyCustom() {
@@ -1375,6 +1939,8 @@ function applyCustom() {
   customDialog.value = false
   data.value.range = resolveRange()
   loadAll()
+  loadRoi()
+  loadCashFlow()
 }
 function cancelCustom() {
   customDialog.value = false
@@ -1396,6 +1962,162 @@ const expenses = ref([])      // expenses (outflow)
 const creditSales = ref([])   // POS credit sales (receivables)
 const apiBilling = ref(null)  // /usage-billing/dashboard/ response
 const inventoryValuation = ref(null) // /reports/inventory-valuation/ snapshot
+
+// ────── ROI data (separate /reports/roi/ fetch; reuses the page's date range) ──
+const roiData = ref(null)
+const roiLoading = ref(false)
+const roiTrendDays = ref(30)
+const roiRangeOptions = [
+  { label: 'Last 7 days', value: 7 },
+  { label: 'Last 30 days', value: 30 },
+  { label: 'Last 90 days', value: 90 },
+]
+
+async function loadRoi() {
+  roiLoading.value = true
+  try {
+    const { start, end } = data.value.range
+    const params = { date_from: start, date_to: end }
+    if (branchFilter.value) params.branch_id = branchFilter.value
+    const { data: d } = await $api.get('/reports/roi/', { params })
+    roiData.value = d
+  } catch {
+    roiData.value = null
+  } finally {
+    roiLoading.value = false
+  }
+}
+
+// ────── Cash Flow data (separate /reports/cash-flow/ fetch) ──
+const cashflowData = ref(null)
+const cashflowLoading = ref(false)
+
+async function loadCashFlow() {
+  cashflowLoading.value = true
+  try {
+    const { start, end } = data.value.range
+    const params = { date_from: start, date_to: end }
+    if (branchFilter.value) params.branch_id = branchFilter.value
+    const { data: d } = await $api.get('/reports/cash-flow/', { params })
+    cashflowData.value = d
+  } catch {
+    cashflowData.value = null
+  } finally {
+    cashflowLoading.value = false
+  }
+}
+
+const kpis = computed(() => roiData.value?.kpis || {})
+const roiTrend = computed(() => roiData.value?.trend || [])
+const roiTrendValues = computed(() => roiTrend.value.map(d => d.roi_pct))
+const roiTrendLabels = computed(() => roiTrend.value.map(d => (d.date || '').slice(5)))
+const roiCostSegments = computed(() => (roiData.value?.cost_breakdown || []))
+const roiCostTotal = computed(() => roiCostSegments.value.reduce((s, x) => s + x.value, 0))
+const roiBars = computed(() => roiData.value?.revenue_vs_cost || [])
+const roiBarsAreWeekly = computed(() => {
+  if (!roiBars.value.length) return false
+  return roiBars.value.length > 14
+})
+const roiBarsValues = computed(() => [
+  ...roiBars.value.map(r => r.revenue),
+  ...roiBars.value.map(r => r.cost),
+])
+const roiBarsLabels = computed(() => [
+  ...roiBars.value.map(r => (r.period || '').slice(5)),
+  ...roiBars.value.map(r => (r.period || '').slice(5)),
+])
+const roiBarsColors = computed(() => [
+  ...roiBars.value.map(() => '#16a34a'),
+  ...roiBars.value.map(() => '#dc2626'),
+])
+const topContributors = computed(() => roiData.value?.top_contributors || [])
+const totalContribProfit = computed(() =>
+  topContributors.value.reduce((s, c) => s + Math.max(0, c.profit), 0)
+)
+function contribProfitShare(profit) {
+  const total = totalContribProfit.value || 1
+  const v = (Math.max(0, profit) / total) * 100
+  return v > 100 ? 100 : (v < 0 ? 0 : v)
+}
+const roiDeltaPositive = computed(() => (kpis.value.roi_pct ?? 0) >= 0)
+
+// ────── Cash Flow computeds ──
+const cfKpis = computed(() => cashflowData.value?.kpis || {})
+const cfNetPositive = computed(() => (cfKpis.value.net_cash_flow ?? 0) >= 0)
+const cfTrend = computed(() => cashflowData.value?.trend || [])
+const cfTrendValues = computed(() => cfTrend.value.map(d => d.cumulative))
+const cfTrendLabels = computed(() => cfTrend.value.map(d => (d.date || '').slice(5)))
+const cfInflowSegments = computed(() => cashflowData.value?.inflow_segments || [])
+const cfInflowTotal = computed(() => cfInflowSegments.value.reduce((s, x) => s + x.value, 0))
+const cfOutflowSegments = computed(() => cashflowData.value?.outflow_segments || [])
+const cfOutflowTotal = computed(() => cfOutflowSegments.value.reduce((s, x) => s + x.value, 0))
+const cfMethodSegments = computed(() => cashflowData.value?.method_segments || [])
+const cfMethodTotal = computed(() => cfMethodSegments.value.reduce((s, x) => s + x.value, 0))
+const cfBars = computed(() => cashflowData.value?.inflow_vs_outflow || [])
+const cfTransactions = computed(() => cashflowData.value?.transactions || [])
+const cfTxSearch = ref('')
+const cfTxTypeFilter = ref('all')
+const cfTxMethodFilter = ref('all')
+const cfTxTypeOptions = [
+  { title: 'All types', value: 'all' },
+  { title: 'Inflow', value: 'inflow' },
+  { title: 'Outflow', value: 'outflow' },
+]
+const cfTxMethodOptions = computed(() => {
+  const set = new Set(cfTransactions.value.map(t => (t.method || '').toLowerCase()).filter(Boolean))
+  return [
+    { title: 'All methods', value: 'all' },
+    ...[...set].map(m => ({ title: m.charAt(0).toUpperCase() + m.slice(1), value: m })),
+  ]
+})
+const cfTxHeaders = [
+  { title: 'Date', key: 'date', sortable: true, width: '90px' },
+  { title: 'Type', key: 'direction', sortable: true, width: '80px' },
+  { title: 'Source', key: 'source', sortable: true },
+  { title: 'Method', key: 'method', sortable: true, width: '100px' },
+  { title: 'Amount', key: 'amount', sortable: true, align: 'end', width: '140px' },
+]
+const filteredCfTx = computed(() => {
+  let items = cfTransactions.value
+  if (cfTxTypeFilter.value !== 'all') {
+    items = items.filter(t => t.direction === cfTxTypeFilter.value)
+  }
+  if (cfTxMethodFilter.value !== 'all') {
+    items = items.filter(t => (t.method || '').toLowerCase() === cfTxMethodFilter.value)
+  }
+  const q = cfTxSearch.value.trim().toLowerCase()
+  if (q) {
+    items = items.filter(t =>
+      (t.source || '').toLowerCase().includes(q)
+      || (t.reference || '').toLowerCase().includes(q)
+      || (t.method || '').toLowerCase().includes(q)
+    )
+  }
+  return items
+})
+function cfSourceIcon(src) {
+  const map = {
+    'POS Sale': 'mdi-store',
+    'Dispensing': 'mdi-prescription',
+    'Bill Payment': 'mdi-receipt',
+    'Credit Settlement': 'mdi-credit-card-check',
+    'Expense': 'mdi-cash-remove',
+    'Purchase Order': 'mdi-cart',
+  }
+  return map[src] || 'mdi-cash'
+}
+const cfBarsValues = computed(() => [
+  ...cfBars.value.map(r => r.inflow),
+  ...cfBars.value.map(r => r.outflow),
+])
+const cfBarsLabels = computed(() => [
+  ...cfBars.value.map(r => (r.period || '').slice(5)),
+  ...cfBars.value.map(r => (r.period || '').slice(5)),
+])
+const cfBarsColors = computed(() => [
+  ...cfBars.value.map(() => '#16a34a'),
+  ...cfBars.value.map(() => '#dc2626'),
+])
 
 async function loadAll() {
   loading.value = true
@@ -1436,8 +2158,8 @@ function pickRows(settled) {
   return d?.results || (Array.isArray(d) ? d : [])
 }
 
-watch(branchFilter, () => loadAll())
-onMounted(loadAll)
+watch(branchFilter, () => { loadAll(); loadRoi(); loadCashFlow() })
+onMounted(() => { loadAll(); loadRoi(); loadCashFlow() })
 
 // ────── Derived: filter by date range (client-side for invoices/expenses)
 const inRange = (iso) => {
@@ -2061,6 +2783,49 @@ function exportCsv(kind) {
   } else if (kind === 'payables') {
     downloadCsv('payables', ['Title', 'Vendor', 'Amount', 'Method', 'Date', 'Due', 'Status'],
       filteredExpenses.value.map(e => [e.title, e.vendor || e.supplier_name || '', e.amount, e.payment_method, e.expense_date, e.due_date || '', e.status]))
+  } else if (kind === 'roi') {
+    const k = kpis.value
+    const rows = [
+      ['ROI (%)', k.roi_pct],
+      ['Net profit', k.net_profit],
+      ['Revenue', k.revenue],
+      ['POS revenue', k.pos_revenue],
+      ['Dispensing revenue', k.dispensing_revenue],
+      ['COGS', k.cogs],
+      ['Gross profit', k.gross_profit],
+      ['Gross margin (%)', k.gross_margin_pct],
+      ['Net margin (%)', k.net_margin_pct],
+      ['Operating expenses', k.operating_expenses],
+      ['Inventory cost value', k.inventory_cost_value],
+      ['Inventory sale value', k.inventory_sale_value],
+      ['Potential gross profit', k.potential_gross_profit],
+      ['Capital turnover', k.capital_turnover],
+      ['Payback (months)', k.payback_months],
+    ]
+    downloadCsv('roi', ['Metric', 'Value'], rows)
+  } else if (kind === 'cashflow') {
+    const k = cfKpis.value
+    const rows = [
+      ['Total inflow', k.total_inflow],
+      ['Total outflow', k.total_outflow],
+      ['Net cash flow', k.net_cash_flow],
+      ['Operating cash flow', k.operating_cash_flow],
+      ['Ending cash proxy', k.ending_cash_proxy],
+      ['Inflow count', k.inflow_count],
+      ['Outflow count', k.outflow_count],
+      ['Daily burn rate', k.burn_rate],
+      ['Runway (days)', k.runway_days],
+      ['', ''],
+      ['Inflow sources', ''],
+      ...cfInflowSegments.value.map(s => [s.label, s.value]),
+      ['', ''],
+      ['Outflow sources', ''],
+      ...cfOutflowSegments.value.map(s => [s.label, s.value]),
+      ['', ''],
+      ['Payment methods', ''],
+      ...cfMethodSegments.value.map(s => [s.label, s.value]),
+    ]
+    downloadCsv('cash-flow', ['Metric', 'Value'], rows)
   }
 }
 
@@ -2434,6 +3199,9 @@ const tbComposition = computed(() => {
   border: 1px solid rgba(16, 185, 129, 0.15);
 }
 .font-mono { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
+
+.legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+.trend-chart { min-height: 220px; }
 
 /* ───────── Balance Sheet (theme-aware) ───────── */
 .equation-card {

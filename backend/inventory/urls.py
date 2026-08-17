@@ -15,5 +15,6 @@ router.register('controlled-register', views.ControlledSubstanceLogViewSet, base
 
 urlpatterns = [
     path('analytics/', views.InventoryAnalyticsView.as_view(), name='inventory-analytics'),
+    path('stock-movements/', views.StockMovementReportView.as_view(), name='inventory-stock-movements'),
     path('', include(router.urls)),
 ]

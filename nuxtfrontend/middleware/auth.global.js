@@ -25,6 +25,8 @@ function getHomePath(auth) {
   if (auth.tenantType === 'pharmacy') return '/pharmacy'
   if (auth.tenantType === 'lab') return '/lab'
   if (auth.tenantType === 'radiology_center') return '/radiology'
+  if (auth.tenantType === 'hospital') return '/hos'
+  if (auth.tenantType === 'clinic') return '/clinics'
   return '/dashboard'
 }
 
@@ -58,6 +60,57 @@ function shouldRedirectToPharmacy(auth, path) {
   return null
 }
 
+// Routes that hospital tenants should access under /hos/ prefix.
+// If a hospital user navigates to one of these unprefixed, redirect to /hos/...
+// Note: /radiology and /lab-orders keep their own paths — /radiology is shared
+// with radiology_center tenants and /lab-orders is too small to namespace.
+// /dashboard is excluded — dashboard.vue itself redirects hospital users to /hos.
+const HOSPITAL_PREFIXED_ROUTES = [
+  '/patients', '/appointments', '/consultations', '/prescriptions',
+  '/triage', '/wards', '/invoices', '/accounts', '/expenses', '/departments',
+  '/billing/commission', '/billing/locked', '/billing/overdue', '/billing/usage',
+  '/alerts', '/messages', '/doctors', '/doctor-profile', '/my-profile',
+  '/my-prescriptions', '/my-homecare', '/staff',
+]
+
+function shouldRedirectToHospital(auth, path) {
+  if (auth.tenantType !== 'hospital') return null
+  if (path.startsWith('/hos')) return null  // already prefixed
+  // Never redirect /radiology/* — shared with radiology_center tenants.
+  if (path === '/radiology' || path.startsWith('/radiology/')) return null
+  for (const prefix of HOSPITAL_PREFIXED_ROUTES) {
+    if (path === prefix || path.startsWith(prefix + '/')) {
+      return '/hos' + path
+    }
+  }
+  return null
+}
+
+// Clinic tenant namespace redirect: clinic users accessing unprefixed
+// hospital-equivalent routes (e.g. /patients) are redirected to /clinics/patients.
+// Clinic pages are file-based under pages/clinics/ — no aliasing needed.
+const CLINIC_PREFIXED_ROUTES = [
+  '/patients', '/appointments', '/consultations', '/prescriptions',
+  '/triage', '/wards', '/invoices', '/accounts', '/expenses', '/departments',
+  '/billing/commission', '/billing/locked', '/billing/overdue', '/billing/usage',
+  '/alerts', '/messages', '/doctors', '/doctor-profile', '/my-profile',
+  '/my-prescriptions', '/staff', '/analytics',
+  '/caregivers', '/care-notes', '/vitals', '/patient-care', '/escalations',
+  '/consents', '/data-sharing', '/audit', '/medications',
+]
+
+function shouldRedirectToClinic(auth, path) {
+  if (auth.tenantType !== 'clinic') return null
+  if (path.startsWith('/clinics')) return null  // already prefixed
+  if (path === '/radiology' || path.startsWith('/radiology/')) return null
+  for (const prefix of CLINIC_PREFIXED_ROUTES) {
+    if (path === prefix || path.startsWith(prefix + '/')) {
+      return '/clinics' + path
+    }
+  }
+  return null
+}
+
 export default defineNuxtRouteMiddleware(async (to) => {
   // Skip server-side - SPA mode means middleware only runs client-side anyway
   if (process.server) return
@@ -81,22 +134,29 @@ export default defineNuxtRouteMiddleware(async (to) => {
   // until the bills are cleared. Tenant admins get the "clear bills" screen;
   // other staff get a "contact your admin" screen. Super admins bypass.
   if (auth.isLoggedIn && auth.billingLocked && auth.role !== 'super_admin' && auth.tenantType) {
-    const lockPage = auth.isTenantAdmin ? '/billing/overdue' : '/billing/locked'
-    if (to.path !== lockPage && to.path !== '/billing/overdue' && to.path !== '/billing/locked') {
+    const tenantPrefix = auth.tenantType === 'hospital' ? '/hos' : auth.tenantType === 'clinic' ? '/clinics' : ''
+    const overduePage = tenantPrefix ? `${tenantPrefix}/billing/overdue` : '/billing/overdue'
+    const lockedPage = tenantPrefix ? `${tenantPrefix}/billing/locked` : '/billing/locked'
+    const lockPage = auth.isTenantAdmin ? overduePage : lockedPage
+    const lockPages = [overduePage, lockedPage, '/billing/overdue', '/billing/locked']
+    if (!lockPages.includes(to.path)) {
       return navigateTo(lockPage)
     }
     // If a non-admin lands on the admin overdue screen (or vice-versa), send
     // them to the correct one.
-    if (to.path === '/billing/overdue' && !auth.isTenantAdmin) return navigateTo('/billing/locked')
-    if (to.path === '/billing/locked' && auth.isTenantAdmin) return navigateTo('/billing/overdue')
+    if ((to.path === overduePage || to.path === '/billing/overdue') && !auth.isTenantAdmin) return navigateTo(lockedPage)
+    if ((to.path === lockedPage || to.path === '/billing/locked') && auth.isTenantAdmin) return navigateTo(overduePage)
   }
 
   // When NOT locked, keep the gate pages from being visited directly.
   if (auth.isLoggedIn && !auth.billingLocked
-      && (to.path === '/billing/overdue' || to.path === '/billing/locked')) {
+      && (to.path === '/billing/overdue' || to.path === '/billing/locked'
+          || to.path === '/hos/billing/overdue' || to.path === '/hos/billing/locked'
+          || to.path === '/clinics/billing/overdue' || to.path === '/clinics/billing/locked')) {
     // Allow the overdue page for admins with any outstanding overdue balance
     // (so they can pre-empt a lock); otherwise send them home.
-    if (!(to.path === '/billing/overdue' && auth.isTenantAdmin && auth.hasOverdue)) {
+    const isOverdue = to.path === '/billing/overdue' || to.path === '/hos/billing/overdue' || to.path === '/clinics/billing/overdue'
+    if (!(isOverdue && auth.isTenantAdmin && auth.hasOverdue)) {
       return navigateTo(getHomePath(auth))
     }
   }
@@ -110,6 +170,28 @@ export default defineNuxtRouteMiddleware(async (to) => {
       // Preserve query string from original navigation
       const query = to.fullPath.includes('?') ? to.fullPath.slice(to.fullPath.indexOf('?')) : ''
       return navigateTo(pharmacyPath + query, { replace: true })
+    }
+  }
+
+  // Hospital tenant namespace redirect: if a hospital user navigates to
+  // an unprefixed route (e.g. /patients from a router.push inside a page),
+  // redirect them to the /hos/ prefixed equivalent.
+  if (auth.isLoggedIn && auth.tenantType === 'hospital') {
+    const hosPath = shouldRedirectToHospital(auth, to.path)
+    if (hosPath) {
+      // Preserve query string from original navigation
+      const query = to.fullPath.includes('?') ? to.fullPath.slice(to.fullPath.indexOf('?')) : ''
+      return navigateTo(hosPath + query, { replace: true })
+    }
+  }
+
+  // Clinic tenant namespace redirect: clinic users accessing unprefixed
+  // routes are sent to the /clinics/ prefixed equivalent.
+  if (auth.isLoggedIn && auth.tenantType === 'clinic') {
+    const clinicPath = shouldRedirectToClinic(auth, to.path)
+    if (clinicPath) {
+      const query = to.fullPath.includes('?') ? to.fullPath.slice(to.fullPath.indexOf('?')) : ''
+      return navigateTo(clinicPath + query, { replace: true })
     }
   }
 

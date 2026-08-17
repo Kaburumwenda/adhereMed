@@ -48,12 +48,12 @@ const stats = computed(() => [
 ])
 
 const actions = [
-  { icon: 'mdi-account-plus', label: 'New Patient', to: '/patients/new' },
-  { icon: 'mdi-calendar-plus', label: 'New Appointment', to: '/appointments/new' },
-  { icon: 'mdi-medical-bag', label: 'New Consultation', to: '/consultations/new' },
-  { icon: 'mdi-pill', label: 'Write Prescription', to: '/prescriptions/new' },
-  { icon: 'mdi-microscope', label: 'Order Lab Test', to: '/lab-orders' },
-  { icon: 'mdi-receipt-text', label: 'Create Invoice', to: '/invoices' }
+  { icon: 'mdi-account-plus', label: 'New Patient', to: '/hos/patients/new' },
+  { icon: 'mdi-calendar-plus', label: 'New Appointment', to: '/hos/appointments/new' },
+  { icon: 'mdi-medical-bag', label: 'New Consultation', to: '/hos/consultations/new' },
+  { icon: 'mdi-pill', label: 'Write Prescription', to: '/hos/prescriptions/new' },
+  { icon: 'mdi-microscope', label: 'Order Lab Test', to: '/hos/lab-orders' },
+  { icon: 'mdi-receipt-text', label: 'Create Invoice', to: '/hos/invoices' }
 ]
 
 async function load() {

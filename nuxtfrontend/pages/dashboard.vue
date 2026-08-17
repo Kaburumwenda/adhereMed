@@ -11,6 +11,7 @@ import DoctorDashboard from '~/components/dashboards/DoctorDashboard.vue'
 import PatientDashboard from '~/components/dashboards/PatientDashboard.vue'
 import HomecareDashboard from '~/components/dashboards/HomecareDashboard.vue'
 import CaregiverDashboard from '~/components/dashboards/CaregiverDashboard.vue'
+import ClinicDashboard from '~/components/dashboards/ClinicDashboard.vue'
 import GenericDashboard from '~/components/dashboards/GenericDashboard.vue'
 
 const auth = useAuthStore()
@@ -25,6 +26,16 @@ if (process.client && auth.tenantType === 'pharmacy' && !['patient'].includes(au
   navigateTo('/pharmacy', { replace: true })
 }
 
+// Hospital tenants use the /hos dashboard.
+if (process.client && auth.tenantType === 'hospital' && !['patient'].includes(auth.role)) {
+  navigateTo('/hos', { replace: true })
+}
+
+// Clinic tenants use the /clinics dashboard.
+if (process.client && auth.tenantType === 'clinic' && !['patient'].includes(auth.role)) {
+  navigateTo('/clinics', { replace: true })
+}
+
 const component = computed(() => {
   if (auth.role === 'super_admin') {
     navigateTo('/superadmin')
@@ -35,6 +46,7 @@ const component = computed(() => {
   if (auth.tenantType === 'homecare') return HomecareDashboard
   if (['doctor', 'clinical_officer', 'dentist'].includes(auth.role)) return DoctorDashboard
   if (auth.tenantType === 'hospital') return HospitalDashboard
+  if (auth.tenantType === 'clinic') return ClinicDashboard
   if (auth.tenantType === 'pharmacy') return PharmacyDashboard
   if (auth.tenantType === 'lab') return LabDashboard
   return GenericDashboard

@@ -66,6 +66,8 @@ TENANT_APPS = [
     'expenses',
     'insurance',
     'reports',
+    # Generic per-tenant audit trail (IAM & Security)
+    'audit',
     # homecare tenant app
     'homecare',
 ]
@@ -97,6 +99,8 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'usage_billing.middleware.RequestUsageMiddleware',
     'homecare.audit.HomecareAuditMiddleware',
+    # Generic per-tenant audit trail (every mutating API request).
+    'audit.middleware.AuditMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'

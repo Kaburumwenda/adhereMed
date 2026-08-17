@@ -1,1 +1,6 @@
-<template><AppointmentForm /></template>
+<template>
+  <AppointmentForm />
+</template>
+
+<script setup>
+</script>

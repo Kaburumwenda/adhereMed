@@ -157,8 +157,8 @@ class CoinAllocateSerializer(serializers.Serializer):
         choices=[("credit", "Credit"), ("bonus", "Bonus"), ("refund", "Refund")],
         default="credit",
     )
-    description = serializers.CharField(max_length=255, required=False, default="")
-    reference = serializers.CharField(max_length=128, required=False, default="")
+    description = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+    reference = serializers.CharField(max_length=128, required=False, allow_blank=True, default="")
     package_id = serializers.IntegerField(required=False, allow_null=True, default=None)
 
 
@@ -166,8 +166,8 @@ class CoinDeductSerializer(serializers.Serializer):
     """Deduct coins from a tenant wallet."""
     tenant_id = serializers.IntegerField()
     amount = serializers.IntegerField(min_value=1)
-    description = serializers.CharField(max_length=255, required=False, default="")
-    reference = serializers.CharField(max_length=128, required=False, default="")
+    description = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+    reference = serializers.CharField(max_length=128, required=False, allow_blank=True, default="")
 
 
 # ── Referral Management ────────────────────────────────────────────────────────

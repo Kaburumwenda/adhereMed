@@ -39,52 +39,131 @@ export function getNavSections(role, tenantType, t = (x) => x) {
     items: [{
       icon: 'mdi-view-dashboard',
       label: 'Dashboard',
-      path: tenantType === 'lab' ? '/lab' : tenantType === 'pharmacy' ? '/pharmacy' : tenantType === 'radiology_center' ? '/radiology' : '/dashboard'
+      path: tenantType === 'lab' ? '/lab' : tenantType === 'pharmacy' ? '/pharmacy' : tenantType === 'radiology_center' ? '/radiology' : tenantType === 'hospital' ? '/hos' : tenantType === 'clinic' ? '/clinics' : '/dashboard'
     }]
   })
 
   const hospitalRoles = ['tenant_admin', 'hospital_admin', 'doctor', 'clinical_officer', 'dentist', 'nurse', 'midwife', 'receptionist', 'lab_tech', 'radiologist', 'pharmacist', 'cashier', 'admin']
   if (tenantType === 'hospital' && hospitalRoles.includes(role)) {
     const hospitalItems = [
-        { icon: 'mdi-account-multiple', label: 'Patients', path: '/patients' },
-        { icon: 'mdi-calendar', label: 'Appointments', path: '/appointments' },
-        { icon: 'mdi-medical-bag', label: 'Consultations', path: '/consultations' },
+        { icon: 'mdi-account-multiple', label: 'Patients', path: '/hos/patients' },
+        { icon: 'mdi-calendar', label: 'Appointments', path: '/hos/appointments' },
+        { icon: 'mdi-medical-bag', label: 'Consultations', path: '/hos/consultations' },
         {
-          icon: 'mdi-pill', label: 'Prescriptions', path: '/prescriptions',
+          icon: 'mdi-pill', label: 'Prescriptions', path: '/hos/prescriptions',
           children: [
-            { icon: 'mdi-format-list-bulleted', label: 'View Prescriptions', path: '/prescriptions' },
-            { icon: 'mdi-note-edit', label: 'Write Prescription', path: '/prescriptions/new' }
+            { icon: 'mdi-format-list-bulleted', label: 'View Prescriptions', path: '/hos/prescriptions' },
+            { icon: 'mdi-note-edit', label: 'Write Prescription', path: '/hos/prescriptions/new' }
           ]
         },
-        { icon: 'mdi-microscope', label: 'Lab Orders', path: '/lab-orders' },
+        { icon: 'mdi-microscope', label: 'Lab Orders', path: '/hos/lab-orders' },
         { icon: 'mdi-image', label: 'Radiology', path: '/radiology' },
-        { icon: 'mdi-heart-pulse', label: 'Triage', path: '/triage' },
-        { icon: 'mdi-bed', label: 'Wards', path: '/wards' },
-        { icon: 'mdi-receipt-text', label: 'Billing', path: '/invoices' },
+        { icon: 'mdi-heart-pulse', label: 'Triage', path: '/hos/triage' },
+        { icon: 'mdi-bed', label: 'Wards', path: '/hos/wards' },
+        { icon: 'mdi-receipt-text', label: 'Billing', path: '/hos/invoices' },
         {
-          icon: 'mdi-bank', label: 'Accounts', path: '/accounts',
+          icon: 'mdi-bank', label: 'Accounts', path: '/hos/accounts',
           children: [
-            { icon: 'mdi-view-dashboard-outline', label: 'Overview', path: '/accounts' },
-            { icon: 'mdi-cash-fast', label: 'Receivables', path: '/accounts?tab=receivables' },
-            { icon: 'mdi-cash-clock', label: 'Payables', path: '/accounts?tab=payables' },
-            { icon: 'mdi-swap-vertical', label: 'Transactions', path: '/accounts?tab=transactions' },
-            { icon: 'mdi-chart-box', label: 'Profit &amp; Loss', path: '/accounts?tab=pnl' }
+            { icon: 'mdi-view-dashboard-outline', label: 'Overview', path: '/hos/accounts' },
+            { icon: 'mdi-cash-fast', label: 'Receivables', path: '/hos/accounts?tab=receivables' },
+            { icon: 'mdi-cash-clock', label: 'Payables', path: '/hos/accounts?tab=payables' },
+            { icon: 'mdi-swap-vertical', label: 'Transactions', path: '/hos/accounts?tab=transactions' },
+            { icon: 'mdi-chart-box', label: 'Profit &amp; Loss', path: '/hos/accounts?tab=pnl' }
           ]
         },
         {
-          icon: 'mdi-cash-minus', label: 'Expenses', path: '/expenses',
+          icon: 'mdi-cash-minus', label: 'Expenses', path: '/hos/expenses',
           children: [
-            { icon: 'mdi-format-list-bulleted', label: 'View Expenses', path: '/expenses' },
-            { icon: 'mdi-plus-circle', label: 'New Expense', path: '/expenses/new' },
-            { icon: 'mdi-shape', label: 'Categories', path: '/expenses/categories' }
+            { icon: 'mdi-format-list-bulleted', label: 'View Expenses', path: '/hos/expenses' },
+            { icon: 'mdi-plus-circle', label: 'New Expense', path: '/hos/expenses/new' },
+            { icon: 'mdi-shape', label: 'Categories', path: '/hos/expenses/categories' }
           ]
         },
-        { icon: 'mdi-domain', label: 'Departments', path: '/departments' }
+        { icon: 'mdi-domain', label: 'Departments', path: '/hos/departments' }
     ]
     if (['doctor', 'clinical_officer', 'dentist'].includes(role)) {
-      hospitalItems.splice(3, 0, { icon: 'mdi-percent', label: 'My Commission', path: '/billing/commission' })
+      hospitalItems.splice(3, 0, { icon: 'mdi-percent', label: 'My Commission', path: '/hos/billing/commission' })
     }
     sections.push({ label: 'HOSPITAL', items: hospitalItems })
+  }
+
+  // ── CLINIC tenant type ──────────────────────────────────────────────────
+  // Clinic tenants get a comprehensive system covering all 9 guide modules:
+  // patient management, doctor dashboard, pharmacy/labs/billing,
+  // caregiver & homecare, admin & reporting, data protection, emergencies.
+  const clinicRoles = ['tenant_admin', 'clinic_admin', 'doctor', 'clinical_officer', 'dentist', 'nurse', 'midwife', 'receptionist', 'lab_tech', 'radiologist', 'pharmacist', 'cashier', 'admin']
+  if (tenantType === 'clinic' && clinicRoles.includes(role)) {
+    const clinicItems = [
+        // Patient Management
+        { icon: 'mdi-account-multiple', label: 'Patients', path: '/clinics/patients' },
+        { icon: 'mdi-calendar', label: 'Appointments', path: '/clinics/appointments' },
+        { icon: 'mdi-medical-bag', label: 'Consultations', path: '/clinics/consultations' },
+        // Prescriptions (doctor & staff dashboard) — digital prescription
+        { icon: 'mdi-pill', label: 'Prescriptions', path: '/clinics/prescriptions' },
+        // Pharmacy Integration
+        { icon: 'mdi-pill-multiple', label: 'Medications', path: '/clinics/medications' },
+        // Lab & Diagnostics
+        { icon: 'mdi-microscope', label: 'Lab Orders', path: '/clinics/lab-orders' },
+        { icon: 'mdi-image', label: 'Radiology', path: '/radiology' },
+        // Emergency / triage + ward observation
+        { icon: 'mdi-heart-pulse', label: 'Triage', path: '/clinics/triage' },
+        { icon: 'mdi-bed', label: 'Wards', path: '/clinics/wards' },
+        // Caregiver & Homecare (patient care, notes, vitals, escalations)
+        { icon: 'mdi-home-heart', label: 'Patient Care', path: '/clinics/patient-care' },
+        { icon: 'mdi-notebook-edit', label: 'Care Notes', path: '/clinics/care-notes' },
+        { icon: 'mdi-heart-pulse', label: 'Vitals', path: '/clinics/vitals' },
+        { icon: 'mdi-account-multiple-check', label: 'Caregivers', path: '/clinics/caregivers' },
+        { icon: 'mdi-bell-alert', label: 'Escalations', path: '/clinics/escalations' },
+        // Billing & Insurance
+        { icon: 'mdi-receipt-text', label: 'Billing', path: '/clinics/invoices' },
+        {
+          icon: 'mdi-bank', label: 'Accounts', path: '/clinics/accounts',
+          children: [
+            { icon: 'mdi-view-dashboard-outline', label: 'Overview', path: '/clinics/accounts' },
+            { icon: 'mdi-cash-fast', label: 'Receivables', path: '/clinics/accounts?tab=receivables' },
+            { icon: 'mdi-cash-clock', label: 'Payables', path: '/clinics/accounts?tab=payables' },
+            { icon: 'mdi-swap-vertical', label: 'Transactions', path: '/clinics/accounts?tab=transactions' },
+            { icon: 'mdi-chart-box', label: 'Profit and Loss', path: '/clinics/accounts?tab=pnl' }
+          ]
+        },
+      {
+          icon: 'mdi-cash-minus', label: 'Expenses', path: '/clinics/expenses',
+          children: [
+            { icon: 'mdi-format-list-bulleted', label: 'View Expenses', path: '/clinics/expenses' },
+            { icon: 'mdi-plus-circle', label: 'New Expense', path: '/clinics/expenses/new' },
+            { icon: 'mdi-shape', label: 'Categories', path: '/clinics/expenses/categories' }
+          ]
+        },
+        // Administration & Reporting
+        { icon: 'mdi-domain', label: 'Departments', path: '/clinics/departments' },
+        { icon: 'mdi-chart-arc', label: 'Analytics', path: '/clinics/analytics' },
+        { icon: 'mdi-people', label: 'Staff', path: '/clinics/staff' },
+        // Data Protection & Compliance + Audit logs
+        {
+          icon: 'mdi-shield-check', label: 'Compliance',
+          children: [
+            { icon: 'mdi-account-key', label: 'Patient Consents', path: '/clinics/consents' },
+            { icon: 'mdi-share-variant', label: 'Data Sharing', path: '/clinics/data-sharing' },
+            { icon: 'mdi-history', label: 'Audit Log', path: '/clinics/audit' }
+          ]
+        },
+        // Emergency & Notifications
+        { icon: 'mdi-bell-ring', label: 'Alerts', path: '/clinics/alerts' },
+        { icon: 'mdi-chat', label: 'Messages', path: '/clinics/messages' },
+        // Doctors directory
+        { icon: 'mdi-stethoscope', label: 'Doctors', path: '/clinics/doctors' },
+    ]
+    if (['doctor', 'clinical_officer', 'dentist'].includes(role)) {
+      clinicItems.splice(3, 0, { icon: 'mdi-percent', label: 'My Commission', path: '/clinics/billing/commission' })
+    }
+    // Doctors see a focused clinical sidebar — strip admin/finance/hr items
+    if (['doctor', 'clinical_officer', 'dentist'].includes(role)) {
+      const hiddenLabels = ['Patient Care', 'Caregivers', 'Billing', 'Accounts', 'Expenses', 'Departments', 'Analytics', 'Staff', 'Compliance', 'Doctors']
+      for (let i = clinicItems.length - 1; i >= 0; i--) {
+        if (hiddenLabels.includes(clinicItems[i].label)) clinicItems.splice(i, 1)
+      }
+    }
+    sections.push({ label: 'CLINIC', items: clinicItems })
   }
 
   const pharmacyRoles = ['tenant_admin', 'pharmacy_admin', 'branch_admin', 'pharmacist', 'pharmacy_tech', 'cashier', 'admin']
@@ -117,6 +196,7 @@ export function getNavSections(role, tenantType, t = (x) => x) {
             { icon: 'mdi-chart-line', label: t('nav.stockAnalysis'), path: '/pharmacy/inventory/stock-analysis' },
             { icon: 'mdi-clipboard-list-outline', label: t('nav.stockTake'), path: '/pharmacy/inventory/stock-take' },
             { icon: 'mdi-truck-delivery-outline', label: t('nav.branchTransfers'), path: '/pharmacy/inventory/transfers' },
+            { icon: 'mdi-swap-vertical-bold', label: t('nav.stockMovements'), path: '/pharmacy/inventory/stock-movements' },
             { icon: 'mdi-shield-lock-outline', label: t('nav.controlledRegister'), path: '/pharmacy/inventory/controlled-register' }
           ]
         },
@@ -162,7 +242,10 @@ export function getNavSections(role, tenantType, t = (x) => x) {
             { icon: 'mdi-badge-account', label: t('nav.staff'), path: '/pharmacy/staff' },
             { icon: 'mdi-school', label: t('nav.specializations'), path: '/pharmacy/specializations' },
             { icon: 'mdi-podium', label: t('nav.performance'), path: '/pharmacy/staff-performance' },
-            { icon: 'mdi-truck', label: t('nav.suppliers'), path: '/pharmacy/suppliers' }
+            { icon: 'mdi-truck', label: t('nav.suppliers'), path: '/pharmacy/suppliers' },
+            { icon: 'mdi-shield-key', label: t('nav.rolesPermissions'), path: '/pharmacy/roles' },
+            { icon: 'mdi-history', label: t('nav.auditLogs'), path: '/pharmacy/audit-logs' },
+            { icon: 'mdi-heart-pulse', label: t('nav.systemHealth'), path: '/pharmacy/system-health' }
           ]
         },
         { icon: 'mdi-cog', label: t('nav.settings'), path: '/pharmacy/settings' },
@@ -461,11 +544,12 @@ export function getNavSections(role, tenantType, t = (x) => x) {
   }
 
   if (['patient', 'admin'].includes(role)) {
+    const ns = tenantType === 'hospital' ? '/hos' : tenantType === 'clinic' ? '/clinics' : ''
     sections.push({
       label: 'MY HEALTH',
       items: [
-        { icon: 'mdi-account-circle', label: 'My Profile', path: '/my-profile' },
-        { icon: 'mdi-receipt', label: 'My Prescriptions', path: '/my-prescriptions' },
+        { icon: 'mdi-account-circle', label: 'My Profile', path: ns ? `${ns}/my-profile` : '/my-profile' },
+        { icon: 'mdi-receipt', label: 'My Prescriptions', path: ns ? `${ns}/my-prescriptions` : '/my-prescriptions' },
         {
           icon: 'mdi-pharmacy', label: 'Pharmacies', path: '/pharmacy-store',
           children: [
@@ -473,28 +557,30 @@ export function getNavSections(role, tenantType, t = (x) => x) {
             { icon: 'mdi-receipt-text', label: 'My Orders', path: '/pharmacy-store/orders' }
           ]
         },
-        { icon: 'mdi-magnify', label: 'Find Doctors', path: '/doctors' },
-        { icon: 'mdi-chat', label: 'Messages', path: '/messages' }
+        { icon: 'mdi-magnify', label: 'Find Doctors', path: ns ? `${ns}/doctors` : '/doctors' },
+        { icon: 'mdi-chat', label: 'Messages', path: ns ? `${ns}/messages` : '/messages' }
       ]
     })
   }
 
   if (['doctor', 'clinical_officer', 'dentist'].includes(role)) {
-    sections.push({
-      label: 'MY PRACTICE',
-      items: [
-        { icon: 'mdi-account-circle', label: 'My Profile', path: '/doctor-profile' },
-        { icon: 'mdi-magnify', label: 'Doctor Directory', path: '/doctors' },
-        {
-          icon: 'mdi-pill', label: 'Prescriptions', path: '/prescriptions',
-          children: [
-            { icon: 'mdi-format-list-bulleted', label: 'View Prescriptions', path: '/prescriptions' },
-            { icon: 'mdi-note-edit', label: 'Write Prescription', path: '/prescriptions/new' }
-          ]
-        },
-        { icon: 'mdi-chat', label: 'Messages', path: '/messages' }
-      ]
-    })
+    const ns = tenantType === 'hospital' ? '/hos' : tenantType === 'clinic' ? '/clinics' : ''
+    const practiceItems = [
+      { icon: 'mdi-monitor-dashboard', label: 'Doctor Workspace', path: ns ? `${ns}/doctor-workspace` : '/doctor-workspace' },
+      { icon: 'mdi-account-circle', label: 'My Profile', path: ns ? `${ns}/doctor-profile` : '/doctor-profile' },
+      { icon: 'mdi-magnify', label: 'Doctor Directory', path: ns ? `${ns}/doctors` : '/doctors' },
+    ]
+    // Only add Prescriptions and Messages to MY PRACTICE if they aren't
+    // already in the tenant-specific CLINIC/HOSPITAL section (avoids duplicate IDs).
+    const tenantItems = sections.find(s => s.label === 'CLINIC' || s.label === 'HOSPITAL')
+    const existingLabels = new Set((tenantItems?.items || []).map(i => i.label))
+    if (!existingLabels.has('Prescriptions')) {
+      practiceItems.push({ icon: 'mdi-pill', label: 'Prescriptions', path: ns ? `${ns}/prescriptions` : '/prescriptions' })
+    }
+    if (!existingLabels.has('Messages')) {
+      practiceItems.push({ icon: 'mdi-chat', label: 'Messages', path: ns ? `${ns}/messages` : '/messages' })
+    }
+    sections.push({ label: 'MY PRACTICE', items: practiceItems })
   }
 
   return sections

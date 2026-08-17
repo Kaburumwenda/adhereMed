@@ -159,6 +159,8 @@ async function onSubmit() {
     const home = auth.tenantType === 'pharmacy' ? '/pharmacy'
       : auth.tenantType === 'lab' ? '/lab'
       : auth.tenantType === 'radiology_center' ? '/radiology'
+      : auth.tenantType === 'hospital' ? '/hos'
+      : auth.tenantType === 'clinic' ? '/clinics'
       : '/dashboard'
     router.push(home)
   }

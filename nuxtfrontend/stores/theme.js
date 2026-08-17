@@ -5,7 +5,7 @@ import { themeNames } from '~/utils/palettes'
 
 export const useThemeStore = defineStore('theme', {
   state: () => ({
-    mode: 'dark'
+    mode: 'light'
   }),
   actions: {
     load() {

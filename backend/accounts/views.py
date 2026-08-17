@@ -1,6 +1,7 @@
-from rest_framework import generics, status, permissions
+from rest_framework import generics, status, permissions, viewsets as _viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.pagination import PageNumberPagination as _pagination
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
@@ -8,10 +9,13 @@ from django.utils.encoding import force_bytes, force_str
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import filters as _filters
 from django.conf import settings
 from .models import User
 from .serializers import (
     UserSerializer,
+    UserManagementSerializer,
     UserRegistrationSerializer,
     LoginSerializer,
     ChangePasswordSerializer,
@@ -177,3 +181,184 @@ class RegeneratePinView(APIView):
         request.user.pin = _generate_unique_pin()
         request.user.save(update_fields=['pin'])
         return Response({'pin': request.user.pin})
+
+
+# ---------------------------------------------------------------------------
+# Lightweight serializer + list view for selecting clinical staff (doctors,
+# clinical officers, nurses, tenant admins) in form dropdowns.  Exposed at
+# /api/auth/staff/ so the frontend can populate "Doctor / Staff" picks without
+# relying on StaffProfile records (which may not exist for every tenant).
+# ---------------------------------------------------------------------------
+from rest_framework import serializers as _serializers
+
+
+class StaffListItemSerializer(_serializers.ModelSerializer):
+    full_name = _serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = ['id', 'full_name', 'email', 'role', 'phone', 'is_active']
+        read_only_fields = fields
+
+    def get_full_name(self, obj):
+        return f'{obj.first_name} {obj.last_name}'.strip() or obj.email
+
+
+class StaffListView(generics.ListAPIView):
+    """Return active users with clinical / administrative roles.
+
+    Query params:
+        search   — case-insensitive match on full_name or email
+        roles    — comma-separated role override list
+        page_size — standard DRF pagination
+    """
+    serializer_class = StaffListItemSerializer
+
+    class _Pagination(_pagination):
+        page_size = 100
+        page_size_query_param = 'page_size'
+        max_page_size = 5000
+
+    pagination_class = _Pagination
+
+    def get_queryset(self):
+        roles_param = self.request.query_params.get('roles', '')
+        if roles_param:
+            roles = [r.strip() for r in roles_param.split(',') if r.strip()]
+        else:
+            roles = [
+                'doctor', 'clinical_officer', 'nurse', 'pharmacist',
+                'lab_tech', 'radiographer', 'tenant_admin', 'admin',
+            ]
+        qs = User.objects.filter(is_active=True, role__in=roles).order_by('first_name', 'last_name')
+        search = self.request.query_params.get('search', '').strip()
+        if search:
+            from django.db.models import Q
+            qs = qs.filter(
+                Q(first_name__icontains=search)
+                | Q(last_name__icontains=search)
+                | Q(email__icontains=search)
+            )
+        return qs
+
+
+class IsTenantAdminOrSuperAdmin(permissions.BasePermission):
+    """Only tenant admins, clinic/hospital/pharmacy admins, or the super admin may manage users."""
+    ADMIN_ROLES = {'super_admin', 'tenant_admin', 'clinic_admin', 'hospital_admin',
+                    'pharmacy_admin', 'lab_admin', 'radiology_admin', 'homecare_admin', 'admin'}
+
+    def has_permission(self, request, view):
+        u = request.user
+        if not (u and u.is_authenticated):
+            return False
+        if getattr(u, 'is_superuser', False):
+            return True
+        return u.role in self.ADMIN_ROLES
+
+
+class UserManagementViewSet(_viewsets.GenericViewSet,
+                            generics.mixins.ListModelMixin,
+                            generics.mixins.CreateModelMixin,
+                            generics.mixins.RetrieveModelMixin,
+                            generics.mixins.UpdateModelMixin,
+                            generics.mixins.DestroyModelMixin):
+    """CRUD for tenant admins to manage staff users within their tenant.
+
+    Mounted at /api/auth/users/<id>/ so the clinic/hospital staff pages can
+    list, create, patch, and delete users without needing a separate app.
+    """
+    permission_classes = [IsTenantAdminOrSuperAdmin]
+    serializer_class = UserManagementSerializer
+    filter_backends = [DjangoFilterBackend, _filters.SearchFilter, _filters.OrderingFilter]
+    search_fields = ['first_name', 'last_name', 'email', 'role']
+    ordering_fields = ['first_name', 'last_name', 'email', 'role', 'date_joined']
+    ordering = ['first_name', 'last_name']
+
+    class _Pagination(_pagination):
+        page_size = 100
+        page_size_query_param = 'page_size'
+        max_page_size = 5000
+    pagination_class = _Pagination
+
+    def get_queryset(self):
+        u = self.request.user
+        qs = User.objects.exclude(role=User.Role.PATIENT).exclude(
+            role=User.Role.SUPER_ADMIN
+        ).order_by('first_name', 'last_name')
+        # Tenant admins only see their own tenant's users; super admin sees all.
+        if not getattr(u, 'is_superuser', False) and u.tenant_id:
+            qs = qs.filter(tenant_id=u.tenant_id)
+        return qs
+
+    def perform_create(self, serializer):
+        # Force the new user into the admin's tenant (unless super admin).
+        u = self.request.user
+        instance = serializer.save()
+        if not getattr(u, 'is_superuser', False) and u.tenant_id and not instance.tenant_id:
+            instance.tenant = u.tenant
+            instance.save()
+
+
+# ---------------------------------------------------------------------------
+# Roles & Permissions (IAM & Security)
+# ---------------------------------------------------------------------------
+
+from django.contrib.auth.models import Group, Permission
+
+
+class RolePermissionViewSet(_viewsets.ModelViewSet):
+    """CRUD for tenant roles (auth.Group) with permission assignment.
+
+    Mounted at:
+        /api/auth/roles/                 -> list / create
+        /api/auth/roles/<id>/              -> retrieve / update / destroy
+        /api/auth/permissions/             -> list all available permissions
+    """
+    permission_classes = [IsTenantAdminOrSuperAdmin]
+    filter_backends = [DjangoFilterBackend, _filters.SearchFilter, _filters.OrderingFilter]
+    search_fields = ['name']
+    ordering_fields = ['name']
+    ordering = ['name']
+
+    class _Pagination(_pagination):
+        page_size = 100
+        page_size_query_param = 'page_size'
+        max_page_size = 5000
+    pagination_class = _Pagination
+
+    def get_serializer_class(self):
+        from .serializers import RoleSerializer
+        return RoleSerializer
+
+    def get_queryset(self):
+        qs = Group.objects.all().order_by('name')
+        search = self.request.query_params.get('search', '').strip()
+        if search:
+            qs = qs.filter(name__icontains=search)
+        return qs
+
+
+class PermissionListView(generics.ListAPIView):
+    """List all Django auth Permissions available in this tenant schema."""
+    permission_classes = [IsTenantAdminOrSuperAdmin]
+
+    def get_serializer_class(self):
+        from .serializers import PermissionSerializer
+        return PermissionSerializer
+
+    def list(self, request, *args, **kwargs):
+        qs = Permission.objects.select_related('content_type').order_by(
+            'content_type__app_label', 'content_type__model', 'codename'
+        )
+        data = [
+            {
+                'id': p.id,
+                'name': p.name,
+                'codename': p.codename,
+                'app_label': p.content_type.app_label if p.content_type else '',
+                'model': p.content_type.model if p.content_type else '',
+            }
+            for p in qs
+        ]
+        return Response({'results': data, 'count': len(data)})
+

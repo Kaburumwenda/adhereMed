@@ -21,7 +21,7 @@ export default defineNuxtConfig({
         { charset: 'utf-8' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1' },
         { name: 'description', content: 'AdhereMed - Connected Healthcare Simplified' },
-        { name: 'theme-color', content: '#2DD4BF' },
+        { name: 'theme-color', content: '#0D9488' },
         { name: 'mobile-web-app-capable', content: 'yes' },
         { name: 'apple-mobile-web-app-capable', content: 'yes' },
         { name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent' },
@@ -54,8 +54,8 @@ export default defineNuxtConfig({
       name: 'AdhereMed',
       short_name: 'AdhereMed',
       description: 'AdhereMed - Connected Healthcare Simplified.',
-      theme_color: '#2DD4BF',
-      background_color: '#0F172A',
+      theme_color: '#0D9488',
+      background_color: '#F8FAFC',
       display: 'standalone',
       orientation: 'any',
       start_url: '/',
@@ -68,7 +68,10 @@ export default defineNuxtConfig({
       ]
     },
     workbox: {
-      navigateFallback: '/',
+      // SPA (ssr:false) precaches the file 'index.html', not the route '/'.
+      // Using '/' here causes 'non-precached-url' on post-login navigations
+      // because createHandlerBoundToURL('/') can't find '/' in the precache.
+      navigateFallback: 'index.html',
       navigateFallbackDenylist: [/^\/api\//],
       globPatterns: ['**/*.{js,css,html,svg,png,ico,woff,woff2}'],
       cleanupOutdatedCaches: true,
@@ -118,7 +121,7 @@ export default defineNuxtConfig({
     devOptions: {
       enabled: true,
       type: 'module',
-      navigateFallback: '/'
+      navigateFallback: 'index.html'
     }
   },
 
@@ -146,9 +149,10 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
-      apiBase: 'http://127.0.0.1:8000/api',
+      //  apiBase: 'http://127.0.0.1:8000/api',
       // // apiBase: 'http://ec2-3-120-129-138.eu-central-1.compute.amazonaws.com/api',
       // apiBase: 'https://adheremedapi.tiktek-ex.com/api',
+      apiBase: 'https://apisys.adheremed.co/api',
       appName: 'AdhereMed',
       googleMapsApiKey: 'AIzaSyAhiNO62geg58-WaLGeq235Lo8gySLvs_I'
     }
@@ -171,6 +175,7 @@ export default defineNuxtConfig({
         ['pharmacy-inventory-stock-take',     '/pharmacy/inventory/stock-take',           'inventory/stock-take.vue'],
         ['pharmacy-inventory-transfers',      '/pharmacy/inventory/transfers',            'inventory/transfers.vue'],
         ['pharmacy-inventory-controlled',     '/pharmacy/inventory/controlled-register',  'inventory/controlled-register.vue'],
+        ['pharmacy-inventory-stock-movements', '/pharmacy/inventory/stock-movements',     'inventory/stock-movements.vue'],
         ['pharmacy-inventory-stocks-new',     '/pharmacy/inventory/stocks/new',           'inventory/stocks/new.vue'],
         ['pharmacy-inventory-stocks-id-edit', '/pharmacy/inventory/stocks/:id()/edit',    'inventory/stocks/[id]/edit.vue'],
         ['pharmacy-inventory-cats-new',       '/pharmacy/inventory/categories/new',       'inventory/categories/new.vue'],
@@ -238,6 +243,8 @@ export default defineNuxtConfig({
         // Staff Performance
         ['pharmacy-staff-performance',        '/pharmacy/staff-performance',              'staff-performance.vue'],
         ['pharmacy-staff-performance-index',  '/pharmacy/staff-performance/index',        'staff-performance/index.vue'],
+        // System Health (under IAM & Security)
+        ['pharmacy-system-health',           '/pharmacy/system-health',                 'iam/system-health.vue'],
         // Suppliers
         ['pharmacy-suppliers',                '/pharmacy/suppliers',                      'suppliers/index.vue'],
         ['pharmacy-suppliers-new',            '/pharmacy/suppliers/new',                  'suppliers/new.vue'],
@@ -250,6 +257,85 @@ export default defineNuxtConfig({
         ['pharmacy-branches',                 '/pharmacy/branches',                       'branches/index.vue'],
         ['pharmacy-branches-new',             '/pharmacy/branches/new',                   'branches/new.vue'],
         ['pharmacy-branches-id-edit',         '/pharmacy/branches/:id()/edit',            'branches/[id]/edit.vue'],
+
+        // ── Hospital tenant aliases ──────────────────────────────────────────
+        // Hospital tenants get their own /hos URL namespace, reusing the same
+        // shared page components. Radiology and lab orders keep their own
+        // namespaces since those page trees are shared with radiology_center
+        // and lab tenants respectively.
+        // Dashboard
+        ['hos-dashboard',                    '/hos',                                      'dashboard.vue'],
+        // Patients
+        ['hos-patients',                      '/hos/patients',                             'patients/index.vue'],
+        ['hos-patients-new',                   '/hos/patients/new',                         'patients/new.vue'],
+        ['hos-patients-id',                   '/hos/patients/:id()',                       'patients/[id]/index.vue'],
+        ['hos-patients-id-edit',               '/hos/patients/:id()/edit',                  'patients/[id]/edit.vue'],
+        // Appointments
+        ['hos-appointments',                   '/hos/appointments',                         'appointments/index.vue'],
+        ['hos-appointments-new',               '/hos/appointments/new',                     'appointments/new.vue'],
+        ['hos-appointments-id',                '/hos/appointments/:id()',                  'appointments/[id]/index.vue'],
+        ['hos-appointments-id-edit',           '/hos/appointments/:id()/edit',             'appointments/[id]/edit.vue'],
+        // Consultations
+        ['hos-consultations',                  '/hos/consultations',                        'consultations/index.vue'],
+        ['hos-consultations-new',              '/hos/consultations/new',                    'consultations/new.vue'],
+        ['hos-consultations-id',               '/hos/consultations/:id()',                 'consultations/[id]/index.vue'],
+        ['hos-consultations-id-edit',          '/hos/consultations/:id()/edit',             'consultations/[id]/edit.vue'],
+        // Prescriptions
+        ['hos-prescriptions',                  '/hos/prescriptions',                        'prescriptions/index.vue'],
+        ['hos-prescriptions-new',              '/hos/prescriptions/new',                    'prescriptions/new.vue'],
+        ['hos-prescriptions-id',               '/hos/prescriptions/:id()',                  'prescriptions/[id]/index.vue'],
+        ['hos-prescriptions-id-edit',          '/hos/prescriptions/:id()/edit',             'prescriptions/[id]/edit.vue'],
+        // Lab Orders
+        ['hos-lab-orders',                     '/hos/lab-orders',                           'lab-orders/index.vue'],
+        ['hos-lab-orders-new',                 '/hos/lab-orders/new',                       'lab-orders/new.vue'],
+        ['hos-lab-orders-id',                  '/hos/lab-orders/:id()',                    'lab-orders/[id]/index.vue'],
+        ['hos-lab-orders-id-edit',             '/hos/lab-orders/:id()/edit',                'lab-orders/[id]/edit.vue'],
+        // Triage
+        ['hos-triage',                         '/hos/triage',                               'triage/index.vue'],
+        ['hos-triage-new',                     '/hos/triage/new',                           'triage/new.vue'],
+        ['hos-triage-id-edit',                 '/hos/triage/:id()/edit',                    'triage/[id]/edit.vue'],
+        // Wards
+        ['hos-wards',                          '/hos/wards',                                'wards/index.vue'],
+        ['hos-wards-new',                      '/hos/wards/new',                            'wards/new.vue'],
+        ['hos-wards-id',                       '/hos/wards/:id()',                          'wards/[id]/index.vue'],
+        ['hos-wards-id-edit',                  '/hos/wards/:id()/edit',                     'wards/[id]/edit.vue'],
+        // Invoices (Billing)
+        ['hos-invoices',                       '/hos/invoices',                             'invoices/index.vue'],
+        ['hos-invoices-new',                   '/hos/invoices/new',                         'invoices/new.vue'],
+        ['hos-invoices-id',                    '/hos/invoices/:id()',                       'invoices/[id]/index.vue'],
+        ['hos-invoices-id-edit',               '/hos/invoices/:id()/edit',                  'invoices/[id]/edit.vue'],
+        // Accounts
+        ['hos-accounts',                       '/hos/accounts',                             'accounts.vue'],
+        // Expenses
+        ['hos-expenses',                       '/hos/expenses',                             'expenses/index.vue'],
+        ['hos-expenses-new',                   '/hos/expenses/new',                         'expenses/new.vue'],
+        ['hos-expenses-categories',            '/hos/expenses/categories',                  'expenses/categories.vue'],
+        ['hos-expenses-id',                    '/hos/expenses/:id()',                       'expenses/[id]/index.vue'],
+        ['hos-expenses-id-edit',               '/hos/expenses/:id()/edit',                  'expenses/[id]/edit.vue'],
+        // Departments
+        ['hos-departments',                    '/hos/departments',                          'departments/index.vue'],
+        ['hos-departments-new',                '/hos/departments/new',                      'departments/new.vue'],
+        ['hos-departments-id-edit',            '/hos/departments/:id()/edit',              'departments/[id]/edit.vue'],
+        // Billing (commission / usage / locked / overdue / bills)
+        ['hos-billing-commission',             '/hos/billing/commission',                   'billing/commission.vue'],
+        ['hos-billing-usage',                  '/hos/billing/usage',                        'billing/usage.vue'],
+        ['hos-billing-locked',                 '/hos/billing/locked',                       'billing/locked.vue'],
+        ['hos-billing-overdue',                '/hos/billing/overdue',                      'billing/overdue.vue'],
+        // Alerts
+        ['hos-alerts',                         '/hos/alerts',                               'alerts/index.vue'],
+        // Messages
+        ['hos-messages',                       '/hos/messages',                             'messages/index.vue'],
+        ['hos-messages-id',                    '/hos/messages/:id()',                       'messages/[id].vue'],
+        // Doctors directory
+        ['hos-doctors',                        '/hos/doctors',                              'doctors/index.vue'],
+        ['hos-doctors-id',                     '/hos/doctors/:id()',                        'doctors/[id].vue'],
+        // Staff
+        ['hos-staff',                          '/hos/staff',                                'staff/index.vue'],
+        // My Profile / My Prescriptions / Doctor Profile / My Homecare
+        ['hos-my-profile',                     '/hos/my-profile',                           'my-profile.vue'],
+        ['hos-my-prescriptions',               '/hos/my-prescriptions',                     'my-prescriptions.vue'],
+        ['hos-doctor-profile',                 '/hos/doctor-profile',                      'doctor-profile.vue'],
+        ['hos-my-homecare',                    '/hos/my-homecare',                          'my-homecare.vue'],
       ]
       for (const [name, path, file] of aliases) {
         pages.push({ name, path, file: resolve(pagesDir, file) })

@@ -22,6 +22,7 @@
 </template>
 
 <script setup>
+import { computed, reactive, onMounted } from 'vue'
 import { useAuthStore } from '~/stores/auth'
 const auth = useAuthStore()
 const { $api } = useNuxtApp()
@@ -33,12 +34,15 @@ const stats = computed(() => [
   { title: 'Messages', value: counts.msg, icon: 'mdi-chat', color: 'info' }
 ])
 
-const actions = [
-  { icon: 'mdi-account-circle', label: 'My Profile', to: '/doctor-profile' },
-  { icon: 'mdi-note-edit', label: 'Write Prescription', to: '/prescriptions/new' },
-  { icon: 'mdi-magnify', label: 'Doctor Directory', to: '/doctors' },
-  { icon: 'mdi-chat', label: 'Messages', to: '/messages' }
-]
+const actions = computed(() => {
+  const p = auth.tenantType === 'hospital' ? '/hos' : auth.tenantType === 'clinic' ? '/clinics' : ''
+  return [
+    { icon: 'mdi-account-circle', label: 'My Profile', to: `${p}/doctor-profile` },
+    { icon: 'mdi-note-edit', label: 'Write Prescription', to: `${p}/prescriptions/new` },
+    { icon: 'mdi-magnify', label: 'Doctor Directory', to: `${p}/doctors` },
+    { icon: 'mdi-chat', label: 'Messages', to: `${p}/messages` }
+  ]
+})
 
 async function load() {
   const safe = (p) => $api.get(p).then(r => r.data?.count ?? r.data?.results?.length ?? (Array.isArray(r.data) ? r.data.length : 0)).catch(() => 0)

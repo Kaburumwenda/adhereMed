@@ -143,5 +143,54 @@ class PatientViewSet(viewsets.ModelViewSet):
         return Response(PatientSerializer(patient).data)
 
 
+    @action(detail=False, methods=['post'], url_path='walk-in',
+            permission_classes=[IsAuthenticated])
+    def walk_in(self, request):
+        """Quickly register a walk-in patient with just a name and optional phone.
+
+        POST /api/patients/walk-in/
+        Body: { "name": "John Doe", "phone": "0700123456" }
+        """
+        data = request.data
+        full_name = (data.get('name') or '').strip()
+        if not full_name:
+            return Response(
+                {'name': ['Name is required for walk-in patients.']},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        parts = full_name.split(None, 1)
+        first_name = parts[0]
+        last_name = parts[1] if len(parts) > 1 else ''
+
+        # Generate a unique placeholder email so the User model constraint is satisfied.
+        email = f'walkin_{uuid.uuid4().hex[:12]}@walkin.adheremed'
+
+        phone = (data.get('phone') or '').strip()
+
+        user = User(
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            phone=phone,
+            role=User.Role.PATIENT,
+        )
+        user.set_password(secrets.token_urlsafe(16))
+        user.save()
+
+        valid_sources = {c[0] for c in Patient.RegistrationSource.choices}
+        tenant_type = getattr(getattr(request, 'tenant', None), 'tenant_type', '') or ''
+        source = tenant_type if tenant_type in valid_sources else Patient.RegistrationSource.OTHER
+
+        patient = Patient.objects.create(
+            user=user,
+            patient_number=f'PT-{uuid.uuid4().hex[:8].upper()}',
+            registration_source=source,
+            date_of_birth='1900-01-01',
+            gender='other',
+        )
+        return Response(PatientSerializer(patient).data, status=status.HTTP_201_CREATED)
+
+
 class PatientRegistrationView(CreateAPIView):
     serializer_class = PatientRegistrationSerializer

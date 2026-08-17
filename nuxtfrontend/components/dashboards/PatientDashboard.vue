@@ -22,6 +22,7 @@
 </template>
 
 <script setup>
+import { computed, reactive, onMounted } from 'vue'
 import { useAuthStore } from '~/stores/auth'
 const auth = useAuthStore()
 const { $api } = useNuxtApp()
@@ -34,14 +35,17 @@ const stats = computed(() => [
   { title: 'Pharmacies Nearby', value: counts.pharmacies, icon: 'mdi-pharmacy', color: 'success' }
 ])
 
-const actions = [
-  { icon: 'mdi-account-circle', label: 'My Profile', to: '/my-profile' },
-  { icon: 'mdi-receipt', label: 'My Prescriptions', to: '/my-prescriptions' },
-  { icon: 'mdi-storefront', label: 'Browse Pharmacies', to: '/pharmacy-store' },
-  { icon: 'mdi-receipt-text', label: 'My Orders', to: '/pharmacy-store/orders' },
-  { icon: 'mdi-magnify', label: 'Find Doctors', to: '/doctors' },
-  { icon: 'mdi-chat', label: 'Messages', to: '/messages' }
-]
+const actions = computed(() => {
+  const p = auth.tenantType === 'hospital' ? '/hos' : auth.tenantType === 'clinic' ? '/clinics' : ''
+  return [
+    { icon: 'mdi-account-circle', label: 'My Profile', to: `${p}/my-profile` },
+    { icon: 'mdi-receipt', label: 'My Prescriptions', to: `${p}/my-prescriptions` },
+    { icon: 'mdi-storefront', label: 'Browse Pharmacies', to: '/pharmacy-store' },
+    { icon: 'mdi-receipt-text', label: 'My Orders', to: '/pharmacy-store/orders' },
+    { icon: 'mdi-magnify', label: 'Find Doctors', to: `${p}/doctors` },
+    { icon: 'mdi-chat', label: 'Messages', to: `${p}/messages` }
+  ]
+})
 
 async function load() {
   const safe = (p) => $api.get(p).then(r => r.data?.count ?? r.data?.results?.length ?? (Array.isArray(r.data) ? r.data.length : 0)).catch(() => 0)

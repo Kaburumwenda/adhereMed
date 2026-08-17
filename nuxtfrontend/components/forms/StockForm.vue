@@ -8,6 +8,7 @@
     :load-id="loadId"
     :initial="initial"
     :transform="transformPayload"
+    max-width="90%"
     @saved="onSaved"
   >
     <template #default="{ form }">
@@ -267,9 +268,9 @@
         </div>
         <v-row>
           <v-col cols="12" md="6">
-            <v-text-field v-model="form.batch_number" label="Batch Number" placeholder="Auto-generated" readonly persistent-hint hint="Generated automatically" variant="outlined" density="comfortable" rounded="lg" :disabled="formDisabled">
+            <v-text-field v-model="form.batch_number" label="Batch Number" placeholder="Enter batch # or auto-generate" persistent-hint hint="Type a batch number or click the refresh icon to auto-generate" variant="outlined" density="comfortable" rounded="lg" clearable :disabled="formDisabled">
               <template #append-inner>
-                <v-tooltip text="Regenerate batch #" location="top">
+                <v-tooltip text="Auto-generate batch #" location="top">
                   <template #activator="{ props: tp }">
                     <v-btn v-bind="tp" icon="mdi-refresh" variant="text" density="comfortable" size="small" @click="form.batch_number = generateBatch()" />
                   </template>

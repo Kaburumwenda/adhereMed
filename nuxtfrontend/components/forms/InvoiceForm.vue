@@ -6,6 +6,7 @@
     back-path="/invoices"
     :load-id="loadId"
     :initial="initial"
+    :transform="transformPayload"
     @saved="() => router.push('/invoices')"
   >
     <template #default="{ form }">
@@ -20,18 +21,31 @@
             placeholder="Type a name, email or patient number"
             prepend-inner-icon="mdi-account-search"
             :rules="req"
-            :loading="loadingPatients"
+            :loading="loadingPatients || creatingWalkIn"
             :search="patientSearch"
             @update:search="onPatientSearch"
             no-filter
             clearable
-            hide-no-data
-            return-object="false"
+            :return-object="true"
             menu-icon="mdi-chevron-down"
           >
             <template #item="{ props, item }">
               <v-list-item v-bind="props" :title="patientLabel(item.raw)"
                            :subtitle="patientSubLabel(item.raw)" />
+            </template>
+            <template #append-item>
+              <v-list-item
+                v-if="patientSearch && patientSearch.trim()"
+                @click="createWalkIn(patientSearch.trim(), form)"
+              >
+                <template #prepend>
+                  <v-icon icon="mdi-account-plus" color="primary" />
+                </template>
+                <v-list-item-title class="text-primary">
+                  Create walk-in patient: "{{ patientSearch.trim() }}"
+                </v-list-item-title>
+                <v-list-item-subtitle>Quick register for walk-in sale</v-list-item-subtitle>
+              </v-list-item>
             </template>
           </v-autocomplete>
         </v-col>
@@ -73,6 +87,7 @@ const req = [v => !!v || 'Required']
 const initial = { patient: null, status: 'draft', items: [{ description: '', quantity: 1, unit_price: 0 }], notes: '' }
 const patients = ref([])
 const loadingPatients = ref(false)
+const creatingWalkIn = ref(false)
 const patientSearch = ref('')
 let searchTimer = null
 function patientLabel(p) {
@@ -98,6 +113,24 @@ function onPatientSearch(q) {
   if (searchTimer) clearTimeout(searchTimer)
   searchTimer = setTimeout(() => fetchPatients(patientSearch.value), 250)
 }
+async function createWalkIn(name, form) {
+  creatingWalkIn.value = true
+  try {
+    const { data } = await $api.post('/patients/walk-in/', { name })
+    patients.value = [data, ...patients.value]
+    patientSearch.value = ''
+    if (form) form.patient = data
+  } catch (e) {
+    console.error('Walk-in patient creation failed', e)
+  } finally {
+    creatingWalkIn.value = false
+  }
+}
 function total(f) { return (f.items || []).reduce((s, it) => s + (Number(it.quantity)||0) * (Number(it.unit_price)||0), 0) }
+function transformPayload(form) {
+  const out = { ...form }
+  if (out.patient && typeof out.patient === 'object') out.patient = out.patient.id
+  return out
+}
 onMounted(() => fetchPatients())
 </script>

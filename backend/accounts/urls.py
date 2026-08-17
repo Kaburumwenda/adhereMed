@@ -15,4 +15,15 @@ urlpatterns = [
     path('password-reset/confirm/', views.PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
     path('verify-pin/', views.VerifyPinView.as_view(), name='verify-pin'),
     path('regenerate-pin/', views.RegeneratePinView.as_view(), name='regenerate-pin'),
+    path('staff/', views.StaffListView.as_view(), name='staff-list'),
+    path('users/', views.UserManagementViewSet.as_view({'get': 'list', 'post': 'create'}), name='user-list'),
+    path('users/<int:pk>/', views.UserManagementViewSet.as_view({
+        'get': 'retrieve', 'patch': 'partial_update', 'put': 'update', 'delete': 'destroy',
+    }), name='user-detail'),
+    # IAM & Security — Roles & Permissions
+    path('roles/', views.RolePermissionViewSet.as_view({'get': 'list', 'post': 'create'}), name='role-list'),
+    path('roles/<int:pk>/', views.RolePermissionViewSet.as_view({
+        'get': 'retrieve', 'patch': 'partial_update', 'put': 'update', 'delete': 'destroy',
+    }), name='role-detail'),
+    path('permissions/', views.PermissionListView.as_view(), name='permission-list'),
 ]

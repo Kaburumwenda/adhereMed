@@ -316,6 +316,8 @@ function homePath() {
   if (auth.tenantType === 'pharmacy') return '/pharmacy'
   if (auth.tenantType === 'lab') return '/lab'
   if (auth.tenantType === 'radiology_center') return '/radiology'
+  if (auth.tenantType === 'hospital') return '/hos'
+  if (auth.tenantType === 'clinic') return '/clinics'
   return '/dashboard'
 }
 

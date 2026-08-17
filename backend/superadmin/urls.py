@@ -46,4 +46,7 @@ urlpatterns = [
     # Mail configuration
     path("mail/config/", views.mail_config, name="mail-config"),
     path("mail/test/", views.mail_config_test, name="mail-config-test"),
+
+    # System Health (tenant-scoped)
+    path("system-health/", views.system_health, name="system-health"),
 ]

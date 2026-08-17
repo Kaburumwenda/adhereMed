@@ -97,6 +97,15 @@
           density="compact" variant="outlined" rounded="lg" hide-details
           prepend-inner-icon="mdi-shape" style="min-width: 180px"
         />
+        <v-text-field
+          v-if="tab === 'stocks'"
+          v-model="batchFilter"
+          placeholder="Batch #…"
+          prepend-inner-icon="mdi-package-variant-closed"
+          density="compact" variant="outlined" rounded="lg" hide-details
+          clearable
+          style="min-width: 180px; max-width: 200px"
+        />
         <v-select
           v-if="tab === 'stocks'"
           v-model="statusFilter"
@@ -192,6 +201,7 @@
             <tr>
               <th class="row-num">#</th>
               <th>Item</th>
+              <th>Batches</th>
               <th>Category</th>
               <th class="text-right">On hand</th>
               <th class="text-right">Reorder</th>
@@ -219,6 +229,19 @@
                     </div>
                   </div>
                 </div>
+              </td>
+              <td>
+                <div v-if="row.batches &amp;&amp; row.batches.length" class="d-flex flex-wrap" style="gap:4px">
+                  <v-chip
+                    v-for="b in row.batches.filter(x => x.quantity_remaining > 0)"
+                    :key="b.id"
+                    size="x-small" variant="tonal" color="primary"
+                  >
+                    {{ b.batch_number || 'No #' }}
+                    <span class="text-medium-emphasis ml-1">×{{ b.quantity_remaining }}</span>
+                  </v-chip>
+                </div>
+                <span v-else class="text-medium-emphasis text-caption">—</span>
               </td>
               <td>{{ row.category_name || '—' }}</td>
               <td class="text-right font-weight-medium">{{ Number(row.total_quantity ?? 0).toLocaleString() }} <span class="text-caption text-medium-emphasis">{{ row.unit_abbreviation || '' }}</span></td>
@@ -398,6 +421,7 @@ const canEdit = computed(() => ['super_admin', 'tenant_admin', 'branch_admin'].i
 
 const tab = ref('stocks')
 const search = ref('')
+const batchFilter = ref('')
 const categoryFilter = ref('all')
 const statusFilter = ref('all')
 const branchFilter = ref('all')
@@ -556,6 +580,12 @@ const filteredItems = computed(() => {
     if (categoryFilter.value !== 'all') arr = arr.filter(s => s.category === categoryFilter.value)
     if (statusFilter.value !== 'all') arr = arr.filter(s => stockStatus(s).key === statusFilter.value)
     if (branchFilter.value !== 'all') arr = arr.filter(s => s.branch === branchFilter.value)
+    const bn = (batchFilter.value || '').toLowerCase().trim()
+    if (bn) {
+      arr = arr.filter(s => (s.batches || []).some(b =>
+        (b.batch_number || '').toLowerCase().includes(bn)
+      ))
+    }
   }
   // Date filter on created_at
   if (dateFilter.value !== 'all') {
@@ -587,7 +617,7 @@ const rangeStart = computed(() => filteredItems.value.length === 0 ? 0 : (page.v
 const rangeEnd = computed(() => Math.min(page.value * pageSize.value, filteredItems.value.length))
 function rowNumber(i) { return (page.value - 1) * pageSize.value + i + 1 }
 
-watch([tab, search, categoryFilter, statusFilter, branchFilter, dateFilter, customDateFrom, customDateTo, pageSize], () => { page.value = 1 })
+watch([tab, search, batchFilter, categoryFilter, statusFilter, branchFilter, dateFilter, customDateFrom, customDateTo, pageSize], () => { page.value = 1 })
 
 function countByCategory(id) {
   return (stocks.items.value || []).filter(s => s.category === id).length

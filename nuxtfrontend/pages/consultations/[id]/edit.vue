@@ -1,1 +1,6 @@
-<template><ConsultationForm /></template>
+<template>
+  <ConsultationForm />
+</template>
+
+<script setup>
+</script>

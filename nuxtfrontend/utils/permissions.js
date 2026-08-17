@@ -53,6 +53,28 @@ const ADMIN_ONLY_PREFIXES = [
   '/radiology/branches',
   '/radiology/analytics',
   '/radiology/expenses',
+  // Hospital namespaced admin-only routes
+  '/hos/staff',
+  '/hos/accounts',
+  '/hos/departments',
+  '/hos/wards',
+  '/hos/doctor-profile',
+  '/hos/billing/usage',
+  '/hos/billing/commission',
+  '/hos/radiology/staff',
+  '/hos/radiology/accounts',
+  '/hos/radiology/settings',
+  '/hos/radiology/branches',
+  '/hos/radiology/analytics',
+  '/hos/radiology/expenses',
+  // Clinic namespaced admin-only routes
+  '/clinics/staff',
+  '/clinics/accounts',
+  '/clinics/departments',
+  '/clinics/wards',
+  '/clinics/doctor-profile',
+  '/clinics/billing/usage',
+  '/clinics/billing/commission',
 ]
 
 // Roles considered "admins" of their tenant.
@@ -60,6 +82,7 @@ export const ADMIN_ROLES = new Set([
   'super_admin',
   'tenant_admin',
   'hospital_admin',
+  'clinic_admin',
   'pharmacy_admin',
   'lab_admin',
   'radiology_admin',
@@ -102,6 +125,19 @@ const ROLE_ALLOWLIST = {
   ],
   cashier: [
     '/dashboard',
+    '/hos',
+    '/hos/patients',
+    '/hos/appointments',
+    '/hos/consultations',
+    '/hos/prescriptions',
+    '/hos/lab-orders',
+    '/hos/triage',
+    '/hos/invoices',
+    '/hos/billing',
+    '/hos/billing/commission',
+    '/hos/messages',
+    '/hos/my-profile',
+    '/hos/my-prescriptions',
     '/pharmacy',
     '/pos',
     '/pharmacy-orders',
@@ -170,12 +206,22 @@ const ALWAYS_ALLOWED = [
   '/welcome', '/login', '/register', '/register-facility', '/register-doctor',
   '/forgot-password', '/reset-password',
   '/dashboard', '/profile', '/my-profile', '/notifications', '/messages',
+  // Hospital-namespace equivalents of personal routes
+  '/hos', '/hos/my-profile', '/hos/messages', '/hos/my-prescriptions',
+  '/hos/doctor-profile', '/hos/my-homecare',
+  // Clinic-namespace equivalents of personal routes
+  '/clinics', '/clinics/my-profile', '/clinics/messages', '/clinics/my-prescriptions',
+  '/clinics/doctor-profile',
+  '/clinics/doctor-workspace',
+  '/hos/doctor-workspace',
 ]
 
 // Exact-match always-allowed paths (not prefix-matched).
 const ALWAYS_ALLOWED_EXACT = new Set([
   '/pharmacy',
   '/radiology',
+  '/hos',
+  '/clinics',
 ])
 
 function startsWithAny(path, prefixes) {

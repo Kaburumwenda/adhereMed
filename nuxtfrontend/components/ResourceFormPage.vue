@@ -1,5 +1,5 @@
 <template>
-  <v-container fluid class="pa-4 pa-md-6" style="max-width:920px;">
+  <v-container fluid class="pa-4 pa-md-6" :style="{ maxWidth: maxWidth }">
     <PageHeader :title="title" :icon="icon" :subtitle="subtitle">
       <template #actions>
         <v-btn
@@ -53,6 +53,7 @@ const props = defineProps({
   initial: { type: Object, default: () => ({}) },
   loadId: { type: [String, Number, null], default: null },
   saveLabel: { type: String, default: '' },
+  maxWidth: { type: String, default: '920px' },
   transform: { type: Function, default: (v) => v }
 })
 const emit = defineEmits(['saved'])

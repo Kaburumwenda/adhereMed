@@ -1,4 +1,5 @@
 from rest_framework import viewsets, generics, filters, status, permissions
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from django_filters.rest_framework import DjangoFilterBackend
@@ -47,6 +48,43 @@ class DoctorDirectoryViewSet(viewsets.ReadOnlyModelViewSet):
             is_accepting_patients=True,
             user__is_active=True,
         )
+
+
+class DoctorProfileViewSet(viewsets.ModelViewSet):
+    """Full CRUD for doctor profiles (admin/management)."""
+    serializer_class = DoctorProfileSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['practice_type', 'is_accepting_patients', 'is_verified', 'specialization', 'hospital']
+    search_fields = ['user__first_name', 'user__last_name', 'user__email', 'specialization', 'license_number']
+    ordering_fields = ['specialization', 'years_of_experience', 'consultation_fee', 'created_at', 'is_verified']
+
+    def get_queryset(self):
+        return DoctorProfile.objects.select_related('user', 'hospital').all().order_by('-created_at')
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx['request'] = self.request
+        return ctx
+
+    def perform_create(self, serializer):
+        serializer.save()
+
+    @action(detail=True, methods=['patch'])
+    def toggle_verified(self, request, pk=None):
+        profile = self.get_object()
+        profile.is_verified = not profile.is_verified
+        profile.save(update_fields=['is_verified'])
+        serializer = self.get_serializer(profile, context={'request': request})
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['patch'])
+    def toggle_accepting(self, request, pk=None):
+        profile = self.get_object()
+        profile.is_accepting_patients = not profile.is_accepting_patients
+        profile.save(update_fields=['is_accepting_patients'])
+        serializer = self.get_serializer(profile, context={'request': request})
+        return Response(serializer.data)
 
 
 class MyDoctorProfileView(generics.RetrieveUpdateAPIView):

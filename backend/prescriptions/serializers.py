@@ -79,6 +79,12 @@ class PrescriptionItemCreateSerializer(serializers.ModelSerializer):
             'dosage', 'frequency', 'duration', 'quantity', 'instructions',
             'schedule', 'refills',
         ]
+        extra_kwargs = {
+            'medication_name': {'required': False, 'allow_blank': True},
+            'dosage': {'required': False, 'allow_blank': True},
+            'frequency': {'required': False, 'allow_blank': True},
+            'duration': {'required': False, 'allow_blank': True},
+        }
 
 
 class PrescriptionCreateSerializer(serializers.ModelSerializer):

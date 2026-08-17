@@ -11,6 +11,7 @@ from django.db.models import Count, Q
 from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from tenants.models import Domain, Tenant
@@ -698,6 +699,235 @@ def regenerate_referral_code(request, pk):
     profile.referral_code = code
     profile.save(update_fields=["referral_code", "updated_at"])
     return Response({"referral_code": code, "tenant_name": profile.tenant.name})
+
+
+# ── System Health (tenant-scoped) ──────────────────────────────────────────────
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def system_health(request):
+    """Tenant-scoped system health dashboard.
+
+    Returns database connectivity, storage stats, user activity,
+    stock health, recent sales, and service status for the current tenant.
+    """
+    from datetime import timedelta
+    from django.db import connection
+    from django.contrib.auth import get_user_model
+    from django.db.models import Count, Q as DQ
+
+    health = {}
+    now = timezone.now()
+
+    # ── 1. Database connectivity & tenant info ──────────────────────
+    try:
+        db_ok = True
+        db_latency_ms = 0
+        import time
+        t0 = time.time()
+        with connection.cursor() as cur:
+            cur.execute("SELECT 1")
+            cur.fetchone()
+        db_latency_ms = round((time.time() - t0) * 1000, 1)
+    except Exception as e:
+        db_ok = False
+        db_latency_ms = -1
+
+    tenant = getattr(request, 'tenant', None)
+    tenant_info = {}
+    if tenant:
+        tenant_info = {
+            'name': tenant.name,
+            'schema': tenant.schema_name,
+            'type': getattr(tenant, 'type', ''),
+            'is_active': getattr(tenant, 'is_active', True),
+            'created_at': tenant.created_at.isoformat() if hasattr(tenant, 'created_at') else '',
+        }
+
+    health['database'] = {
+        'status': 'healthy' if db_ok else 'error',
+        'latency_ms': db_latency_ms,
+        'engine': connection.settings_dict.get('ENGINE', '').split('.')[-1],
+    }
+    health['tenant'] = tenant_info
+
+    # ── 2. User activity ─────────────────────────────────────────────
+    try:
+        User = get_user_model()
+        total_users = User.objects.count()
+        active_users = User.objects.filter(is_active=True).count()
+        staff_users = User.objects.exclude(role='patient').count()
+        roles = list(User.objects.exclude(role__isnull=True).values('role').annotate(
+            count=Count('id')
+        ).order_by('-count'))
+        last_24h = User.objects.filter(last_login__gte=now - timedelta(hours=24)).count()
+        last_7d = User.objects.filter(last_login__gte=now - timedelta(days=7)).count()
+        health['users'] = {
+            'total': total_users,
+            'active': active_users,
+            'inactive': total_users - active_users,
+            'staff': staff_users,
+            'active_24h': last_24h,
+            'active_7d': last_7d,
+            'by_role': roles,
+        }
+    except Exception:
+        health['users'] = {'total': 0, 'active': 0, 'inactive': 0, 'staff': 0, 'active_24h': 0, 'active_7d': 0, 'by_role': []}
+
+    # ── 3. Stock health ──────────────────────────────────────────────
+    try:
+        from inventory.models import MedicationStock, StockBatch
+        total_skus = MedicationStock.objects.filter(is_active=True).count()
+        low_stock = 0
+        out_of_stock = 0
+        for stock in MedicationStock.objects.filter(is_active=True):
+            qty = stock.total_quantity
+            if qty <= 0:
+                out_of_stock += 1
+            elif qty <= stock.reorder_level:
+                low_stock += 1
+        # Expiring batches (next 60 days)
+        from datetime import datetime as _dt
+        expiry_soon = StockBatch.objects.filter(
+            quantity_remaining__gt=0,
+            expiry_date__isnull=False,
+            expiry_date__lte=now.date() + timedelta(days=60),
+        ).count()
+        expired = StockBatch.objects.filter(
+            quantity_remaining__gt=0,
+            expiry_date__isnull=False,
+            expiry_date__lt=now.date(),
+        ).count()
+        health['stock'] = {
+            'total_skus': total_skus,
+            'low_stock': low_stock,
+            'out_of_stock': out_of_stock,
+            'healthy': total_skus - low_stock - out_of_stock,
+            'expiring_soon': expiry_soon,
+            'expired': expired,
+        }
+    except Exception:
+        health['stock'] = {'total_skus': 0, 'low_stock': 0, 'out_of_stock': 0, 'healthy': 0, 'expiring_soon': 0, 'expired': 0}
+
+    # ── 4. Recent sales activity ────────────────────────────────────
+    try:
+        from pos.models import POSTransaction
+        sales_24h = POSTransaction.objects.filter(
+            created_at__gte=now - timedelta(hours=24),
+            status='completed',
+        ).count()
+        sales_7d = POSTransaction.objects.filter(
+            created_at__gte=now - timedelta(days=7),
+            status='completed',
+        ).count()
+        sales_30d = POSTransaction.objects.filter(
+            created_at__gte=now - timedelta(days=30),
+            status='completed',
+        ).count()
+        cancelled_7d = POSTransaction.objects.filter(
+            created_at__gte=now - timedelta(days=7),
+            status='cancelled',
+        ).count()
+        from decimal import Decimal
+        revenue_7d = POSTransaction.objects.filter(
+            created_at__gte=now - timedelta(days=7),
+            status='completed',
+        ).aggregate(total=Count('id'))
+        revenue_sum = Decimal('0')
+        for tx in POSTransaction.objects.filter(created_at__gte=now - timedelta(days=7), status='completed'):
+            revenue_sum += tx.total or Decimal('0')
+        health['sales'] = {
+            'last_24h': sales_24h,
+            'last_7d': sales_7d,
+            'last_30d': sales_30d,
+            'cancelled_7d': cancelled_7d,
+            'revenue_7d': float(revenue_sum),
+        }
+    except Exception:
+        health['sales'] = {'last_24h': 0, 'last_7d': 0, 'last_30d': 0, 'cancelled_7d': 0, 'revenue_7d': 0}
+
+    # ── 5. Branches ─────────────────────────────────────────────────
+    try:
+        from pharmacy_profile.models import Branch
+        branches = Branch.objects.count()
+        health['branches'] = {'count': branches}
+    except Exception:
+        health['branches'] = {'count': 0}
+
+    # ── 6. Database table count ────────────────────────────────────
+    try:
+        with connection.cursor() as cur:
+            cur.execute("""
+                SELECT COUNT(*) FROM information_schema.tables
+                WHERE table_schema = %s
+            """, [connection.schema_name if hasattr(connection, 'schema_name') else 'public'])
+            table_count = cur.fetchone()[0]
+        health['database']['tables'] = table_count
+    except Exception:
+        health['database']['tables'] = 0
+
+    # ── 7. Service statuses ────────────────────────────────────────
+    services = []
+    # Redis / Celery
+    try:
+        import redis
+        from django.conf import settings
+        broker_url = getattr(settings, 'CELERY_BROKER_URL', '')
+        if broker_url:
+            r = redis.from_url(broker_url, socket_connect_timeout=2)
+            r.ping()
+            services.append({'name': 'Redis (Celery Broker)', 'status': 'healthy', 'detail': broker_url})
+        else:
+            services.append({'name': 'Redis (Celery Broker)', 'status': 'not_configured', 'detail': ''})
+    except Exception as e:
+        services.append({'name': 'Redis (Celery Broker)', 'status': 'unreachable', 'detail': str(e)[:100]})
+
+    # Celery eager mode (dev)
+    from django.conf import settings
+    eager = getattr(settings, 'CELERY_TASK_ALWAYS_EAGER', False)
+    services.append({
+        'name': 'Celery',
+        'status': 'eager' if eager else 'configured',
+        'detail': 'Tasks run synchronously (dev mode)' if eager else 'Async task queue ready',
+    })
+
+    # Email backend
+    email_backend = getattr(settings, 'EMAIL_BACKEND', '')
+    services.append({
+        'name': 'Email',
+        'status': 'smtp' if 'smtp' in email_backend.lower() else 'console' if 'console' in email_backend.lower() else 'configured',
+        'detail': email_backend.split('.')[-1] if email_backend else 'not set',
+    })
+
+    health['services'] = services
+
+    # ── 8. Overall health score ────────────────────────────────────
+    score = 100
+    issues = []
+    if not db_ok:
+        score = 0
+        issues.append('Database connection failed')
+    if health['stock'].get('expired', 0) > 0:
+        score -= 10
+        issues.append(f"{health['stock']['expired']} expired batch(es)")
+    if health['stock'].get('out_of_stock', 0) > 0:
+        score -= 5
+        issues.append(f"{health['stock']['out_of_stock']} SKU(s) out of stock")
+    if health['sales'].get('cancelled_7d', 0) > 0:
+        score -= 3
+        issues.append(f"{health['sales']['cancelled_7d']} cancelled sale(s) in 7 days")
+    for svc in health['services']:
+        if svc['status'] == 'unreachable':
+            score -= 10
+            issues.append(f"{svc['name']} unreachable")
+    score = max(0, score)
+
+    health['score'] = score
+    health['status'] = 'healthy' if score >= 80 else 'warning' if score >= 50 else 'critical'
+    health['issues'] = issues
+    health['checked_at'] = now.isoformat()
+
+    return Response(health)
 
 
 @api_view(["GET"])

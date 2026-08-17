@@ -9,4 +9,6 @@ urlpatterns = [
     path('expiry/', views.ExpiryReportView.as_view(), name='reports-expiry'),
     path('low-stock/', views.LowStockReportView.as_view(), name='reports-low-stock'),
     path('profit-loss/', views.ProfitLossView.as_view(), name='reports-pnl'),
+    path('roi/', views.ROIView.as_view(), name='reports-roi'),
+    path('cash-flow/', views.CashFlowView.as_view(), name='reports-cashflow'),
 ]

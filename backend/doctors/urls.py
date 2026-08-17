@@ -5,6 +5,7 @@ from . import views
 
 router = DefaultRouter()
 router.register('directory', views.DoctorDirectoryViewSet, basename='doctor-directory')
+router.register('', views.DoctorProfileViewSet, basename='doctor-profile')
 
 urlpatterns = [
     path('register/', views.DoctorRegisterView.as_view(), name='doctor-register'),

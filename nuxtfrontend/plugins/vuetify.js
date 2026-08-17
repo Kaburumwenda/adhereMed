@@ -5,12 +5,12 @@ import { AppConstants } from '~/utils/constants'
 import { useThemeStore } from '~/stores/theme'
 
 function readInitialTheme() {
-  if (typeof window === 'undefined') return 'dark'
+  if (typeof window === 'undefined') return 'light'
   try {
     const saved = localStorage.getItem(AppConstants.storageKeys.themeMode)
     if (saved && themeNames.includes(saved)) return saved
   } catch (_) { /* ignore */ }
-  return 'dark'
+  return 'light'
 }
 
 export default defineNuxtPlugin((nuxtApp) => {
@@ -60,9 +60,9 @@ export default defineNuxtPlugin((nuxtApp) => {
   if (process.client) {
     const store = useThemeStore(nuxtApp.$pinia)
     store.load()
-    vuetify.theme.global.name.value = store.mode
+    vuetify.theme.change(store.mode)
     store.$subscribe((_m, state) => {
-      vuetify.theme.global.name.value = state.mode
+      vuetify.theme.change(state.mode)
     })
   }
 })

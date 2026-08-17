@@ -36,9 +36,9 @@ class PrescriptionItem(models.Model):
     medication_name = models.CharField(max_length=255, help_text='Cached or custom medication name')
     custom_medication_name = models.CharField(max_length=255, blank=True, help_text='If medication not in pool')
     is_custom = models.BooleanField(default=False)
-    dosage = models.CharField(max_length=100)
-    frequency = models.CharField(max_length=100, help_text='e.g., 3 times daily')
-    duration = models.CharField(max_length=100, help_text='e.g., 7 days')
+    dosage = models.CharField(max_length=100, blank=True)
+    frequency = models.CharField(max_length=100, blank=True, help_text='e.g., 3 times daily')
+    duration = models.CharField(max_length=100, blank=True, help_text='e.g., 7 days')
     quantity = models.PositiveIntegerField(default=1)
     instructions = models.TextField(blank=True, help_text='e.g., Take after meals')
     schedule = models.CharField(

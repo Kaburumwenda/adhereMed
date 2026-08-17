@@ -42,6 +42,8 @@ urlpatterns = [
     path('api/reports/', include('reports.urls')),
     # API — Homecare tenant app
     path('api/homecare/', include('homecare.urls')),
+    # API — Per-tenant audit trail (IAM & Security)
+    path('api/audit/', include('audit.urls')),
     # OpenAPI documentation
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),

@@ -15,11 +15,15 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
     )
     profile_picture_url = serializers.SerializerMethodField()
     signature_url = serializers.SerializerMethodField()
+    first_name = serializers.CharField(source='user.first_name', write_only=True, required=False)
+    last_name = serializers.CharField(source='user.last_name', write_only=True, required=False)
+    phone = serializers.CharField(source='user.phone', write_only=True, required=False, allow_blank=True)
 
     class Meta:
         model = DoctorProfile
         fields = [
             'id', 'user', 'user_name', 'user_email', 'user_phone',
+            'first_name', 'last_name', 'phone',
             'practice_type', 'hospital', 'hospital_name',
             'specialization', 'license_number', 'qualification',
             'years_of_experience', 'bio', 'consultation_fee',
@@ -30,7 +34,7 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
         read_only_fields = [
-            'id', 'user', 'is_verified',
+            'id', 'is_verified',
             'profile_picture_url', 'signature_url',
             'created_at', 'updated_at',
         ]

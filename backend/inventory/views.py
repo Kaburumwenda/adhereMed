@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, SAFE_METHODS
 from django_filters.rest_framework import DjangoFilterBackend
-from django.db.models import Sum, F, DecimalField
+from django.db.models import Sum, F, DecimalField, Q
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django.http import HttpResponse
@@ -802,5 +802,341 @@ class ControlledSubstanceLogViewSet(viewsets.ModelViewSet):
             'total_records': qs.count(),
             'by_action': by_action,
             'top_medications': by_med,
+        })
+
+
+class StockMovementReportView(APIView):
+    """Unified stock movement report aggregating all inventory movements.
+
+    Combines StockAdjustment ledger entries (damage/theft/expiry/correction/etc.)
+    and StockTransfer line items (branch-to-branch movements) into a single
+    view with KPIs, per-day trend, reason breakdown, top movers, and a
+    detailed transactions list.
+
+    Query params:
+      ?date_from=&date_to=  (YYYY-MM-DD range filter)
+      ?reason=              (filter by adjustment reason)
+      ?direction=inflow|outflow
+      ?branch_id=           (filter by branch)
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from datetime import datetime as _dt
+        from django.db.models.functions import TruncDate
+
+        today = timezone.now().date()
+        # Parse date range
+        df = request.query_params.get('date_from')
+        dt = request.query_params.get('date_to')
+        if df and dt:
+            try:
+                start = _dt.strptime(df, '%Y-%m-%d').date()
+                end = _dt.strptime(dt, '%Y-%m-%d').date()
+            except ValueError:
+                start = today - timedelta(days=29)
+                end = today
+        else:
+            start = today - timedelta(days=29)
+            end = today
+        start_dt = _dt.combine(start, _dt.min.time())
+        end_dt = _dt.combine(end + timedelta(days=1), _dt.min.time())
+
+        reason_filter = request.query_params.get('reason')
+        direction_filter = request.query_params.get('direction')
+        branch_id = request.query_params.get('branch_id')
+
+        movements = []  # unified list
+
+        # ── Gather POS sales (TransactionItem → outflow) ───────────────
+        try:
+            from pos.models import POSTransaction, TransactionItem
+            pos_qs = TransactionItem.objects.select_related(
+                'transaction', 'stock', 'batch'
+            ).filter(
+                transaction__created_at__gte=start_dt,
+                transaction__created_at__lt=end_dt,
+                transaction__status='completed',
+            )
+            if branch_id:
+                pos_qs = pos_qs.filter(transaction__branch_id=branch_id)
+            for ti in pos_qs:
+                if reason_filter and reason_filter != 'pos_sale':
+                    continue
+                if direction_filter and 'outflow' != direction_filter:
+                    continue
+                qty = int(ti.quantity or 0)
+                unit_val = float(ti.unit_price or ti.stock.selling_price or 0) if ti.stock else float(ti.unit_price or 0)
+                movements.append({
+                    'id': f'POS-{ti.id}',
+                    'date': ti.transaction.created_at.date().isoformat() if ti.transaction.created_at else '',
+                    'timestamp': ti.transaction.created_at.isoformat() if ti.transaction.created_at else '',
+                    'direction': 'outflow',
+                    'type': 'pos_sale',
+                    'reason': 'pos_sale',
+                    'source': 'POS Sale',
+                    'reference': ti.transaction.transaction_number or '',
+                    'stock_name': ti.medication_name or (ti.stock.medication_name if ti.stock else 'Unknown'),
+                    'batch_number': ti.batch.batch_number if ti.batch else '',
+                    'quantity': qty,
+                    'quantity_change': -qty,
+                    'unit_value': unit_val,
+                    'value_change': qty * unit_val,
+                    'user': str(ti.transaction.cashier) if ti.transaction.cashier else 'System',
+                    'notes': f'Payment: {ti.transaction.get_payment_method_display() if ti.transaction else ""}',
+                })
+        except Exception:
+            pass
+
+        # ── Gather Dispensing records (outflow) ───────────────────────
+        try:
+            from dispensing.models import DispensingRecord, DispenseReturn
+            disp_qs = DispensingRecord.objects.filter(
+                dispensed_at__gte=start_dt,
+                dispensed_at__lt=end_dt,
+                status='completed',
+            )
+            for rec in disp_qs:
+                items = rec.items_dispensed or []
+                for idx, it in enumerate(items):
+                    if reason_filter and reason_filter != 'dispensing':
+                        continue
+                    if direction_filter and 'outflow' != direction_filter:
+                        continue
+                    qty = int(it.get('qty', 0) or 0)
+                    unit_val = float(it.get('unit_price', 0) or 0)
+                    med_name = it.get('medication_name', 'Unknown')
+                    movements.append({
+                        'id': f'DISP-{rec.id}-{idx}',
+                        'date': rec.dispensed_at.date().isoformat() if rec.dispensed_at else '',
+                        'timestamp': rec.dispensed_at.isoformat() if rec.dispensed_at else '',
+                        'direction': 'outflow',
+                        'type': 'dispensing',
+                        'reason': 'dispensing',
+                        'source': 'Dispensing',
+                        'reference': rec.receipt_number or f'RCP-{rec.id}',
+                        'stock_name': med_name,
+                        'batch_number': it.get('batch_number', '') or '',
+                        'quantity': qty,
+                        'quantity_change': -qty,
+                        'unit_value': unit_val,
+                        'value_change': qty * unit_val,
+                        'user': str(rec.dispensed_by) if rec.dispensed_by else 'System',
+                        'notes': rec.notes or f'Patient: {rec.patient_name}',
+                    })
+        except Exception:
+            pass
+
+        # ── Gather Dispense Returns (inflow) ──────────────────────────
+        try:
+            from dispensing.models import DispenseReturn
+            ret_qs = DispenseReturn.objects.select_related('original', 'processed_by').filter(
+                created_at__gte=start_dt,
+                created_at__lt=end_dt,
+                restock=True,
+            )
+            for ret in ret_qs:
+                for idx, it in enumerate(ret.items_returned or []):
+                    if reason_filter and reason_filter != 'return':
+                        continue
+                    if direction_filter and 'inflow' != direction_filter:
+                        continue
+                    qty = int(it.get('qty', 0) or 0)
+                    unit_val = float(it.get('unit_price', 0) or 0)
+                    med_name = it.get('medication_name', 'Unknown')
+                    movements.append({
+                        'id': f'RET-{ret.id}-{idx}',
+                        'date': ret.created_at.date().isoformat() if ret.created_at else '',
+                        'timestamp': ret.created_at.isoformat() if ret.created_at else '',
+                        'direction': 'inflow',
+                        'type': 'return',
+                        'reason': 'return',
+                        'source': 'Dispense Return',
+                        'reference': ret.reference or f'RET-{ret.id}',
+                        'stock_name': med_name,
+                        'batch_number': '',
+                        'quantity': qty,
+                        'quantity_change': qty,
+                        'unit_value': unit_val,
+                        'value_change': qty * unit_val,
+                        'user': str(ret.processed_by) if ret.processed_by else 'System',
+                        'notes': ret.reason or '',
+                    })
+        except Exception:
+            pass
+
+        # ── Gather StockAdjustment rows ────────────────────────────────
+        adj_qs = StockAdjustment.objects.select_related(
+            'stock', 'batch', 'adjusted_by'
+        ).filter(created_at__gte=start_dt, created_at__lt=end_dt)
+        if reason_filter:
+            adj_qs = adj_qs.filter(reason=reason_filter)
+        if branch_id:
+            adj_qs = adj_qs.filter(stock__branch_id=branch_id)
+
+        for adj in adj_qs:
+            qty = int(adj.quantity_change or 0)
+            direction = 'inflow' if qty >= 0 else 'outflow'
+            if direction_filter and direction != direction_filter:
+                continue
+            movements.append({
+                'id': f'ADJ-{adj.id}',
+                'date': adj.created_at.date().isoformat() if adj.created_at else '',
+                'timestamp': adj.created_at.isoformat() if adj.created_at else '',
+                'direction': direction,
+                'type': 'adjustment',
+                'reason': adj.reason or 'other',
+                'source': 'Stock Adjustment',
+                'reference': f'ADJ-{adj.id}',
+                'stock_name': adj.stock.medication_name if adj.stock else 'Unknown',
+                'batch_number': adj.batch.batch_number if adj.batch else '',
+                'quantity': abs(qty),
+                'quantity_change': qty,
+                'unit_value': float(adj.stock.cost_price or 0) if adj.stock else 0,
+                'value_change': abs(qty) * float(adj.stock.cost_price or 0) if adj.stock else 0,
+                'user': str(adj.adjusted_by) if adj.adjusted_by else 'System',
+                'notes': adj.notes or '',
+            })
+
+        # ── Gather StockTransfer rows ─────────────────────────────────
+        tx_qs = StockTransfer.objects.select_related(
+            'source_branch', 'dest_branch', 'requested_by'
+        ).filter(requested_at__gte=start_dt, requested_at__lt=end_dt)
+        if branch_id:
+            tx_qs = tx_qs.filter(
+                Q(source_branch_id=branch_id) | Q(dest_branch_id=branch_id)
+            )
+        for tx in tx_qs:
+            qty = int(tx.total_quantity or 0)
+            if branch_id and tx.source_branch_id == int(branch_id):
+                direction = 'outflow'
+            elif branch_id and tx.dest_branch_id == int(branch_id):
+                direction = 'inflow'
+            else:
+                direction = 'transfer'
+            if direction_filter and direction != direction_filter:
+                continue
+            movements.append({
+                'id': f'TRF-{tx.id}',
+                'date': tx.requested_at.date().isoformat() if tx.requested_at else '',
+                'timestamp': tx.requested_at.isoformat() if tx.requested_at else '',
+                'direction': direction,
+                'type': 'transfer',
+                'reason': 'branch_transfer',
+                'source': 'Branch Transfer',
+                'reference': tx.reference or f'TRF-{tx.id}',
+                'stock_name': f'{tx.total_items} items',
+                'batch_number': '',
+                'quantity': qty,
+                'quantity_change': qty if direction == 'inflow' else (-qty if direction == 'outflow' else 0),
+                'unit_value': 0,
+                'value_change': 0,
+                'user': str(tx.requested_by) if tx.requested_by else 'System',
+                'notes': tx.notes or '',
+            })
+
+        # Sort by timestamp descending
+        movements.sort(key=lambda x: x.get('timestamp') or x.get('date') or '', reverse=True)
+
+        # ── KPIs ───────────────────────────────────────────────────────
+        total_in = sum(m['quantity'] for m in movements if m['direction'] == 'inflow')
+        total_out = sum(m['quantity'] for m in movements if m['direction'] == 'outflow')
+        total_transfer = sum(m['quantity'] for m in movements if m['direction'] == 'transfer')
+        net_change = total_in - total_out
+        value_in = sum(m['value_change'] for m in movements if m['direction'] == 'inflow')
+        value_out = sum(m['value_change'] for m in movements if m['direction'] == 'outflow')
+        net_value = value_in - value_out
+
+        # ── Per-day trend ──────────────────────────────────────────────
+        day_index = []
+        d0 = start
+        num_days = max(1, (end - start).days + 1)
+        for k in range(num_days):
+            day_index.append((d0 + timedelta(days=k)).isoformat())
+        daily_map = {}
+        for m in movements:
+            ds = m['date']
+            if not ds:
+                continue
+            d = daily_map.setdefault(ds, {'in': 0, 'out': 0, 'transfer': 0})
+            if m['direction'] == 'inflow':
+                d['in'] += m['quantity']
+            elif m['direction'] == 'outflow':
+                d['out'] += m['quantity']
+            else:
+                d['transfer'] += m['quantity']
+        trend = []
+        for ds in day_index:
+            d = daily_map.get(ds, {'in': 0, 'out': 0, 'transfer': 0})
+            trend.append({
+                'date': ds,
+                'inflow': d['in'],
+                'outflow': d['out'],
+                'transfer': d['transfer'],
+                'net': d['in'] - d['out'],
+            })
+
+        # ── Reason breakdown (donut) ──────────────────────────────────
+        reason_map = {}
+        for m in movements:
+            r = m['reason'] or 'other'
+            reason_map[r] = reason_map.get(r, 0) + m['quantity']
+        reason_colors = {
+            'damage': '#ef4444', 'theft': '#dc2626', 'expiry': '#f59e0b',
+            'count_correction': '#3b82f6', 'return_to_supplier': '#8b5cf6',
+            'other': '#64748b', 'branch_transfer': '#0ea5e9',
+            'pos_sale': '#10b981', 'dispensing': '#14b8a6', 'return': '#f97316',
+        }
+        reason_labels = {
+            'damage': 'Damage', 'theft': 'Theft', 'expiry': 'Expiry',
+            'count_correction': 'Count Correction', 'return_to_supplier': 'Return to Supplier',
+            'other': 'Other', 'branch_transfer': 'Branch Transfer',
+            'pos_sale': 'POS Sale', 'dispensing': 'Dispensing', 'return': 'Dispense Return',
+        }
+        reason_segments = [
+            {'label': reason_labels.get(r, r.title()),
+             'value': v, 'color': reason_colors.get(r, '#64748b')}
+            for r, v in sorted(reason_map.items(), key=lambda x: -x[1])
+            if v > 0
+        ]
+
+        # ── Top movers (by absolute quantity) ────────────────────────
+        mover_map = {}
+        for m in movements:
+            if m['type'] == 'transfer':
+                continue
+            name = m['stock_name']
+            if not name or name == 'Unknown':
+                continue
+            d = mover_map.setdefault(name, {'in': 0, 'out': 0, 'count': 0})
+            if m['direction'] == 'inflow':
+                d['in'] += m['quantity']
+            elif m['direction'] == 'outflow':
+                d['out'] += m['quantity']
+            d['count'] += 1
+        top_movers = [
+            {'name': name, 'inflow': v['in'], 'outflow': v['out'],
+             'net': v['in'] - v['out'], 'count': v['count']}
+            for name, v in sorted(mover_map.items(),
+                                  key=lambda x: abs(x[1]['in'] - x[1]['out']),
+                                  reverse=True)
+        ][:10]
+
+        return Response({
+            'range': {'start': start.isoformat(), 'end': end.isoformat()},
+            'kpis': {
+                'total_in': total_in,
+                'total_out': total_out,
+                'total_transfer': total_transfer,
+                'net_change': net_change,
+                'value_in': round(value_in, 2),
+                'value_out': round(value_out, 2),
+                'net_value': round(net_value, 2),
+                'count': len(movements),
+            },
+            'trend': trend,
+            'reason_segments': reason_segments,
+            'top_movers': top_movers,
+            'movements': movements[:200],
         })
 
