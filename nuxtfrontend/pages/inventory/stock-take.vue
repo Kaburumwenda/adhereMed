@@ -228,6 +228,7 @@ const { t } = useI18n()
 
 import { ref, computed, onMounted } from 'vue'
 const { $api } = useNuxtApp()
+const { branches: branchesApi } = useTenantEndpoints()
 
 const loading = ref(false)
 const saving = ref(false)
@@ -303,7 +304,7 @@ async function load() {
   try {
     const [c, b, cat] = await Promise.all([
       $api.get('/inventory/counts/').then(r => r.data?.results || r.data || []),
-      $api.get('/pharmacy-profile/branches/').then(r => r.data?.results || r.data || []).catch(() => []),
+      $api.get(branchesApi.value).then(r => r.data?.results || r.data || []).catch(() => []),
       $api.get('/inventory/categories/').then(r => r.data?.results || r.data || []).catch(() => []),
     ])
     counts.value = c

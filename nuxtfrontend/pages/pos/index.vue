@@ -8,7 +8,7 @@
         <div class="text-caption text-medium-emphasis">{{ today }} · Cashier: {{ auth.user?.first_name || 'Staff' }}<span v-if="branchStore.currentBranchName"> · {{ branchStore.currentBranchName }}</span></div>
       </div>
       <v-spacer />
-      <v-tooltip text="POS = Walk-in retail sales without prescription. For prescription-based dispensing use Dispensing." location="bottom">
+      <v-tooltip v-if="!isInventoryTenant" text="POS = Walk-in retail sales without prescription. For prescription-based dispensing use Dispensing." location="bottom">
         <template #activator="{ props }">
           <v-btn v-bind="props" variant="text" prepend-icon="mdi-pill" class="text-none d-none d-md-flex" to="/dispensing">{{ $t('dispensing.title') }}</v-btn>
         </template>
@@ -16,7 +16,7 @@
       <v-chip prepend-icon="mdi-receipt-text" variant="tonal" color="info" class="mr-2 d-none d-sm-flex">
         Today: {{ todayStats.count }} · {{ formatMoney(todayStats.revenue) }}
       </v-chip>
-      <v-btn variant="text" prepend-icon="mdi-history" class="text-none" to="/pos/customers">{{ $t('customers.title') }}</v-btn>
+      <v-btn variant="text" prepend-icon="mdi-history" class="text-none" :to="customersPath">{{ $t('customers.title') }}</v-btn>
       <v-btn variant="text" prepend-icon="mdi-receipt-text-outline" class="text-none d-none d-sm-flex" to="/pos/history">{{ $t('posHistory.title') }}</v-btn>
       <v-badge :content="parkedCount" :model-value="parkedCount > 0" color="warning" offset-x="6" offset-y="6">
         <v-btn variant="text" prepend-icon="mdi-tray-arrow-up" class="text-none" to="/pos/parked?source=pharmacy" title="Sales on hold">Hold</v-btn>
@@ -478,6 +478,9 @@ import { formatMoney } from '~/utils/format'
 definePageMeta({ layout: 'default' })
 
 const auth = useAuthStore()
+// Inventory tenants use their own /ims routes (no dispensing; own customers page).
+const isInventoryTenant = computed(() => auth.tenantType === 'inventory')
+const customersPath = computed(() => isInventoryTenant.value ? '/ims/customers' : '/pharmacy/customers')
 const branchStore = useBranchStore()
 const { $api } = useNuxtApp()
 

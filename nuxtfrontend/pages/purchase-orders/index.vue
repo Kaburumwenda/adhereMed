@@ -1,8 +1,11 @@
-<template>
+﻿<template>
   <v-container fluid class="pa-4 pa-md-6 po-list-shell">
     <PageHeader title="Purchase Orders" icon="mdi-cart" subtitle="Track procurement, deliveries and supplier spend">
       <template #actions>
         <v-btn variant="tonal" rounded="lg" class="text-none" prepend-icon="mdi-refresh" @click="refresh" :loading="loading">Refresh</v-btn>
+        <v-btn variant="tonal" color="teal" rounded="lg" class="text-none" prepend-icon="mdi-file-chart-outline" :loading="exporting === 'report'" @click="downloadReport">Report (PDF)</v-btn>
+        <v-btn variant="tonal" color="success" rounded="lg" class="text-none" prepend-icon="mdi-microsoft-excel" :loading="exporting === 'excel'" @click="exportOrders('excel')">Export Excel</v-btn>
+        <v-btn variant="tonal" color="primary" rounded="lg" class="text-none" prepend-icon="mdi-file-delimited" :loading="exporting === 'csv'" @click="exportOrders('csv')">Export CSV</v-btn>
         <v-btn color="primary" rounded="lg" class="text-none" prepend-icon="mdi-plus" to="/purchase-orders/new">New PO</v-btn>
       </template>
     </PageHeader>
@@ -26,7 +29,7 @@
       <div class="d-flex flex-wrap align-center ga-2">
         <v-text-field
           v-model="search"
-          placeholder="Search PO #, supplier…"
+          placeholder="Search PO #, supplierâ€¦"
           variant="solo-filled"
           density="comfortable"
           hide-details
@@ -50,8 +53,15 @@
           rounded="lg"
           bg-color="surface"
           prepend-inner-icon="mdi-progress-check"
-          style="max-width: 200px; min-width: 160px"
-        />
+        >
+          <template #item="{ props, item }">
+            <v-list-item v-bind="props" :subtitle="item.raw.description || undefined">
+              <template v-if="item.raw.value !== 'all'" #prepend>
+                <span class="mr-1"><StatusChip :status="item.raw.value" /></span>
+              </template>
+            </v-list-item>
+          </template>
+        </v-select>
         <v-select
           v-model="supplierFilter"
           :items="supplierFilterOptions"
@@ -83,6 +93,46 @@
           prepend-inner-icon="mdi-store-marker"
           style="max-width: 220px; min-width: 180px"
         />
+        <v-select
+          v-model="datePreset"
+          :items="dateOptions"
+          item-title="label"
+          item-value="value"
+          variant="solo-filled"
+          density="comfortable"
+          hide-details
+          flat
+          rounded="lg"
+          bg-color="surface"
+          prepend-inner-icon="mdi-calendar-range"
+          style="max-width: 200px; min-width: 170px"
+        />
+        <template v-if="datePreset === 'custom'">
+          <v-text-field
+            v-model="dateFrom"
+            label="From"
+            type="date"
+            variant="solo-filled"
+            density="comfortable"
+            hide-details
+            flat
+            rounded="lg"
+            bg-color="surface"
+            style="max-width: 170px"
+          />
+          <v-text-field
+            v-model="dateTo"
+            label="To"
+            type="date"
+            variant="solo-filled"
+            density="comfortable"
+            hide-details
+            flat
+            rounded="lg"
+            bg-color="surface"
+            style="max-width: 170px"
+          />
+        </template>
         <v-btn-toggle v-model="viewMode" mandatory density="comfortable" rounded="lg" variant="outlined" color="primary">
           <v-btn value="table" icon="mdi-table" size="small" title="Table view" />
           <v-btn value="cards" icon="mdi-view-grid" size="small" title="Card view" />
@@ -117,6 +167,9 @@
         class="po-data-table"
         @click:row="(_, { item }) => goDetail(item)"
       >
+        <template #item.rowIndex="{ item }">
+          <span class="text-caption text-medium-emphasis">{{ filtered.findIndex(p => p.id === item.id) + 1 }}</span>
+        </template>
         <template #item.po_number="{ item }">
           <span class="font-weight-bold text-primary">{{ item.po_number }}</span>
         </template>
@@ -125,7 +178,7 @@
             <v-avatar size="28" color="primary" variant="tonal">
               <span class="text-caption font-weight-bold">{{ initials(item.supplier_name) }}</span>
             </v-avatar>
-            <span>{{ item.supplier_name || '—' }}</span>
+            <span>{{ item.supplier_name || 'â€”' }}</span>
           </div>
         </template>
         <template #item.items="{ item }">
@@ -134,17 +187,48 @@
         <template #item.total_cost="{ item }">
           <span class="font-weight-bold">{{ formatMoney(item.total_cost) }}</span>
         </template>
-        <template #item.status="{ item }"><StatusChip :status="item.status" /></template>
+        <template #item.shipping_cost="{ item }">
+          <span v-if="Number(item.shipping_cost) > 0" class="text-medium-emphasis">{{ formatMoney(item.shipping_cost) }}</span>
+          <span v-else class="text-disabled">â€”</span>
+        </template>
+        <template #item.status="{ item }">
+          <div class="status-cell" @click.stop>
+            <v-menu>
+              <template #activator="{ props }">
+                <v-btn v-bind="props" variant="text" size="small" class="text-none px-2 status-btn"
+                       :loading="updatingStatusId === item.id" :disabled="updatingStatusId === item.id">
+                  <StatusChip :status="item.status" />
+                  <v-icon size="14" class="ml-1" color="medium-emphasis">mdi-chevron-down</v-icon>
+                </v-btn>
+              </template>
+              <v-list density="compact" min-width="260">
+                <v-list-subheader class="text-caption">Change status</v-list-subheader>
+                <v-list-item v-for="opt in statusOptions" :key="opt.value"
+                             :disabled="opt.value === item.status"
+                             density="compact" two-line
+                             :append-icon="opt.value === item.status ? 'mdi-check' : undefined"
+                             @click="changeStatus(item, opt.value)">
+                  <v-list-item-title>
+                    <StatusChip :status="opt.value" />
+                  </v-list-item-title>
+                  <v-list-item-subtitle class="text-caption text-medium-emphasis">
+                    {{ opt.description }}
+                  </v-list-item-subtitle>
+                </v-list-item>
+              </v-list>
+            </v-menu>
+          </div>
+        </template>
         <template #item.order_date="{ item }">{{ formatDate(item.order_date) }}</template>
         <template #item.expected_delivery="{ item }">
           <span v-if="item.expected_delivery">{{ formatDate(item.expected_delivery) }}</span>
-          <span v-else class="text-medium-emphasis">—</span>
+          <span v-else class="text-medium-emphasis">â€”</span>
         </template>
         <template #item.actions="{ item }">
           <div class="d-flex justify-end ga-1">
+            <v-btn icon="mdi-receipt-text-outline" size="x-small" variant="text" color="teal" title="Download Purchase Order (PDF)" :loading="invoicingId === item.id" @click.stop="downloadInvoice(item)" />
             <v-btn icon="mdi-eye-outline" size="x-small" variant="text" :to="`/purchase-orders/${item.id}`" @click.stop />
             <v-btn icon="mdi-pencil-outline" size="x-small" variant="text" color="primary" :to="`/purchase-orders/${item.id}/edit`" @click.stop />
-            <v-btn icon="mdi-check-circle-outline" size="x-small" variant="text" color="success" v-if="item.status !== 'received' && item.status !== 'cancelled'" title="Mark received" @click.stop="markReceived(item)" />
             <v-btn icon="mdi-delete-outline" size="x-small" variant="text" color="error" @click.stop="confirmDelete(item)" />
           </div>
         </template>
@@ -160,14 +244,39 @@
               <div class="text-caption text-medium-emphasis">PO Number</div>
               <div class="text-h6 font-weight-bold text-primary">{{ po.po_number }}</div>
             </div>
-            <StatusChip :status="po.status" />
+            <div @click.stop>
+              <v-menu>
+                <template #activator="{ props }">
+                  <v-btn v-bind="props" variant="text" size="small" class="text-none px-2"
+                         :loading="updatingStatusId === po.id" :disabled="updatingStatusId === po.id">
+                    <StatusChip :status="po.status" />
+                    <v-icon size="14" class="ml-1" color="medium-emphasis">mdi-chevron-down</v-icon>
+                  </v-btn>
+                </template>
+                <v-list density="compact" min-width="260">
+                  <v-list-subheader class="text-caption">Change status</v-list-subheader>
+                  <v-list-item v-for="opt in statusOptions" :key="opt.value"
+                               :disabled="opt.value === po.status"
+                               density="compact" two-line
+                               :append-icon="opt.value === po.status ? 'mdi-check' : undefined"
+                               @click="changeStatus(po, opt.value)">
+                    <v-list-item-title>
+                      <StatusChip :status="opt.value" />
+                    </v-list-item-title>
+                    <v-list-item-subtitle class="text-caption text-medium-emphasis">
+                      {{ opt.description }}
+                    </v-list-item-subtitle>
+                  </v-list-item>
+                </v-list>
+              </v-menu>
+            </div>
           </div>
           <div class="d-flex align-center mb-2 ga-2">
             <v-avatar size="32" color="primary" variant="tonal">
               <span class="text-caption font-weight-bold">{{ initials(po.supplier_name) }}</span>
             </v-avatar>
             <div class="min-width-0">
-              <div class="text-body-2 font-weight-medium text-truncate">{{ po.supplier_name || '—' }}</div>
+              <div class="text-body-2 font-weight-medium text-truncate">{{ po.supplier_name || 'â€”' }}</div>
               <div class="text-caption text-medium-emphasis">{{ formatDate(po.order_date) }}</div>
             </div>
           </div>
@@ -245,19 +354,47 @@ const loading = computed(() => r.loading.value)
 const search = ref('')
 const statusFilter = ref('all')
 const supplierFilter = ref(null)
+const datePreset = ref('all')
+const dateFrom = ref(null)
+const dateTo = ref(null)
 const viewMode = ref('table')
 const snack = reactive({ show: false, color: 'success', text: '' })
 const deleteDialog = reactive({ show: false, po: null, busy: false })
 
 const statusFilterOptions = [
-  { label: 'All statuses', value: 'all' },
-  { label: 'Draft', value: 'draft' },
-  { label: 'Sent', value: 'sent' },
-  { label: 'Received', value: 'received' },
-  { label: 'Partially Received', value: 'partial' },
-  { label: 'Returned', value: 'returned' },
-  { label: 'Cancelled', value: 'cancelled' },
+  { label: 'All statuses', value: 'all', description: '' },
+  { label: 'Draft', value: 'draft', description: 'Being prepared — not sent yet' },
+  { label: 'Sent', value: 'sent', description: 'Order placed with the supplier' },
+  { label: 'Received', value: 'received', description: 'Fully delivered & stocked in' },
+  { label: 'Partially Received', value: 'partial', description: 'Some items delivered so far' },
+  { label: 'Returned', value: 'returned', description: 'Goods sent back to the supplier' },
+  { label: 'Cancelled', value: 'cancelled', description: 'Order cancelled — no goods expected' },
 ]
+const statusOptions = statusFilterOptions.filter(o => o.value !== 'all')
+
+// â”€â”€ Inline status change (dropdown in the status column) â”€â”€â”€â”€â”€
+const updatingStatusId = ref(null)
+
+async function changeStatus(po, newStatus) {
+  if (!newStatus || newStatus === po.status || updatingStatusId.value) return
+  const prev = po.status
+  po.status = newStatus            // optimistic update
+  updatingStatusId.value = po.id
+  try {
+    await $api.patch(`/purchase-orders/orders/${po.id}/`, { status: newStatus })
+    snack.text = `${po.po_number} is now "${statusOptions.find(o => o.value === newStatus)?.label || newStatus}"`
+    snack.color = 'success'
+    snack.show = true
+    await refresh()
+  } catch (e) {
+    po.status = prev               // roll back
+    snack.text = e?.response?.data?.detail || 'Failed to update status.'
+    snack.color = 'error'
+    snack.show = true
+  } finally {
+    updatingStatusId.value = null
+  }
+}
 
 const supplierFilterOptions = computed(() => {
   const map = new Map()
@@ -296,10 +433,12 @@ const statCards = computed(() => {
 })
 
 const headers = [
+  { title: '#', key: 'rowIndex', width: 60, sortable: false },
   { title: 'PO #', key: 'po_number', width: 130 },
   { title: 'Supplier', key: 'supplier_name' },
   { title: 'Items', key: 'items', width: 90, sortable: false, align: 'center' },
   { title: 'Total', key: 'total_cost', width: 120, align: 'end' },
+  { title: 'Shipping', key: 'shipping_cost', width: 110, align: 'end' },
   { title: 'Status', key: 'status', width: 130 },
   { title: 'Order date', key: 'order_date', width: 120 },
   { title: 'Expected', key: 'expected_delivery', width: 120 },
@@ -313,24 +452,59 @@ function initials(name) {
 
 function goDetail(po) { router.push(`/purchase-orders/${po.id}`) }
 
-async function refresh() {
-  const params = {}
-  if (branchFilter.value) params.branch = branchFilter.value
-  await r.list(params)
+// â”€â”€ Date filter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const dateOptions = [
+  { label: 'All time', value: 'all' },
+  { label: 'Today', value: 'today' },
+  { label: 'This week', value: 'week' },
+  { label: 'This month', value: 'month' },
+  { label: 'Last 30 days', value: '30d' },
+  { label: 'Last 90 days', value: '90d' },
+  { label: 'This year', value: 'year' },
+  { label: 'Custom range', value: 'custom' },
+]
+
+function isoDate(d) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
-async function markReceived(po) {
-  try {
-    await $api.patch(`/purchase-orders/orders/${po.id}/`, { status: 'received' })
-    snack.text = `${po.po_number} marked received & stock updated`
-    snack.color = 'success'
-    snack.show = true
-    await r.list()
-  } catch (e) {
-    snack.text = e?.response?.data?.detail || 'Failed to update status.'
-    snack.color = 'error'
-    snack.show = true
+function resolveDateRange() {
+  if (datePreset.value === 'all') return {}
+  if (datePreset.value === 'custom') {
+    const out = {}
+    if (dateFrom.value) out.date_from = dateFrom.value
+    if (dateTo.value) out.date_to = dateTo.value
+    return out
   }
+  const now = new Date()
+  const to = isoDate(now)
+  let from = now
+  if (datePreset.value === 'today') {
+    from = now
+  } else if (datePreset.value === 'week') {
+    from = new Date(now)
+    from.setDate(now.getDate() - ((now.getDay() + 6) % 7)) // Monday
+  } else if (datePreset.value === 'month') {
+    from = new Date(now.getFullYear(), now.getMonth(), 1)
+  } else if (datePreset.value === '30d') {
+    from = new Date(now)
+    from.setDate(now.getDate() - 30)
+  } else if (datePreset.value === '90d') {
+    from = new Date(now)
+    from.setDate(now.getDate() - 90)
+  } else if (datePreset.value === 'year') {
+    from = new Date(now.getFullYear(), 0, 1)
+  }
+  return { date_from: isoDate(from), date_to: to }
+}
+
+async function refresh() {
+  const params = { ...resolveDateRange() }
+  if (branchFilter.value) params.branch = branchFilter.value
+  await r.list(params)
 }
 
 function confirmDelete(po) {
@@ -357,6 +531,88 @@ async function doDelete() {
 }
 
 watch(branchFilter, () => refresh())
+watch(datePreset, () => refresh())
+watch(dateFrom, () => { if (datePreset.value === 'custom') refresh() })
+watch(dateTo, () => { if (datePreset.value === 'custom') refresh() })
+
+const exporting = ref('')
+
+const invoicingId = ref(null)
+
+async function downloadInvoice(po) {
+  invoicingId.value = po.id
+  try {
+    const blob = (await $api.get(`/purchase-orders/orders/${po.id}/po-pdf/`, { responseType: 'blob' })).data
+    const objectUrl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = objectUrl
+    a.download = `purchase_order_${po.po_number || po.id}.pdf`
+    a.click()
+    URL.revokeObjectURL(objectUrl)
+    snack.text = 'Invoice download started.'
+    snack.color = 'success'
+    snack.show = true
+  } catch (e) {
+    snack.text = 'Invoice download failed.'
+    snack.color = 'error'
+    snack.show = true
+  } finally {
+    invoicingId.value = null
+  }
+}
+
+async function downloadReport() {
+  exporting.value = 'report'
+  try {
+    const params = { ...resolveDateRange() }
+    if (statusFilter.value !== 'all') params.status = statusFilter.value
+    if (supplierFilter.value) params.supplier = supplierFilter.value
+    if (branchFilter.value) params.branch = branchFilter.value
+    const blob = (await $api.get('/purchase-orders/orders/report-pdf/', { params, responseType: 'blob' })).data
+    const objectUrl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = objectUrl
+    a.download = `purchase_orders_report_${new Date().toISOString().slice(0, 10)}.pdf`
+    a.click()
+    URL.revokeObjectURL(objectUrl)
+    snack.text = 'Report download started.'
+    snack.color = 'success'
+    snack.show = true
+  } catch (e) {
+    snack.text = 'Report download failed.'
+    snack.color = 'error'
+    snack.show = true
+  } finally {
+    exporting.value = ''
+  }
+}
+
+async function exportOrders(fmt) {
+  exporting.value = fmt
+  try {
+    const params = { fmt, ...resolveDateRange() }
+    if (statusFilter.value !== 'all') params.status = statusFilter.value
+    if (supplierFilter.value) params.supplier = supplierFilter.value
+    if (branchFilter.value) params.branch = branchFilter.value
+    const blob = (await $api.get('/purchase-orders/orders/export/', { params, responseType: 'blob' })).data
+    const objectUrl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = objectUrl
+    a.download = `purchase_orders_${new Date().toISOString().slice(0, 10)}.${fmt === 'excel' ? 'xlsx' : 'csv'}`
+    a.click()
+    URL.revokeObjectURL(objectUrl)
+    snack.text = 'Export download started.'
+    snack.color = 'success'
+    snack.show = true
+  } catch (e) {
+    snack.text = 'Export failed.'
+    snack.color = 'error'
+    snack.show = true
+  } finally {
+    exporting.value = ''
+  }
+}
+
 onMounted(() => {
   if (isBranchLocked.value && branchStore.currentBranchId) {
     branchFilter.value = branchStore.currentBranchId

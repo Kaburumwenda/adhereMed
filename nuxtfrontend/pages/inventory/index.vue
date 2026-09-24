@@ -13,8 +13,9 @@
       </div>
       <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
         <v-btn variant="tonal" color="primary" prepend-icon="mdi-refresh" rounded="lg" class="text-none" :loading="currentResource.loading.value" @click="reload">{{ $t('common.refresh') }}</v-btn>
+        <v-btn v-if="canEdit && tab === 'stocks'" variant="tonal" color="success" prepend-icon="mdi-microsoft-excel" rounded="lg" class="text-none" to="/inventory/excel">Import / Export</v-btn>
         <v-btn v-if="canEdit && tab === 'stocks'" variant="tonal" color="warning" prepend-icon="mdi-table-edit" rounded="lg" class="text-none" to="/inventory/bulk?mode=edit">Edit mode</v-btn>
-        <v-btn v-if="canEdit && tab === 'stocks'" variant="tonal" color="error" prepend-icon="mdi-trash-can" rounded="lg" class="text-none" to="/inventory/bulk?mode=delete">Delete mode</v-btn>
+        <v-btn v-if="canDelete && tab === 'stocks'" variant="tonal" color="error" prepend-icon="mdi-trash-can" rounded="lg" class="text-none" to="/inventory/bulk?mode=delete">Delete mode</v-btn>
         <v-btn v-if="canEdit" color="primary" prepend-icon="mdi-plus" rounded="lg" class="text-none" :to="createPaths[tab]">{{ createLabels[tab] }}</v-btn>
       </div>
     </div>
@@ -213,7 +214,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(row, i) in pagedItems" :key="row.id">
+            <tr v-for="(row, i) in pagedItems" :key="row.id" class="inv-row-click" @click="$router.push(`/inventory/stocks/${row.id}`)">
               <td class="row-num text-medium-emphasis">{{ rowNumber(i) }}</td>
               <td>
                 <div class="d-flex align-center" style="gap:10px">
@@ -256,7 +257,8 @@
                 </span>
               </td>
               <td class="text-right">
-                <v-btn v-if="canEdit" icon="mdi-pencil" variant="text" size="small" :to="`/inventory/stocks/${row.id}/edit`" />
+                <v-btn icon="mdi-eye-outline" variant="text" size="small" :to="`/inventory/stocks/${row.id}`" @click.stop title="Item details" />
+                <v-btn v-if="canEdit" icon="mdi-pencil" variant="text" size="small" :to="`/inventory/stocks/${row.id}/edit`" @click.stop />
               </td>
             </tr>
           </tbody>
@@ -412,12 +414,16 @@ import { useResource } from '~/composables/useResource'
 import { formatMoney, formatDateTime } from '~/utils/format'
 import { useBranchStore } from '~/stores/branch'
 import { useAuthStore } from '~/stores/auth'
+import { ADMIN_ROLES } from '~/utils/permissions'
 
 const branchStore = useBranchStore()
 const auth = useAuthStore()
 
-// Only admin roles can create/edit/delete inventory
-const canEdit = computed(() => ['super_admin', 'tenant_admin', 'branch_admin'].includes(auth.role))
+// RBAC: supervisors (admins + branch managers) manage items; destructive
+// deletes are tenant-admin only (mirrors the backend matrix).
+const canEdit = computed(() =>
+  [...ADMIN_ROLES, 'branch_admin'].includes(auth.role))
+const canDelete = computed(() => ADMIN_ROLES.has(auth.role))
 
 const tab = ref('stocks')
 const search = ref('')
@@ -724,6 +730,7 @@ watch(() => branchStore.currentBranchId, () => {
 .inv-table tbody td { padding: 10px 14px; border-bottom: 1px solid rgba(0,0,0,0.05); vertical-align: middle; }
 .inv-table tbody td.text-right { text-align: right; }
 .inv-table tbody tr:hover { background: rgba(var(--v-theme-primary), 0.04); }
+.inv-row-click { cursor: pointer; }
 
 .status-pill {
   display: inline-flex; align-items: center;

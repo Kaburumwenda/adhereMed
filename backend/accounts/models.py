@@ -32,6 +32,8 @@ class User(AbstractBaseUser, PermissionsMixin):
         RECEPTIONIST = 'receptionist', 'Receptionist'
         HOMECARE_ADMIN = 'homecare_admin', 'Homecare Admin'
         CAREGIVER = 'caregiver', 'Caregiver'
+        INVENTORY_ADMIN = 'inventory_admin', 'Inventory Admin'
+        STOREKEEPER = 'storekeeper', 'Storekeeper'
         PATIENT = 'patient', 'Patient'
 
     email = models.EmailField(unique=True)

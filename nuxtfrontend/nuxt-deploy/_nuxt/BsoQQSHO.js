@@ -1,0 +1,1 @@
+import{x as t,c9 as e,ao as s,ax as n}from"./D2-fh8bo.js";function i(){const o=s(!1);return t(()=>{window.requestAnimationFrame(()=>{o.value=!0})}),{ssrBootStyles:n(()=>o.value?void 0:{transition:"none !important"}),isBooted:e(o)}}export{i as u};

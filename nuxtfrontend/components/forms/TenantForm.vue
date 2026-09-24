@@ -426,10 +426,11 @@ const steps = ['Facility Type', 'Details & Admin']
 
 const typeOptions = [
   { title: 'Hospital', value: 'hospital', icon: 'mdi-hospital-building', color: '#0EA5E9', desc: 'Full hospital management' },
-  { title: 'Pharmacy', value: 'pharmacy', icon: 'mdi-pharmacy', color: '#10B981', desc: 'POS, inventory & dispensing' },
+  { title: 'Pharmacy', value: 'pharmacy', icon: 'mdi-medical-bag', color: '#10B981', desc: 'POS, inventory & dispensing' },
   { title: 'Lab', value: 'lab', icon: 'mdi-flask', color: '#F59E0B', desc: 'Lab orders & results' },
   { title: 'Radiology', value: 'radiology_center', icon: 'mdi-radiology', color: '#8B5CF6', desc: 'Imaging & reports' },
-  { title: 'Homecare', value: 'homecare', icon: 'mdi-home-heart', color: '#EC4899', desc: 'In-home care services' }
+  { title: 'Homecare', value: 'homecare', icon: 'mdi-home-heart', color: '#EC4899', desc: 'In-home care services' },
+  { title: 'Inventory / Warehouse', value: 'inventory', icon: 'mdi-warehouse', color: '#14B8A6', desc: 'Stock control & distribution' }
 ]
 
 const selectedType = computed(() => typeOptions.find(t => t.value === form.type))

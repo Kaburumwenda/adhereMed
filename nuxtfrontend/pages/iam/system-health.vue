@@ -54,7 +54,7 @@
               <div class="text-h5 font-weight-bold mt-1" :class="'text-' + (dbOk ? 'success' : 'error')">
                 {{ dbStatus }}
               </div>
-              <div class="text-caption text-medium-emphasis mt-1">{{ dbLatency }}ms · {{ dbEngine }}</div>
+              <div class="text-caption text-medium-emphasis mt-1">{{ dbLatency }}ms</div>
             </div>
             <v-avatar size="40" :color="dbOk ? 'success' : 'error'" variant="tonal">
               <v-icon>mdi-database-check</v-icon>
@@ -262,10 +262,6 @@ const tenantSchema = computed(() => data.value?.tenant?.schema || '')
 const dbOk = computed(() => data.value?.database?.status === 'healthy')
 const dbStatus = computed(() => dbOk.value ? 'Healthy' : 'Error')
 const dbLatency = computed(() => data.value?.database?.latency_ms ?? 0)
-const dbEngine = computed(() => {
-  const e = data.value?.database?.engine || ''
-  return e.replace('_backend', '').toUpperCase()
-})
 const tableCount = computed(() => data.value?.database?.tables ?? 0)
 
 // Users

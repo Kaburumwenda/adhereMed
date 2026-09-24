@@ -7,15 +7,15 @@
           <v-icon color="blue-darken-2" size="28">mdi-store</v-icon>
         </v-avatar>
         <div>
-          <h1 class="text-h5 font-weight-bold mb-1">Branches</h1>
-          <div class="text-body-2 text-medium-emphasis">Manage your pharmacy locations &amp; contact details</div>
+          <h1 class="text-h5 font-weight-bold mb-1">{{ isInventoryTenant ? 'Warehouses' : 'Branches' }}</h1>
+          <div class="text-body-2 text-medium-emphasis">{{ isInventoryTenant ? 'Manage your warehouses & contact details' : 'Manage your pharmacy locations & contact details' }}</div>
         </div>
       </div>
       <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
         <v-btn rounded="lg" variant="flat" color="primary" prepend-icon="mdi-refresh" class="text-none"
                  :loading="loading" @click="loadAll">Refresh</v-btn>
       <v-btn rounded="lg" color="primary" variant="flat" class="text-none"
-                 prepend-icon="mdi-plus" @click="openCreate">New branch</v-btn>
+                 prepend-icon="mdi-plus" @click="openCreate">{{ isInventoryTenant ? 'New Warehouse' : 'New branch' }}</v-btn>
       </div>
     </div>
 
@@ -121,7 +121,7 @@
       <v-card rounded="xl">
         <v-card-title class="d-flex align-center">
           <v-icon color="primary" class="mr-2">mdi-store</v-icon>
-          {{ form.id ? 'Edit branch' : 'New branch' }}
+          {{ form.id ? (isInventoryTenant ? 'Edit warehouse' : 'Edit branch') : (isInventoryTenant ? 'New warehouse' : 'New branch') }}
           <v-spacer />
           <v-btn icon="mdi-close" variant="text" size="small" @click="formDialog = false" />
         </v-card-title>
@@ -220,22 +220,32 @@
       </v-card>
     </v-dialog>
 
-    <v-dialog v-model="deleteDialog" max-width="420">
+    <v-dialog v-model="deleteDialog" max-width="460">
       <v-card v-if="deleteTarget" rounded="xl">
-        <v-card-title>Delete branch?</v-card-title>
+        <v-card-title>Delete {{ isInventoryTenant ? 'warehouse' : 'branch' }}?</v-card-title>
         <v-card-text>
           This will remove <strong>{{ deleteTarget.name }}</strong>.
+          <v-alert v-if="deleteBlocked" type="warning" variant="tonal" density="compact" rounded="lg" class="mt-3">
+            {{ deleteBlocked }}
+          </v-alert>
         </v-card-text>
         <v-card-actions>
           <v-spacer />
+          <v-btn v-if="deleteBlocked && deleteTarget.is_active" color="warning" variant="flat"
+                 :loading="saving" @click="deactivate(deleteTarget)">Deactivate instead</v-btn>
           <v-btn variant="text" @click="deleteDialog = false">Cancel</v-btn>
-          <v-btn color="error" variant="flat" :loading="saving" @click="doDelete">Delete</v-btn>
+          <v-btn color="error" variant="flat" :disabled="!!deleteBlocked" :loading="saving" @click="doDelete">Delete</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
 
-    <v-snackbar v-model="snack.show" :color="snack.color" location="top right" timeout="3000">
+    <v-snackbar v-model="snack.show" :color="snack.color" location="top right" :timeout="snack.action ? 8000 : 3000">
       {{ snack.message }}
+      <template v-if="snack.action" #actions>
+        <v-btn variant="text" class="text-none" @click="snack.action.run(); snack.show = false">
+          {{ snack.action.label }}
+        </v-btn>
+      </template>
     </v-snackbar>
 
     <MapPicker v-model="mapPickerOpen" :initial="mapPickerInitial" @picked="onMapPicked" />
@@ -246,10 +256,15 @@
 import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
 import EmptyState from '~/components/EmptyState.vue'
 import { useI18n } from 'vue-i18n'
+import { useAuthStore } from '~/stores/auth'
 import pinIcon from '~/assets/images/pin.png'
 
 const { t } = useI18n()
 const { $api } = useNuxtApp()
+const auth = useAuthStore()
+const isInventoryTenant = computed(() => auth.tenantType === 'inventory')
+// Inventory tenants use their own /ims API namespace.
+const branchesApi = computed(() => isInventoryTenant.value ? '/ims/branches/' : '/pharmacy-profile/branches/')
 
 const loading = ref(false)
 const saving = ref(false)
@@ -258,7 +273,7 @@ const branches = ref([])
 async function loadAll() {
   loading.value = true
   try {
-    const { data } = await $api.get('/pharmacy-profile/branches/', { params: { page_size: 200 } })
+    const { data } = await $api.get(branchesApi.value, { params: { page_size: 200 } })
     branches.value = data?.results || data || []
   } catch { notify('Failed to load branches', 'error') }
   finally { loading.value = false }
@@ -398,8 +413,8 @@ async function save() {
   saving.value = true
   try {
     const payload = { ...form }; delete payload.id
-    if (form.id) await $api.put(`/pharmacy-profile/branches/${form.id}/`, payload)
-    else await $api.post('/pharmacy-profile/branches/', payload)
+    if (form.id) await $api.put(`${branchesApi.value}${form.id}/`, payload)
+    else await $api.post(branchesApi.value, payload)
     notify(form.id ? 'Branch updated' : 'Branch created')
     formDialog.value = false
     await loadAll()
@@ -409,16 +424,56 @@ async function save() {
 
 const deleteDialog = ref(false)
 const deleteTarget = ref(null)
+
+// Pre-check: warehouses holding stock or referenced by stock transfers
+// cannot be deleted (protected). Suggest deactivating instead.
+const deleteBlocked = computed(() => {
+  const t = deleteTarget.value
+  if (!t) return ''
+  const kind = isInventoryTenant.value ? 'warehouse' : 'branch'
+  const stocks = Number(t.stock_count || 0)
+  const transfers = Number(t.transfer_count || 0)
+  if (stocks > 0) {
+    return `This ${kind} still holds ${stocks} stock item(s). Move them to another ${kind} first, or deactivate it.`
+  }
+  if (transfers > 0) {
+    return `This ${kind} is referenced by ${transfers} stock transfer(s) that must be preserved. Deactivate it instead of deleting.`
+  }
+  return ''
+})
+
 function confirmDelete(b) { deleteTarget.value = b; deleteDialog.value = true }
+
+async function deactivate(b) {
+  saving.value = true
+  try {
+    await $api.patch(`${branchesApi.value}${b.id}/`, { is_active: false })
+    notify(`${b.name} deactivated — its history is preserved.`, 'success')
+    deleteDialog.value = false
+    await loadAll()
+  } catch (e) { notify(extractError(e) || 'Failed to deactivate', 'error') }
+  finally { saving.value = false }
+}
+
 async function doDelete() {
   saving.value = true
   try {
-    await $api.delete(`/pharmacy-profile/branches/${deleteTarget.value.id}/`)
-    notify('Deleted')
+    await $api.delete(`${branchesApi.value}${deleteTarget.value.id}/`)
+    notify('Deleted', 'success')
     deleteDialog.value = false
     await loadAll()
-  } catch (e) { notify(extractError(e) || 'Delete failed', 'error') }
-  finally { saving.value = false }
+  } catch (e) {
+    const msg = extractError(e) || 'Delete failed'
+    notify(msg, 'error')
+    // Offer the deactivate escape hatch when deletion is blocked.
+    if (deleteTarget.value?.is_active) {
+      const target = deleteTarget.value
+      Object.assign(snack, {
+        show: true, color: 'error', message: msg,
+        action: { label: 'Deactivate instead', run: () => deactivate(target) },
+      })
+    }
+  } finally { saving.value = false }
 }
 
 function extractError(e) {
@@ -555,8 +610,8 @@ watch(geoBranches, async () => {
   }
 })
 
-const snack = reactive({ show: false, color: 'success', message: '' })
-function notify(message, color = 'success') { Object.assign(snack, { show: true, color, message }) }
+const snack = reactive({ show: false, color: 'success', message: '', action: null })
+function notify(message, color = 'success') { Object.assign(snack, { show: true, color, message, action: null }) }
 </script>
 
 <style scoped>

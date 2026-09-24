@@ -57,6 +57,14 @@ class AuditEvent(models.Model):
     method = models.CharField(max_length=10, blank=True, db_index=True)
     path = models.CharField(max_length=512, blank=True, db_index=True)
     ip = models.GenericIPAddressField(null=True, blank=True)
+    latitude = models.DecimalField(
+        max_digits=30, decimal_places=12, null=True, blank=True,
+        help_text='GPS latitude of the actor at the time of the event.',
+    )
+    longitude = models.DecimalField(
+        max_digits=30, decimal_places=12, null=True, blank=True,
+        help_text='GPS longitude of the actor at the time of the event.',
+    )
     user_agent = models.CharField(max_length=512, blank=True)
     status_code = models.PositiveSmallIntegerField(null=True, blank=True)
 

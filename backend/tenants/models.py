@@ -10,6 +10,7 @@ class Tenant(TenantMixin):
         HOMECARE = 'homecare', 'Homecare'
         RADIOLOGY = 'radiology_center', 'Radiology Center'
         CLINIC = 'clinic', 'Clinic'
+        INVENTORY = 'inventory', 'Inventory / Warehouse'
 
     name = models.CharField(max_length=255)
     type = models.CharField(max_length=20, choices=TenantType.choices)

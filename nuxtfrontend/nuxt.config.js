@@ -170,13 +170,16 @@ export default defineNuxtConfig({
         ['pharmacy-orders-id',                '/pharmacy/orders/:id()',                   'pharmacy-orders/[id].vue'],
         // Inventory
         ['pharmacy-inventory',                '/pharmacy/inventory',                      'inventory/index.vue'],
+        ['pharmacy-inventory-overview',       '/pharmacy/inventory/overview',             'inventory/overview.vue'],
         ['pharmacy-inventory-bulk',           '/pharmacy/inventory/bulk',                 'inventory/bulk.vue'],
+        ['pharmacy-inventory-excel',          '/pharmacy/inventory/excel',                'inventory/excel.vue'],
         ['pharmacy-inventory-stock-analysis', '/pharmacy/inventory/stock-analysis',       'inventory/stock-analysis.vue'],
         ['pharmacy-inventory-stock-take',     '/pharmacy/inventory/stock-take',           'inventory/stock-take.vue'],
         ['pharmacy-inventory-transfers',      '/pharmacy/inventory/transfers',            'inventory/transfers.vue'],
         ['pharmacy-inventory-controlled',     '/pharmacy/inventory/controlled-register',  'inventory/controlled-register.vue'],
         ['pharmacy-inventory-stock-movements', '/pharmacy/inventory/stock-movements',     'inventory/stock-movements.vue'],
         ['pharmacy-inventory-stocks-new',     '/pharmacy/inventory/stocks/new',           'inventory/stocks/new.vue'],
+        ['pharmacy-inventory-stocks-id',      '/pharmacy/inventory/stocks/:id()',         'inventory/stocks/[id]/index.vue'],
         ['pharmacy-inventory-stocks-id-edit', '/pharmacy/inventory/stocks/:id()/edit',    'inventory/stocks/[id]/edit.vue'],
         ['pharmacy-inventory-cats-new',       '/pharmacy/inventory/categories/new',       'inventory/categories/new.vue'],
         ['pharmacy-inventory-cats-id-edit',   '/pharmacy/inventory/categories/:id()/edit','inventory/categories/[id]/edit.vue'],
@@ -205,6 +208,7 @@ export default defineNuxtConfig({
         ['pharmacy-accounts',                 '/pharmacy/accounts',                       'accounts.vue'],
         // Expenses
         ['pharmacy-expenses',                 '/pharmacy/expenses',                       'expenses/index.vue'],
+        ['pharmacy-expenses-excel',          '/pharmacy/expenses/excel',                'expenses/excel.vue'],
         ['pharmacy-expenses-new',             '/pharmacy/expenses/new',                   'expenses/new.vue'],
         ['pharmacy-expenses-categories',      '/pharmacy/expenses/categories',            'expenses/categories.vue'],
         ['pharmacy-expenses-id',              '/pharmacy/expenses/:id()',                 'expenses/[id]/index.vue'],
@@ -215,7 +219,12 @@ export default defineNuxtConfig({
         ['pharmacy-purchase-orders',          '/pharmacy/purchase-orders',                'purchase-orders/index.vue'],
         ['pharmacy-purchase-orders-new',      '/pharmacy/purchase-orders/new',            'purchase-orders/new.vue'],
         ['pharmacy-purchase-orders-id',       '/pharmacy/purchase-orders/:id()',          'purchase-orders/[id]/index.vue'],
-        ['pharmacy-purchase-orders-id-edit',  '/pharmacy/purchase-orders/:id()/edit',     'purchase-orders/[id]/edit.vue'],
+        ['pharmacy-purchase-orders-id-edit',           '/pharmacy/purchase-orders/:id()/edit',  'purchase-orders/[id]/edit.vue'],
+        // Sales Orders
+        ['pharmacy-sales-orders',                      '/pharmacy/sales-orders',                   'sales-orders/index.vue'],
+        ['pharmacy-sales-orders-new',                  '/pharmacy/sales-orders/new',               'sales-orders/new.vue'],
+        ['pharmacy-sales-orders-id',                   '/pharmacy/sales-orders/:id()',             'sales-orders/[id]/index.vue'],
+        ['pharmacy-sales-orders-id-edit',              '/pharmacy/sales-orders/:id()/edit',        'sales-orders/[id]/edit.vue'],
         // Dispensing
         ['pharmacy-dispensing',               '/pharmacy/dispensing',                     'dispensing/index.vue'],
         ['pharmacy-dispensing-new',           '/pharmacy/dispensing/new',                 'dispensing/new.vue'],
@@ -243,6 +252,8 @@ export default defineNuxtConfig({
         // Staff Performance
         ['pharmacy-staff-performance',        '/pharmacy/staff-performance',              'staff-performance.vue'],
         ['pharmacy-staff-performance-index',  '/pharmacy/staff-performance/index',        'staff-performance/index.vue'],
+        // Roles & Access (RBAC)
+        ['pharmacy-rbac',                    '/pharmacy/rbac',                           'administration/rbac.vue'],
         // System Health (under IAM & Security)
         ['pharmacy-system-health',           '/pharmacy/system-health',                 'iam/system-health.vue'],
         // Suppliers
@@ -257,6 +268,106 @@ export default defineNuxtConfig({
         ['pharmacy-branches',                 '/pharmacy/branches',                       'branches/index.vue'],
         ['pharmacy-branches-new',             '/pharmacy/branches/new',                   'branches/new.vue'],
         ['pharmacy-branches-id-edit',         '/pharmacy/branches/:id()/edit',            'branches/[id]/edit.vue'],
+
+        // ── Inventory / Warehouse tenant aliases (independent tenant) ────────
+        // Inventory tenants get their own /ims URL namespace, reusing the same
+        // shared inventory + procurement + finance page components that the
+        // pharmacy tenant exposes under /pharmacy, plus their own dashboard
+        // (pages/ims/index.vue is file-based).
+        // Inventory
+        ['ims-inventory',                     '/ims/inventory',                           'inventory/index.vue'],
+        ['ims-inventory-overview',            '/ims/inventory/overview',                  'inventory/overview.vue'],
+        ['ims-inventory-bulk',                '/ims/inventory/bulk',                      'inventory/bulk.vue'],
+        ['ims-inventory-excel',               '/ims/inventory/excel',                     'inventory/excel.vue'],
+        ['ims-inventory-stock-analysis',       '/ims/inventory/stock-analysis',            'inventory/stock-analysis.vue'],
+        ['ims-inventory-stock-take',           '/ims/inventory/stock-take',                'inventory/stock-take.vue'],
+        ['ims-inventory-transfers',            '/ims/inventory/transfers',                 'inventory/transfers.vue'],
+        ['ims-inventory-controlled',           '/ims/inventory/controlled-register',       'inventory/controlled-register.vue'],
+        ['ims-inventory-stock-movements',     '/ims/inventory/stock-movements',          'inventory/stock-movements.vue'],
+        ['ims-inventory-stocks-new',           '/ims/inventory/stocks/new',                'inventory/stocks/new.vue'],
+        ['ims-inventory-stocks-id',            '/ims/inventory/stocks/:id()',             'inventory/stocks/[id]/index.vue'],
+        ['ims-inventory-stocks-id-edit',       '/ims/inventory/stocks/:id()/edit',         'inventory/stocks/[id]/edit.vue'],
+        ['ims-inventory-cats-new',             '/ims/inventory/categories/new',            'inventory/categories/new.vue'],
+        ['ims-inventory-cats-id-edit',         '/ims/inventory/categories/:id()/edit',     'inventory/categories/[id]/edit.vue'],
+        ['ims-inventory-units-new',            '/ims/inventory/units/new',                'inventory/units/new.vue'],
+        ['ims-inventory-units-id-edit',        '/ims/inventory/units/:id()/edit',         'inventory/units/[id]/edit.vue'],
+        ['ims-inventory-adj-new',              '/ims/inventory/adjustments/new',          'inventory/adjustments/new.vue'],
+        ['ims-inventory-adj-id-edit',          '/ims/inventory/adjustments/:id()/edit',   'inventory/adjustments/[id]/edit.vue'],
+        // Catalog
+        ['ims-categories',                    '/ims/categories',                          'categories/index.vue'],
+        ['ims-units',                         '/ims/units',                               'units/index.vue'],
+        ['ims-medications',                   '/ims/medications',                         'medications/index.vue'],
+        ['ims-adjustments',                   '/ims/adjustments',                         'adjustments/index.vue'],
+        // Stock alerts
+        ['ims-alerts',                        '/ims/alerts',                              'alerts/index.vue'],
+        // Sales — POS
+        ['ims-pos',                           '/ims/pos',                                 'pos/index.vue'],
+        ['ims-pos-history',                   '/ims/pos/history',                         'pos/history.vue'],
+        ['ims-pos-parked',                    '/ims/pos/parked',                          'pos/parked.vue'],
+        ['ims-pos-shifts',                    '/ims/pos/shifts',                           'pos/shifts.vue'],
+        ['ims-pos-supermarket',               '/ims/pos/supermarket',                      'pos/supermarket.vue'],
+        // Sales — customers
+        ['ims-customers',                     '/ims/customers',                            'customers/index.vue'],
+        ['ims-customers-new',                 '/ims/customers/new',                        'customers/new.vue'],
+        ['ims-customers-id-edit',            '/ims/customers/:id()/edit',                'customers/[id]/edit.vue'],
+        // Sales — credit management
+        ['ims-credit',                        '/ims/credit',                               'pharmacy/credit/index.vue'],
+        // Sales — sales orders
+        ['ims-sales-orders',                  '/ims/sales-orders',                         'sales-orders/index.vue'],
+        ['ims-sales-orders-new',              '/ims/sales-orders/new',                     'sales-orders/new.vue'],
+        ['ims-sales-orders-id',               '/ims/sales-orders/:id()',                   'sales-orders/[id]/index.vue'],
+        ['ims-sales-orders-id-edit',         '/ims/sales-orders/:id()/edit',              'sales-orders/[id]/edit.vue'],
+        // Sales — deliveries
+        ['ims-deliveries',                    '/ims/deliveries',                           'deliveries/index.vue'],
+        // Purchase Orders
+        ['ims-purchase-orders',               '/ims/purchase-orders',                     'purchase-orders/index.vue'],
+        ['ims-purchase-orders-new',           '/ims/purchase-orders/new',                 'purchase-orders/new.vue'],
+        ['ims-purchase-orders-id',             '/ims/purchase-orders/:id()',               'purchase-orders/[id]/index.vue'],
+        ['ims-purchase-orders-id-edit',        '/ims/purchase-orders/:id()/edit',          'purchase-orders/[id]/edit.vue'],
+        // Suppliers
+        ['ims-suppliers',                     '/ims/suppliers',                           'suppliers/index.vue'],
+        ['ims-suppliers-new',                 '/ims/suppliers/new',                       'suppliers/new.vue'],
+        ['ims-suppliers-id-edit',             '/ims/suppliers/:id()/edit',                'suppliers/[id]/edit.vue'],
+        // Warehouses (branches)
+        ['ims-branches',                      '/ims/branches',                            'branches/index.vue'],
+        ['ims-branches-new',                  '/ims/branches/new',                        'branches/new.vue'],
+        ['ims-branches-id-edit',              '/ims/branches/:id()/edit',                 'branches/[id]/edit.vue'],
+        // Accounts
+        ['ims-accounts',                      '/ims/accounts',                             'accounts.vue'],
+        // Invoices
+        ['ims-invoices',                      '/ims/invoices',                             'invoices/index.vue'],
+        ['ims-invoices-new',                  '/ims/invoices/new',                         'invoices/new.vue'],
+        ['ims-invoices-id',                   '/ims/invoices/:id()',                       'invoices/[id]/index.vue'],
+        ['ims-invoices-id-edit',              '/ims/invoices/:id()/edit',                  'invoices/[id]/edit.vue'],
+        // Expenses
+        ['ims-expenses',                      '/ims/expenses',                             'expenses/index.vue'],
+        ['ims-expenses-excel',               '/ims/expenses/excel',                       'expenses/excel.vue'],
+        ['ims-expenses-new',                 '/ims/expenses/new',                         'expenses/new.vue'],
+        ['ims-expenses-categories',          '/ims/expenses/categories',                  'expenses/categories.vue'],
+        ['ims-expenses-id',                  '/ims/expenses/:id()',                       'expenses/[id]/index.vue'],
+        ['ims-expenses-id-edit',             '/ims/expenses/:id()/edit',                  'expenses/[id]/edit.vue'],
+        // API Billing
+        ['ims-billing-usage',                '/ims/billing/usage',                        'billing/usage.vue'],
+        // Analytics
+        ['ims-analytics',                     '/ims/analytics',                            'analytics/index.vue'],
+        ['ims-analytics-categories',          '/ims/analytics/categories',                 'analytics/categories.vue'],
+        ['ims-analytics-products',            '/ims/analytics/products',                   'analytics/products.vue'],
+        // Reports
+        ['ims-reports',                       '/ims/reports',                              'reports/index.vue'],
+        ['ims-reports-analytics',             '/ims/reports/analytics',                    'reports/analytics.vue'],
+        ['ims-reports-key',                   '/ims/reports/:key()',                       'reports/[key].vue'],
+        // Organization (tenant profile)
+        ['ims-organization-profile',          '/ims/organization/profile',               'organization/profile.vue'],
+        // Staff
+        ['ims-staff',                         '/ims/staff',                                'staff/index.vue'],
+        // Roles & Access (RBAC)
+        ['ims-rbac',                          '/ims/rbac',                                 'administration/rbac.vue'],
+        // Audit logs + system health
+        ['ims-audit-logs',                    '/ims/audit-logs',                           'pharmacy/audit-logs/index.vue'],
+        ['ims-system-health',                 '/ims/system-health',                        'iam/system-health.vue'],
+        // Settings + setup
+        ['ims-settings',                      '/ims/settings',                             'settings/index.vue'],
+        ['ims-setup',                         '/ims/setup',                                'setup/index.vue'],
 
         // ── Hospital tenant aliases ──────────────────────────────────────────
         // Hospital tenants get their own /hos URL namespace, reusing the same

@@ -47,6 +47,8 @@ class Branch(models.Model):
 
 class Delivery(models.Model):
     class Status(models.TextChoices):
+        TO_BE_PACKED = 'to_be_packed', 'To Be Packed'
+        TO_BE_SHIPPED = 'to_be_shipped', 'To Be Shipped'
         PENDING = 'pending', 'Pending'
         ASSIGNED = 'assigned', 'Assigned'
         IN_TRANSIT = 'in_transit', 'In Transit'
@@ -56,6 +58,11 @@ class Delivery(models.Model):
 
     transaction = models.OneToOneField(
         'pos.POSTransaction', on_delete=models.CASCADE, related_name='delivery',
+        null=True, blank=True,
+    )
+    sales_order = models.OneToOneField(
+        'sales_orders.SalesOrder', on_delete=models.CASCADE, related_name='delivery',
+        null=True, blank=True,
     )
     delivery_address = models.TextField()
     latitude = models.DecimalField(max_digits=30, decimal_places=12, null=True, blank=True)

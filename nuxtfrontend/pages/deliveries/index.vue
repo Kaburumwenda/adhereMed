@@ -8,11 +8,11 @@
         </v-avatar>
         <div>
           <h1 class="text-h5 font-weight-bold mb-1">{{ $t('deliveries.title') }}</h1>
-          <div class="text-body-2 text-medium-emphasis">Manage POS order deliveries, drivers and live status updates</div>
+          <div class="text-body-2 text-medium-emphasis">Manage POS & sales order deliveries, drivers and live status</div>
         </div>
       </div>
       <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
-        <v-btn
+      <v-btn
             color="primary" variant="flat" class="text-none"
             prepend-icon="mdi-plus" @click="openCreate"
           >
@@ -22,12 +22,20 @@
             color="primary" variant="tonal" prepend-icon="mdi-refresh"
             :loading="loading" @click="load"
           >{{ $t('common.refresh') }}</v-btn>
+        <v-btn
+          variant="tonal" color="teal" class="text-none" prepend-icon="mdi-file-chart-outline"
+          :loading="exporting === 'report'" @click="downloadReport"
+        >Report (PDF)</v-btn>
+        <v-btn
+          variant="tonal" color="success" class="text-none" prepend-icon="mdi-microsoft-excel"
+          :loading="exporting === 'excel'" @click="exportExcel"
+        >Export Excel</v-btn>
       </div>
     </div>
 
     <!-- KPIs -->
     <v-row dense class="mb-4">
-      <v-col v-for="k in kpis" :key="k.label" cols="6" md="3">
+      <v-col v-for="k in kpis" :key="k.label" cols="6" md="2">
         <v-card rounded="lg" class="pa-4 h-100 kpi-card">
           <div class="d-flex align-start justify-space-between">
             <div>
@@ -62,6 +70,28 @@
             prepend-inner-icon="mdi-filter-variant"
           />
         </v-col>
+        <v-col cols="6" md="2">
+          <v-select
+            v-model="datePreset" :items="dateOptions" label="Date"
+            item-title="label" item-value="value"
+            density="comfortable" hide-details variant="outlined"
+            prepend-inner-icon="mdi-calendar-range"
+          />
+        </v-col>
+        <template v-if="datePreset === 'custom'">
+          <v-col cols="6" md="2">
+            <v-text-field
+              v-model="dateFrom" type="date" label="From"
+              density="comfortable" hide-details variant="outlined"
+            />
+          </v-col>
+          <v-col cols="6" md="2">
+            <v-text-field
+              v-model="dateTo" type="date" label="To"
+              density="comfortable" hide-details variant="outlined"
+            />
+          </v-col>
+        </template>
         <v-col cols="6" md="2">
           <v-select
             v-model="viewMode" :items="viewItems" label="View"
@@ -123,14 +153,39 @@
                 </div>
                 <div class="text-caption text-medium-emphasis text-truncate">
                   <v-icon size="12">mdi-receipt</v-icon>
-                  {{ d.transaction_number || `#${d.transaction}` }}
+                  {{ d.so_number || d.transaction_number || `#${d.sales_order || d.transaction}` }}
                 </div>
               </div>
-              <v-chip
-                :color="statusMeta(d.status).color" size="x-small" variant="tonal"
-              >
-                {{ statusMeta(d.status).title }}
-              </v-chip>
+              <v-menu :close-on-content-click="true" location="bottom end">
+                <template #activator="{ props: menuProps }">
+                  <v-chip
+                    v-bind="menuProps"
+                    :color="statusMeta(d.status).color" size="x-small" variant="tonal"
+                    append-icon="mdi-menu-down"
+                    :loading="statusUpdatingId === d.id"
+                    title="Click to change status"
+                  >
+                    {{ statusMeta(d.status).title }}
+                  </v-chip>
+                </template>
+                <v-list density="compact" class="status-dropdown">
+                  <v-list-subheader class="text-caption">Change status</v-list-subheader>
+                  <v-list-item
+                    v-for="s in STATUSES" :key="s.value"
+                    :active="s.value === d.status"
+                    @click="updateStatus(d, s.value)"
+                  >
+                    <template #prepend>
+                      <v-icon :color="s.color" size="18">{{ s.icon }}</v-icon>
+                    </template>
+                    <v-list-item-title>{{ s.title }}</v-list-item-title>
+                    <v-list-item-subtitle class="text-caption">{{ s.desc }}</v-list-item-subtitle>
+                    <template #append>
+                      <v-icon v-if="s.value === d.status" size="16">mdi-check</v-icon>
+                    </template>
+                  </v-list-item>
+                </v-list>
+              </v-menu>
             </div>
             <v-divider class="mb-2" />
             <div class="text-caption text-medium-emphasis mb-1">
@@ -184,27 +239,32 @@
                     :title="t.label"
                     @click="updateStatus(d, t.value)"
                   />
-                  <v-divider />
-                  <v-list-item
-                    prepend-icon="mdi-content-copy"
-                    title="Copy address"
-                    @click="copyAddress(d)"
-                  />
-                  <v-list-item
-                    prepend-icon="mdi-delete-outline"
-                    title="Delete" base-color="error"
-                    @click="confirmDelete(d)"
-                  />
-                </v-list>
-              </v-menu>
-            </div>
-          </v-card>
-        </v-col>
+                   <v-divider />
+                   <v-list-item
+                     prepend-icon="mdi-note-text-outline"
+                     title="Delivery note (PDF)"
+                     @click="downloadNote(d)"
+                   />
+                   <v-list-item
+                     prepend-icon="mdi-content-copy"
+                     title="Copy address"
+                     @click="copyAddress(d)"
+                   />
+                   <v-list-item
+                     prepend-icon="mdi-delete-outline"
+                     title="Delete" base-color="error"
+                     @click="confirmDelete(d)"
+                   />
+                 </v-list>
+               </v-menu>
+             </div>
+           </v-card>
+         </v-col>
       </v-row>
     </div>
 
     <!-- Table view -->
-    <v-card v-else flat rounded="xl" border>
+    <v-card v-else-if="viewMode === 'table'" flat rounded="xl" border>
       <v-data-table
         :headers="headers"
         :items="filteredItems"
@@ -214,10 +274,18 @@
         density="comfortable"
         hover
       >
+        <template #item.rowIndex="{ item }">
+          <span class="text-caption text-medium-emphasis">{{ filteredItems.findIndex(p => p.id === item.id) + 1 }}</span>
+        </template>
         <template #item.transaction="{ item }">
           <div>
-            <div class="font-weight-medium">
-              {{ item.transaction_number || `#${item.transaction}` }}
+            <div class="d-flex align-center ga-1">
+              <span class="font-weight-medium">
+                {{ item.so_number || item.transaction_number || `#${item.sales_order || item.transaction}` }}
+              </span>
+              <v-chip :color="item.sales_order ? 'purple' : 'primary'" size="x-small" variant="tonal" class="text-uppercase">
+                {{ item.sales_order ? 'SO' : 'POS' }}
+              </v-chip>
             </div>
             <div class="text-caption text-medium-emphasis">
               {{ relativeTime(item.created_at) }}
@@ -275,12 +343,38 @@
           <span v-else class="text-medium-emphasis">—</span>
         </template>
         <template #item.status="{ item }">
-          <v-chip
-            :color="statusMeta(item.status).color" size="small" variant="tonal"
-          >
-            <v-icon start size="13">{{ statusMeta(item.status).icon }}</v-icon>
-            {{ statusMeta(item.status).title }}
-          </v-chip>
+          <v-menu :close-on-content-click="true" location="bottom center">
+            <template #activator="{ props: menuProps }">
+              <v-chip
+                v-bind="menuProps"
+                size="small" variant="tonal"
+                :color="statusMeta(item.status).color"
+                append-icon="mdi-menu-down"
+                :loading="statusUpdatingId === item.id"
+                title="Click to change status"
+              >
+                <v-icon start size="13">{{ statusMeta(item.status).icon }}</v-icon>
+                {{ statusMeta(item.status).title }}
+              </v-chip>
+            </template>
+            <v-list density="compact" class="status-dropdown">
+              <v-list-subheader class="text-caption">Change status</v-list-subheader>
+              <v-list-item
+                v-for="s in STATUSES" :key="s.value"
+                :active="s.value === item.status"
+                @click="updateStatus(item, s.value)"
+              >
+                <template #prepend>
+                  <v-icon :color="s.color" size="18">{{ s.icon }}</v-icon>
+                </template>
+                <v-list-item-title>{{ s.title }}</v-list-item-title>
+                <v-list-item-subtitle class="text-caption">{{ s.desc }}</v-list-item-subtitle>
+                <template #append>
+                  <v-icon v-if="s.value === item.status" size="16">mdi-check</v-icon>
+                </template>
+              </v-list-item>
+            </v-list>
+          </v-menu>
         </template>
         <template #item.delivery_fee="{ item }">
           <span class="font-weight-medium">KSh {{ formatNumber(item.delivery_fee) }}</span>
@@ -311,6 +405,10 @@
               />
               <v-divider />
               <v-list-item
+                prepend-icon="mdi-note-text-outline" title="Delivery note (PDF)"
+                @click="downloadNote(item)"
+              />
+              <v-list-item
                 prepend-icon="mdi-content-copy" title="Copy address"
                 @click="copyAddress(item)"
               />
@@ -329,6 +427,69 @@
         </template>
       </v-data-table>
     </v-card>
+
+    <!-- Map view (live tracking) -->
+    <div v-else-if="viewMode === 'map'">
+      <v-card flat rounded="xl" border class="pa-3">
+        <div class="d-flex align-center flex-wrap ga-2 mb-3 px-1">
+          <v-icon color="indigo">mdi-map-clock-outline</v-icon>
+          <div class="text-subtitle-2 font-weight-bold">
+            Live map — {{ mapMarkers.length }} pinned delivery{{ mapMarkers.length === 1 ? '' : 'ies' }}
+          </div>
+          <v-spacer />
+          <v-chip
+            v-for="s in mapLegend" :key="s.value"
+            size="x-small" variant="tonal" :color="s.color"
+            class="text-capitalize"
+          >
+            <v-icon start size="12">{{ s.icon }}</v-icon>
+            {{ s.title }} ({{ countFor(s.value) }})
+          </v-chip>
+        </div>
+        <v-row dense v-if="mapMarkers.length">
+          <v-col cols="12" md="8">
+            <LocationMap
+              :height="470" :zoom="12" :center="mapCenter"
+              :markers="mapMarkers"
+            />
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-card flat rounded="lg" border height="470" class="map-list">
+              <v-list lines="two" class="py-0">
+                <v-list-item
+                  v-for="d in pinnedDeliveries" :key="d.id"
+                  @click="openDetail(d)"
+                >
+                  <template #prepend>
+                    <v-avatar :color="avatarColor(d.recipient_name)" size="36">
+                      <span class="text-caption font-weight-bold text-white">{{ initials(d.recipient_name) }}</span>
+                    </v-avatar>
+                  </template>
+                  <template #append>
+                    <v-chip :color="statusMeta(d.status).color" size="x-small" variant="tonal">
+                      {{ statusMeta(d.status).title }}
+                    </v-chip>
+                  </template>
+                  <v-list-item-title class="font-weight-medium">
+                    {{ d.recipient_name }}
+                  </v-list-item-title>
+                  <v-list-item-subtitle>
+                    {{ d.so_number || d.transaction_number || `#${d.sales_order || d.transaction}` }}
+                    · {{ relativeTime(d.created_at) }}
+                  </v-list-item-subtitle>
+                </v-list-item>
+              </v-list>
+            </v-card>
+          </v-col>
+        </v-row>
+        <EmptyState
+          v-else
+          icon="mdi-map-off-outline"
+          title="No pinned deliveries"
+          message="Deliveries with a GPS location appear on the map. Pin a location when creating a delivery, or confirm a sales order with a map-picked address."
+        />
+      </v-card>
+    </div>
 
     <!-- Create dialog -->
     <v-dialog v-model="createDialog" max-width="640" persistent>
@@ -533,7 +694,7 @@
             </v-avatar>
             <div class="flex-grow-1">
               <div class="text-h6 font-weight-bold text-white">
-                {{ selected.transaction_number || `Transaction #${selected.transaction}` }}
+                {{ selected.so_number || selected.transaction_number || `Order #${selected.sales_order || selected.transaction}` }}
               </div>
               <div class="text-body-2 text-white" style="opacity: 0.9">
                 {{ statusMeta(selected.status).title }}
@@ -644,6 +805,16 @@
                   <v-icon size="16" color="indigo">mdi-map-marker</v-icon>
                   {{ selected.delivery_address }}
                 </div>
+                <LocationMap
+                  v-if="selected.latitude && selected.longitude"
+                  class="mt-3"
+                  :height="190" :zoom="15"
+                  :center="{ lat: Number(selected.latitude), lng: Number(selected.longitude) }"
+                  :markers="[{
+                    lat: Number(selected.latitude), lng: Number(selected.longitude),
+                    title: selected.recipient_name, color: '#0d9488',
+                  }]"
+                />
                 <div
                   v-if="selected.latitude && selected.longitude"
                   class="text-caption text-medium-emphasis mt-1 d-flex align-center"
@@ -693,6 +864,13 @@
         </v-card-text>
         <v-divider />
         <v-card-actions class="pa-3 flex-wrap" style="gap: 6px">
+          <v-btn
+            variant="outlined" prepend-icon="mdi-note-text-outline"
+            :loading="noteBusyId === selected.id"
+            @click="downloadNote(selected)"
+          >
+            Delivery note
+          </v-btn>
           <v-btn
             variant="outlined" prepend-icon="mdi-content-copy"
             @click="copyAddress(selected)"
@@ -794,6 +972,8 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import EmptyState from '~/components/EmptyState.vue'
 
 const { $api } = useNuxtApp()
+// Inventory tenants use their own /ims API namespace.
+const { deliveries: deliveriesApi } = useTenantEndpoints()
 const { getPredictions, getPlaceDetails, reverseGeocode } = useGoogleMaps()
 
 // ─── State ───────────────────────────────────────────────────────────
@@ -805,19 +985,37 @@ const saving = ref(false)
 const search = ref('')
 const filterStatus = ref('all')
 const viewMode = ref('grid')
+const datePreset = ref('all')
+const dateFrom = ref(null)
+const dateTo = ref(null)
+const exporting = ref('')
+
+const dateOptions = [
+  { label: 'All time', value: 'all' },
+  { label: 'Today', value: 'today' },
+  { label: 'This week', value: 'week' },
+  { label: 'This month', value: 'month' },
+  { label: 'Last 30 days', value: '30d' },
+  { label: 'Last 90 days', value: '90d' },
+  { label: 'This year', value: 'year' },
+  { label: 'Custom range', value: 'custom' },
+]
 
 const viewItems = [
   { title: 'Grid', value: 'grid' },
   { title: 'Table', value: 'table' },
+  { title: 'Map', value: 'map' },
 ]
 
 const STATUSES = [
-  { value: 'pending',    title: 'Pending',    color: 'orange',  icon: 'mdi-clock-outline' },
-  { value: 'assigned',   title: 'Assigned',   color: 'indigo',  icon: 'mdi-account-check' },
-  { value: 'in_transit', title: 'In Transit', color: 'blue',    icon: 'mdi-truck-fast' },
-  { value: 'delivered',  title: 'Delivered',  color: 'success', icon: 'mdi-check-circle' },
-  { value: 'failed',     title: 'Failed',     color: 'error',   icon: 'mdi-alert-circle' },
-  { value: 'cancelled',  title: 'Cancelled',  color: 'grey',    icon: 'mdi-cancel' },
+  { value: 'to_be_packed', title: 'To Be Packed', color: 'teal',    icon: 'mdi-package-variant-closed', desc: 'Awaiting packing' },
+  { value: 'to_be_shipped', title: 'To Be Shipped', color: 'cyan',  icon: 'mdi-package-up',            desc: 'Packed and ready for dispatch' },
+  { value: 'pending',    title: 'Pending',    color: 'orange',  icon: 'mdi-clock-outline',      desc: 'Ready for dispatch' },
+  { value: 'assigned',   title: 'Assigned',   color: 'indigo',  icon: 'mdi-account-check',      desc: 'Driver assigned to this delivery' },
+  { value: 'in_transit', title: 'In Transit', color: 'blue',    icon: 'mdi-truck-fast',         desc: 'Out for delivery with the driver' },
+  { value: 'delivered',  title: 'Delivered',  color: 'success', icon: 'mdi-check-circle',        desc: 'Completed — handed to the recipient' },
+  { value: 'failed',     title: 'Failed',     color: 'error',   icon: 'mdi-alert-circle',       desc: 'Delivery attempt was unsuccessful' },
+  { value: 'cancelled',  title: 'Cancelled',  color: 'grey',    icon: 'mdi-cancel',             desc: 'Delivery cancelled — no further action' },
 ]
 
 const statusItems = [
@@ -831,7 +1029,8 @@ const statusChips = [
 ]
 
 const headers = [
-  { title: 'Transaction',  key: 'transaction',        sortable: true },
+  { title: '#',           key: 'rowIndex',         sortable: false, width: 55 },
+  { title: 'Order',       key: 'transaction',        sortable: true },
   { title: 'Recipient',    key: 'recipient_name',     sortable: true },
   { title: 'Address',      key: 'delivery_address',   sortable: false },
   { title: 'Driver',       key: 'assigned_to_name',   sortable: false },
@@ -842,6 +1041,14 @@ const headers = [
 ]
 
 const TRANSITIONS = {
+  to_be_packed: [
+    { value: 'to_be_shipped', label: 'Mark Packed',     color: 'cyan',    icon: 'mdi-package-up' },
+    { value: 'cancelled',     label: 'Cancel',          color: 'grey',    icon: 'mdi-cancel' },
+  ],
+  to_be_shipped: [
+    { value: 'assigned',      label: 'Mark Assigned',   color: 'indigo',  icon: 'mdi-account-check' },
+    { value: 'cancelled',     label: 'Cancel',          color: 'grey',    icon: 'mdi-cancel' },
+  ],
   pending:    [{ value: 'assigned',   label: 'Mark Assigned',   color: 'indigo',  icon: 'mdi-account-check' }],
   assigned:   [
     { value: 'in_transit', label: 'Start Delivery', color: 'blue',  icon: 'mdi-truck-fast' },
@@ -857,7 +1064,7 @@ const TRANSITIONS = {
 }
 
 const flowSteps = STATUSES.filter(s =>
-  ['pending', 'assigned', 'in_transit', 'delivered'].includes(s.value),
+  ['to_be_packed', 'to_be_shipped', 'assigned', 'in_transit', 'delivered'].includes(s.value),
 )
 
 // ─── Dialogs ─────────────────────────────────────────────────────────
@@ -1028,29 +1235,101 @@ function notify(message, color = 'success') {
 }
 
 // ─── Computed ────────────────────────────────────────────────────────
+function isoDate(d) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function resolveDateRange() {
+  if (datePreset.value === 'all') return {}
+  if (datePreset.value === 'custom') {
+    const out = {}
+    if (dateFrom.value) out.from = dateFrom.value
+    if (dateTo.value) out.to = dateTo.value
+    return out
+  }
+  const now = new Date()
+  const to = isoDate(now)
+  let from = now
+  if (datePreset.value === 'today') from = now
+  else if (datePreset.value === 'week') {
+    from = new Date(now)
+    from.setDate(now.getDate() - ((now.getDay() + 6) % 7))
+  } else if (datePreset.value === 'month') from = new Date(now.getFullYear(), now.getMonth(), 1)
+  else if (datePreset.value === '30d') {
+    from = new Date(now)
+    from.setDate(now.getDate() - 30)
+  } else if (datePreset.value === '90d') {
+    from = new Date(now)
+    from.setDate(now.getDate() - 90)
+  } else if (datePreset.value === 'year') from = new Date(now.getFullYear(), 0, 1)
+  return { from: isoDate(from), to }
+}
+
 const filteredItems = computed(() => {
   const q = (search.value || '').toLowerCase().trim()
+  const { from, to } = resolveDateRange()
   return items.value.filter(d => {
     if (filterStatus.value !== 'all' && d.status !== filterStatus.value) return false
+    if (from && (d.created_at || '') < from) return false
+    if (to && (d.created_at || '') > `${to}T23:59:59`) return false
     if (!q) return true
-    return ['recipient_name', 'recipient_phone', 'delivery_address', 'transaction_number']
+    return ['recipient_name', 'recipient_phone', 'delivery_address', 'transaction_number', 'so_number']
       .some(k => (d[k] || '').toString().toLowerCase().includes(q))
   })
 })
 
 const kpis = computed(() => {
-  const pending = items.value.filter(d => d.status === 'pending').length
+  const toBePacked = items.value.filter(d => d.status === 'to_be_packed').length
+  const toBeShipped = items.value.filter(d => d.status === 'to_be_shipped').length
   const inTransit = items.value.filter(d => d.status === 'in_transit').length
   const delivered = items.value.filter(d => d.status === 'delivered').length
+  const failed = items.value.filter(d => d.status === 'failed').length
   const revenue = items.value
     .filter(d => d.status === 'delivered')
     .reduce((s, d) => s + Number(d.delivery_fee || 0), 0)
   return [
-    { label: 'Pending',          value: pending,                            icon: 'mdi-clock-outline', color: 'orange' },
-    { label: 'In Transit',       value: inTransit,                          icon: 'mdi-truck-fast',    color: 'blue' },
-    { label: 'Delivered',        value: delivered,                          icon: 'mdi-check-circle',  color: 'success' },
-    { label: 'Delivery Revenue', value: `KSh ${formatNumber(revenue)}`,     icon: 'mdi-cash',          color: 'teal' },
+    { label: 'To Be Packed',    value: toBePacked,                        icon: 'mdi-package-variant-closed', color: 'teal' },
+    { label: 'To Be Shipped',   value: toBeShipped,                       icon: 'mdi-package-up',               color: 'cyan' },
+    { label: 'In Transit',      value: inTransit,                         icon: 'mdi-truck-fast',              color: 'blue' },
+    { label: 'Delivered',        value: delivered,                         icon: 'mdi-check-circle',            color: 'success' },
+    { label: 'Failed',           value: failed,                            icon: 'mdi-alert-circle',            color: 'error' },
+    { label: 'Fees Collected',   value: `KSh ${formatNumber(revenue)}`,    icon: 'mdi-cash',                    color: 'indigo' },
   ]
+})
+
+// ─── Map (live tracking) ─────────────────────────────────────────────
+const PIN_COLORS = {
+  to_be_packed: '#0d9488', to_be_shipped: '#06b6d4', pending: '#f59e0b',
+  assigned: '#3f51b5', in_transit: '#03a9f4', delivered: '#4caf50',
+  failed: '#f44336', cancelled: '#78909c',
+}
+
+const mapLegend = computed(() =>
+  STATUSES.filter(s => ['to_be_packed', 'to_be_shipped', 'in_transit', 'delivered'].includes(s.value)))
+
+const pinnedDeliveries = computed(() =>
+  filteredItems.value.filter(d => d.latitude && d.longitude))
+
+const mapMarkers = computed(() =>
+  pinnedDeliveries.value.map(d => ({
+    lat: Number(d.latitude),
+    lng: Number(d.longitude),
+    title: d.recipient_name,
+    label: initials(d.recipient_name),
+    color: PIN_COLORS[d.status] || '#78909c',
+    popup: `<b>${d.recipient_name}</b><br>${d.so_number || d.transaction_number || ''}<br>${statusMeta(d.status).title} · KSh ${formatNumber(d.delivery_fee)}`,
+  })))
+
+const mapCenter = computed(() => {
+  const mk = mapMarkers.value
+  if (!mk.length) return { lat: -1.2921, lng: 36.8219 }
+  return {
+    lat: mk.reduce((s, m) => s + m.lat, 0) / mk.length,
+    lng: mk.reduce((s, m) => s + m.lng, 0) / mk.length,
+  }
 })
 
 const staffOptions = computed(() =>
@@ -1068,7 +1347,10 @@ const staffOptions = computed(() =>
 
 const flowIndex = computed(() => {
   if (!selected.value) return 0
-  const i = flowSteps.findIndex(s => s.value === selected.value.status)
+  let status = selected.value.status
+  // Legacy POS 'pending' deliveries sit at the same stage as To Be Shipped
+  if (status === 'pending') status = 'to_be_shipped'
+  const i = flowSteps.findIndex(s => s.value === status)
   return i < 0 ? 0 : i
 })
 
@@ -1084,6 +1366,8 @@ function countFor(value) {
 }
 function heroColor(status, opacity = 1) {
   const map = {
+    to_be_packed: '13, 148, 136',
+    to_be_shipped: '6, 182, 212',
     pending: '249, 168, 37', assigned: '63, 81, 181', in_transit: '33, 150, 243',
     delivered: '76, 175, 80', failed: '244, 67, 54', cancelled: '120, 144, 156',
   }
@@ -1137,11 +1421,33 @@ function mapsLink(d) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(d?.delivery_address || '')}`
 }
 
+const noteBusyId = ref(null)
+
+async function downloadNote(d) {
+  noteBusyId.value = d.id
+  try {
+    const blob = (await $api.get(`${deliveriesApi.value}${d.id}/note-pdf/`, {
+      responseType: 'blob',
+    })).data
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `delivery_note_${d.so_number || d.transaction_number || d.id}.pdf`
+    a.click()
+    URL.revokeObjectURL(url)
+    notify('Delivery note download started.')
+  } catch (e) {
+    notify(extractError(e) || 'Delivery note download failed', 'error')
+  } finally {
+    noteBusyId.value = null
+  }
+}
+
 // ─── Load ────────────────────────────────────────────────────────────
 async function load() {
   loading.value = true
   try {
-    const { data } = await $api.get('/pharmacy-profile/deliveries/', {
+    const { data } = await $api.get(deliveriesApi.value, {
       params: { ordering: '-created_at', page_size: 200 },
     })
     items.value = data?.results || (Array.isArray(data) ? data : [])
@@ -1212,7 +1518,7 @@ async function saveCreate() {
     if (form.scheduled_at) {
       payload.scheduled_at = new Date(form.scheduled_at).toISOString()
     }
-    await $api.post('/pharmacy-profile/deliveries/', payload)
+    await $api.post(deliveriesApi.value, payload)
     notify('Delivery created')
     createDialog.value = false
     await load()
@@ -1235,13 +1541,19 @@ function openDetail(d) {
   detailDialog.value = true
 }
 
+const statusUpdatingId = ref(null)
+
 async function updateStatus(d, status) {
+  if (status === d.status || statusUpdatingId.value) return
+  statusUpdatingId.value = d.id
   try {
-    await $api.post(`/pharmacy-profile/deliveries/${d.id}/update_status/`, { status })
-    notify(`Marked as ${status.replace('_', ' ')}`)
+    await $api.post(`${deliveriesApi.value}${d.id}/update_status/`, { status })
+    notify(`Marked as ${statusMeta(status).title.toLowerCase()}`)
     await load()
   } catch (e) {
     notify(extractError(e) || 'Failed to update status', 'error')
+  } finally {
+    statusUpdatingId.value = null
   }
 }
 
@@ -1270,7 +1582,7 @@ async function saveAssign() {
       assigned_driver_name: drv.assigned_driver_name,
     }
     if (selected.value.status === 'pending') patch.status = 'assigned'
-    await $api.patch(`/pharmacy-profile/deliveries/${selected.value.id}/`, patch)
+    await $api.patch(`${deliveriesApi.value}${selected.value.id}/`, patch)
     notify('Driver assigned')
     assignDialog.value = false
     await load()
@@ -1287,7 +1599,7 @@ async function doDelete() {
   if (!target.value) return
   saving.value = true
   try {
-    await $api.delete(`/pharmacy-profile/deliveries/${target.value.id}/`)
+    await $api.delete(`${deliveriesApi.value}${target.value.id}/`)
     notify('Delivery deleted')
     deleteDialog.value = false
     await load()
@@ -1324,6 +1636,52 @@ function exportCsv() {
   a.download = `deliveries-${new Date().toISOString().slice(0, 10)}.csv`
   a.click()
   URL.revokeObjectURL(url)
+}
+
+function exportParams() {
+  const params = {}
+  if (filterStatus.value !== 'all') params.status = filterStatus.value
+  return params
+}
+
+async function exportExcel() {
+  exporting.value = 'excel'
+  try {
+    const blob = (await $api.get(`${deliveriesApi.value}export/`, {
+      params: { fmt: 'excel', ...exportParams() }, responseType: 'blob',
+    })).data
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `deliveries_${new Date().toISOString().slice(0, 10)}.xlsx`
+    a.click()
+    URL.revokeObjectURL(url)
+    notify('Excel export download started.')
+  } catch (e) {
+    notify(extractError(e) || 'Excel export failed', 'error')
+  } finally {
+    exporting.value = ''
+  }
+}
+
+async function downloadReport() {
+  exporting.value = 'report'
+  try {
+    const blob = (await $api.get(`${deliveriesApi.value}report-pdf/`, {
+      params: exportParams(), responseType: 'blob',
+    })).data
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `deliveries_report_${new Date().toISOString().slice(0, 10)}.pdf`
+    a.click()
+    URL.revokeObjectURL(url)
+    notify('Report download started.')
+  } catch (e) {
+    notify(extractError(e) || 'Report download failed', 'error')
+  } finally {
+    exporting.value = ''
+  }
 }
 
 function extractError(e) {
@@ -1365,5 +1723,18 @@ onMounted(() => {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.map-list {
+  overflow-y: auto;
+  max-height: 470px;
+}
+
+.status-dropdown { min-width: 280px; }
+.map-list :deep(.v-list-item) {
+  cursor: pointer;
+}
+.map-list :deep(.v-list-item:hover) {
+  background: rgba(99, 102, 241, 0.05);
 }
 </style>

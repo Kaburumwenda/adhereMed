@@ -36,6 +36,8 @@ SHARED_APPS = [
     'superadmin',
     'clinical_catalog',
     'usage_billing',
+    # inventory tenant API namespace (URL-only app, no models)
+    'ims',
     'django_celery_beat',
 ]
 
@@ -62,6 +64,7 @@ TENANT_APPS = [
     'suppliers',
     'purchase_orders',
     'pos',
+    'sales_orders',
     'dispensing',
     'expenses',
     'insurance',

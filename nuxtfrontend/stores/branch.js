@@ -7,7 +7,7 @@ import { AppConstants } from '~/utils/constants'
 const BRANCH_SWITCH_ROLES = new Set(['super_admin', 'tenant_admin'])
 
 // Roles that get auto-assigned to their branch but can still switch freely.
-const SOFT_ASSIGN_ROLES = new Set(['cashier', 'pharmacist', 'pharmacy_tech'])
+const SOFT_ASSIGN_ROLES = new Set(['cashier', 'pharmacist', 'pharmacy_tech', 'storekeeper'])
 
 function haversineKm(lat1, lon1, lat2, lon2) {
   const toRad = v => (v * Math.PI) / 180
@@ -68,7 +68,10 @@ export const useBranchStore = defineStore('branch', {
       if (!schema) return
       this.loading = true
       try {
-        const { data } = await this._api().get('/pharmacy-profile/branches/', { params: { page_size: 200 } })
+        // Inventory tenants use their own /ims API namespace.
+        const tenantType = useNuxtApp().$pinia?.state?.value?.auth?.user?.tenant_type
+        const base = tenantType === 'inventory' ? '/ims/branches/' : '/pharmacy-profile/branches/'
+        const { data } = await this._api().get(base, { params: { page_size: 200 } })
         this.branches = data?.results || data || []
         // Restore persisted selection
         const saved = typeof window !== 'undefined' ? localStorage.getItem('adheremed_branch_id') : null

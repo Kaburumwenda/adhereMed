@@ -18,7 +18,7 @@ class IsStaffOrAdmin(permissions.BasePermission):
     ADMIN_ROLES = {
         'super_admin', 'tenant_admin', 'pharmacy_admin', 'branch_admin',
         'hospital_admin', 'clinic_admin', 'lab_admin', 'radiology_admin',
-        'homecare_admin', 'admin',
+        'homecare_admin', 'inventory_admin', 'admin',
     }
 
     def has_permission(self, request, view):

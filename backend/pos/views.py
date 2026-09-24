@@ -21,8 +21,8 @@ from config.branch_scope import BranchScopedMixin, get_user_branch, is_branch_sc
 
 
 # Roles that may view ALL POS records and analytics for the tenant.
-# Anyone else (e.g. cashier, pharmacy_tech) only sees their own data.
-ADMIN_ROLES = {'super_admin', 'tenant_admin', 'branch_admin', 'pharmacist'}
+# Anyone else (e.g. cashier, pharmacy_tech, storekeeper) only sees their own data.
+ADMIN_ROLES = {'super_admin', 'tenant_admin', 'branch_admin', 'pharmacist', 'inventory_admin'}
 
 
 def _user_is_admin(user) -> bool:

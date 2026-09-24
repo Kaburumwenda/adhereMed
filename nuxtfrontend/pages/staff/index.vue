@@ -1,34 +1,52 @@
 <template>
   <v-container fluid class="pa-4 pa-md-6 staff-module">
-    <!-- ───────────────────────── Hero ───────────────────────── -->
-        <!-- Header -->
-    <div class="d-flex flex-wrap align-center justify-space-between mb-4">
-      <div class="d-flex align-center">
-        <v-avatar color="indigo-lighten-5" size="48" class="mr-3">
-          <v-icon color="indigo-darken-2" size="28">mdi-badge-account-horizontal</v-icon>
-        </v-avatar>
-        <div>
-          <h1 class="text-h5 font-weight-bold mb-1">{{ $t('staff.title') }}</h1>
-          <div class="text-body-2 text-medium-emphasis">Manage team members, specializations &amp; schedules</div>
-        </div>
-      </div>
-      <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
-        <v-btn rounded="lg" color="primary" variant="flat" class="text-none mr-2"
-                 prepend-icon="mdi-account-plus" @click="openStaffDialog()">{{ $t('staff.addStaff') }}</v-btn>
-      <v-btn rounded="lg" color="primary" variant="tonal" prepend-icon="mdi-refresh"
-                 :loading="loading" @click="reloadAll">{{ $t('common.refresh') }}</v-btn>
-      </div>
-    </div>
+    <!-- ───────────────────────── Hero band ───────────────────────── -->
+    <v-card flat rounded="xl" class="hero-band text-white pa-5 pa-md-6 mb-4">
+      <v-row align="center" no-gutters>
+        <v-col cols="12" md="8">
+          <div class="d-flex align-center">
+            <v-avatar color="white" size="56" class="mr-4 elevation-2">
+              <v-icon :color="isInventory ? 'teal-darken-2' : 'indigo-darken-2'" size="32">
+                {{ isInventory ? 'mdi-warehouse' : 'mdi-badge-account-horizontal' }}
+              </v-icon>
+            </v-avatar>
+            <div>
+              <div class="text-h5 text-md-h4 font-weight-bold">{{ pageTitle }}</div>
+              <div class="text-body-2" style="opacity:.9">Manage team members, specializations &amp; schedules</div>
+              <div class="d-flex flex-wrap ga-2 mt-2">
+                <v-chip size="small" class="hero-chip" prepend-icon="mdi-account-multiple">
+                  {{ allStaff.length }} members
+                </v-chip>
+                <v-chip size="small" class="hero-chip" prepend-icon="mdi-check-circle">
+                  {{ availableCount }} available
+                </v-chip>
+                <v-chip size="small" class="hero-chip" prepend-icon="mdi-calendar-check">
+                  {{ scheduledCount }} scheduled
+                </v-chip>
+              </div>
+            </div>
+          </div>
+        </v-col>
+        <v-col cols="12" md="4" class="d-flex justify-md-end align-center mt-4 mt-md-0">
+          <v-btn variant="flat" color="white" prepend-icon="mdi-account-plus" class="text-none mr-2"
+                 :class="{ 'text-indigo-darken-2': true }" @click="openStaffDialog()">
+            {{ $t('staff.addStaff') }}
+          </v-btn>
+          <v-btn variant="outlined" color="white" prepend-icon="mdi-refresh" :loading="loading"
+                 @click="reloadAll">{{ $t('common.refresh') }}</v-btn>
+        </v-col>
+      </v-row>
+    </v-card>
 
     <!-- KPIs -->
     <v-row dense class="mb-4">
-      <v-col v-for="k in statCards" :key="k.label" cols="6" md="3">
+      <v-col v-for="k in statCards" :key="k.key" cols="6" md="3">
         <v-card rounded="lg" class="pa-4 h-100 kpi-card">
           <div class="d-flex align-start justify-space-between">
-            <div>
-              <div class="text-caption text-medium-emphasis">{{ k.label }}</div>
-              <div class="text-h6 font-weight-bold mt-1">{{ k.value }}</div>
-              <div v-if="k.sub" class="text-caption text-medium-emphasis mt-1">{{ k.sub }}</div>
+            <div class="text-truncate">
+              <div class="text-caption text-medium-emphasis text-truncate">{{ k.label }}</div>
+              <div class="text-h5 font-weight-bold mt-1" :class="`text-${k.color}`">{{ k.value }}</div>
+              <div v-if="k.sub" class="text-caption text-medium-emphasis mt-1 text-truncate">{{ k.sub }}</div>
             </div>
             <v-avatar :color="k.color" variant="tonal" rounded="lg" size="40">
               <v-icon size="20">{{ k.icon }}</v-icon>
@@ -112,9 +130,13 @@
 
           <template #item.user_name="{ item }">
             <div class="d-flex align-center py-1">
-              <v-avatar :color="avatarColor(item.user_name)" size="36" class="mr-3 text-white">
-                <span class="text-caption font-weight-bold">{{ initials(item.user_name) }}</span>
-              </v-avatar>
+              <div class="position-relative mr-3">
+                <v-avatar :color="avatarColor(item.user_name)" size="38" class="text-white">
+                  <span class="text-caption font-weight-bold">{{ initials(item.user_name) }}</span>
+                </v-avatar>
+                <span class="avail-dot" :class="item.is_available ? 'avail-dot--on' : 'avail-dot--off'"
+                      :title="item.is_available ? 'Available' : 'Unavailable'" />
+              </div>
               <div>
                 <div class="font-weight-medium">{{ item.user_name || '—' }}</div>
                 <div class="text-caption text-medium-emphasis">{{ item.user_email }}</div>
@@ -123,18 +145,23 @@
           </template>
 
           <template #item.user_role="{ item }">
-            <v-chip size="small" :color="roleColor(item.user_role)" variant="tonal" class="font-weight-medium">
+            <v-chip size="small" :color="roleColor(item.user_role)" variant="tonal" class="font-weight-medium"
+                    :prepend-icon="roleIcon(item.user_role)">
               {{ roleLabel(item.user_role) }}
             </v-chip>
           </template>
 
           <template #item.specialization_name="{ item }">
-            <span v-if="item.specialization_name">{{ item.specialization_name }}</span>
+            <v-chip v-if="item.specialization_name" size="small" variant="tonal" color="deep-purple"
+                    prepend-icon="mdi-school">{{ item.specialization_name }}</v-chip>
             <span v-else class="text-disabled">—</span>
           </template>
 
           <template #item.branch_name="{ item }">
-            <span v-if="item.branch_name">{{ item.branch_name }}</span>
+            <v-chip v-if="item.branch_name" size="small" variant="tonal" color="blue"
+                    :prepend-icon="isInventory ? 'mdi-warehouse' : 'mdi-map-marker'">
+              {{ item.branch_name }}
+            </v-chip>
             <span v-else class="text-disabled">—</span>
           </template>
 
@@ -143,8 +170,10 @@
           </template>
 
           <template #item.is_available="{ item }">
-            <v-switch :model-value="item.is_available" color="success" inset hide-details density="compact"
-                      class="mt-0" @update:model-value="(v) => toggleAvailability(item, v)" />
+            <div class="d-flex align-center">
+              <v-switch :model-value="item.is_available" color="success" inset hide-details density="compact"
+                        class="mt-0" @update:model-value="(v) => toggleAvailability(item, v)" />
+            </div>
           </template>
 
           <template #item.actions="{ item }">
@@ -217,28 +246,39 @@
     <!-- ───────────────── Schedule tab ───────────────── -->
     <template v-if="tab === 'schedule'">
       <v-card flat rounded="xl" class="pa-4">
-        <div class="d-flex align-center mb-3">
-          <v-icon color="indigo" class="mr-2">mdi-calendar-week</v-icon>
-          <div class="text-h6">Weekly Schedule Overview</div>
+        <div class="d-flex align-center mb-4">
+          <v-avatar color="indigo-lighten-5" size="40" class="mr-3">
+            <v-icon color="indigo-darken-2">mdi-calendar-week</v-icon>
+          </v-avatar>
+          <div>
+            <div class="text-h6 font-weight-bold">Weekly Schedule Overview</div>
+            <div class="text-caption text-medium-emphasis">Who is rostered on each day</div>
+          </div>
           <v-spacer />
-          <v-chip size="small" variant="tonal" color="indigo">
+          <v-chip size="small" variant="tonal" color="indigo" prepend-icon="mdi-calendar-check">
             {{ scheduledCount }} of {{ allStaff.length }} staff scheduled
           </v-chip>
         </div>
 
         <v-row>
           <v-col v-for="d in weekdays" :key="d.key" cols="12" sm="6" md="4" lg="3">
-            <v-card flat rounded="lg" class="schedule-day pa-3 h-100" border>
+            <v-card flat rounded="lg" class="schedule-day pa-3 h-100" :border="true"
+                    :class="{ 'schedule-day--today': d.key === todayKey }">
               <div class="d-flex align-center mb-2">
-                <v-icon size="18" color="indigo" class="mr-2">mdi-calendar</v-icon>
+                <v-avatar :color="d.key === todayKey ? 'indigo' : 'indigo-lighten-5'" size="28" class="mr-2">
+                  <v-icon size="16" :color="d.key === todayKey ? 'white' : 'indigo-darken-2'">mdi-calendar</v-icon>
+                </v-avatar>
                 <div class="font-weight-medium">{{ d.label }}</div>
                 <v-spacer />
-                <v-chip size="x-small" variant="tonal" color="indigo">
+                <v-chip size="x-small" :variant="d.key === todayKey ? 'flat' : 'tonal'"
+                        :color="d.key === todayKey ? 'indigo' : 'indigo'"
+                        :class="{ 'text-white': d.key === todayKey }">
                   {{ scheduleByDay[d.key]?.length || 0 }}
                 </v-chip>
               </div>
               <div v-if="(scheduleByDay[d.key] || []).length === 0"
-                   class="text-caption text-disabled pa-2 text-center">
+                   class="text-caption text-disabled pa-3 text-center rounded-lg"
+                   style="background: rgba(var(--v-theme-on-surface), 0.03)">
                 No staff scheduled
               </div>
               <div v-for="entry in (scheduleByDay[d.key] || [])" :key="entry.id"
@@ -250,6 +290,7 @@
                   <div class="font-weight-medium">{{ entry.user_name }}</div>
                   <div class="text-caption text-medium-emphasis">{{ entry.shift }}</div>
                 </div>
+                <v-icon size="14" color="success">mdi-clock-outline</v-icon>
               </div>
             </v-card>
           </v-col>
@@ -432,10 +473,19 @@ import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 
 import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useAuthStore } from '~/stores/auth'
 
 const { $api } = useNuxtApp()
+const { branches: branchesApi } = useTenantEndpoints()
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
+
+// Inventory / warehouse tenants call their team "Warehouse Staff".
+const isInventory = computed(() => auth.tenantType === 'inventory')
+const pageTitle = computed(() =>
+  auth.tenantType === 'inventory' ? 'Warehouse Staff' : t('staff.title')
+)
 
 // ─────────────── State ───────────────
 const tab = ref(['team', 'specializations', 'schedule'].includes(route.query.tab) ? route.query.tab : 'team')
@@ -479,12 +529,16 @@ const ROLE_LABELS = {
   pharmacist: 'Pharmacist',
   pharmacy_tech: 'Pharmacy Tech',
   cashier: 'Cashier',
+  inventory_admin: 'Inventory Admin',
+  storekeeper: 'Storekeeper',
 }
 const ROLE_COLORS = {
   branch_admin: 'deep-purple',
   pharmacist: 'primary',
   pharmacy_tech: 'teal',
   cashier: 'amber-darken-2',
+  inventory_admin: 'cyan-darken-1',
+  storekeeper: 'brown',
 }
 const roleSelectItems = Object.entries(ROLE_LABELS).map(([value, title]) => ({ value, title }))
 const roleFilterItems = [{ value: null, title: 'All roles' }, ...roleSelectItems]
@@ -522,14 +576,31 @@ const specHeaders = [
 ]
 
 // ─────────────── Stats / derived ───────────────
+const availableCount = computed(() => allStaff.value.filter(s => s.is_available).length)
+
 const statCards = computed(() => {
-  const counts = roleCounts(allStaff.value)
+  const total = allStaff.value.length
+  const available = availableCount.value
+  const pct = total ? Math.round((available / total) * 100) : 0
+  const unavailable = total - available
+  const scheduled = scheduledCount.value
   return [
-    { key: 'total', tab: 'team', label: 'Total Staff', value: allStaff.value.length, icon: 'mdi-account-group', color: 'indigo' },
-    { key: 'pharm', tab: 'team', label: 'Pharmacists', value: counts.pharmacist, icon: 'mdi-pill', color: 'blue' },
-    { key: 'tech', tab: 'team', label: 'Pharmacy Techs', value: counts.pharmacy_tech, icon: 'mdi-medical-bag', color: 'teal' },
-    { key: 'cash', tab: 'team', label: 'Cashiers', value: counts.cashier, icon: 'mdi-cash-register', color: 'amber-darken-2' },
+    { key: 'total', label: 'Total Staff', value: total,
+      sub: `${available} available now`, icon: 'mdi-account-group', color: 'indigo' },
+    { key: 'avail', label: 'Available Now', value: available,
+      sub: `${pct}% of the team`, icon: 'mdi-check-circle', color: 'success' },
+    { key: 'unavail', label: 'Unavailable', value: unavailable,
+      sub: unavailable ? 'check their schedules' : 'everyone is in',
+      icon: 'mdi-pause-circle', color: 'amber-darken-2' },
+    { key: 'sched', label: 'Scheduled', value: scheduled,
+      sub: `of ${total} team members`, icon: 'mdi-calendar-check', color: 'cyan-darken-1' },
   ]
+})
+
+// Highlight today's column in the schedule
+const todayKey = computed(() => {
+  const keys = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
+  return keys[new Date().getDay()]
 })
 
 const branchItems = computed(() => branches.value.map(b => ({ id: b.id, name: b.name })))
@@ -579,11 +650,15 @@ function avatarColor(name) {
 }
 function roleLabel(r) { return ROLE_LABELS[r] || r || '—' }
 function roleColor(r) { return ROLE_COLORS[r] || 'grey' }
-function roleCounts(list) {
-  const c = { pharmacist: 0, pharmacy_tech: 0, cashier: 0 }
-  for (const s of list) if (c[s.user_role] != null) c[s.user_role]++
-  return c
+const ROLE_ICONS = {
+  branch_admin: 'mdi-source-branch',
+  pharmacist: 'mdi-pill',
+  pharmacy_tech: 'mdi-pill-multiple',
+  cashier: 'mdi-cash-register',
+  inventory_admin: 'mdi-shield-crown-outline',
+  storekeeper: 'mdi-warehouse',
 }
+function roleIcon(r) { return ROLE_ICONS[r] || 'mdi-account' }
 function notify(message, color = 'success') { Object.assign(snack, { show: true, color, message }) }
 
 function generatePassword() {
@@ -662,7 +737,7 @@ async function loadSpecs() {
 
 async function loadBranches() {
   try {
-    const { data } = await $api.get('/pharmacy-profile/branches/', { params: { page_size: 200 } })
+    const { data } = await $api.get(branchesApi.value, { params: { page_size: 200 } })
     branches.value = data?.results || (Array.isArray(data) ? data : [])
   } catch { branches.value = [] }
 }
@@ -818,7 +893,7 @@ function exportStaffCsv() {  const rows = staff.value
   const blob = new Blob([out.join('\n')], { type: 'text/csv' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
-  a.href = url; a.download = `pharmacy-staff-${new Date().toISOString().slice(0, 10)}.csv`
+  a.href = url; a.download = `${auth.tenantType === 'inventory' ? 'warehouse' : 'pharmacy'}-staff-${new Date().toISOString().slice(0, 10)}.csv`
   a.click(); URL.revokeObjectURL(url)
   notify(`Exported ${rows.length} record(s)`)
 }
@@ -873,19 +948,40 @@ onMounted(() => { reloadAll() })
 </script>
 
 <style scoped>
-.kpi-card { transition: transform 0.15s ease, box-shadow 0.15s ease; border: 1px solid rgba(var(--v-theme-on-surface), 0.06); }
-.kpi-card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.06); }
+/* ── Hero band ─────────────────────────────────────────────── */
+.hero-band {
+  background: linear-gradient(135deg, #312e81 0%, #4338ca 50%, #6366f1 100%);
+  box-shadow: 0 12px 32px rgba(79, 70, 229, 0.25);
+}
+.hero-chip {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #fff !important;
+  backdrop-filter: blur(4px);
+}
 
-.hero .stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+/* ── KPI cards ─────────────────────────────────────────────── */
+.kpi-card { transition: transform 0.15s ease, box-shadow 0.15s ease; border: 1px solid rgba(var(--v-theme-on-surface), 0.06); }
+.kpi-card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.07); }
+
+/* ── Table rows ───────────────────────────────────────────── */
+.staff-table :deep(tbody tr) { transition: background-color .15s ease; }
+.staff-table :deep(tbody tr:hover) { background-color: rgba(99, 102, 241, 0.06); }
+
+.avail-dot {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid rgb(var(--v-theme-surface));
 }
-.staff-table :deep(tbody tr) {
-  transition: background-color .15s ease;
-}
-.staff-table :deep(tbody tr:hover) {
-  background-color: rgba(99, 102, 241, 0.06);
-}
-.schedule-day { background: rgba(99, 102, 241, 0.03); }
+.avail-dot--on { background: #22c55e; }
+.avail-dot--off { background: #9ca3af; }
+
+/* ── Schedule ──────────────────────────────────────────────── */
+.schedule-day { background: rgba(99, 102, 241, 0.03); transition: transform .15s ease, box-shadow .15s ease; }
+.schedule-day:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,0.06); }
+.schedule-day--today { background: rgba(99, 102, 241, 0.10); border-color: rgba(99, 102, 241, 0.5) !important; }
 .schedule-entry { background: rgba(99, 102, 241, 0.07); }
 </style>

@@ -751,17 +751,24 @@ def system_health(request):
     }
     health['tenant'] = tenant_info
 
-    # ── 2. User activity ─────────────────────────────────────────────
+    # ── 2. User activity (scoped to THIS tenant) ─────────────────────
+    # NB: accounts.User is a SHARED model living in the public schema —
+    # without the tenant filter these queries would count every user
+    # on the whole platform instead of this organization's members.
     try:
         User = get_user_model()
-        total_users = User.objects.count()
-        active_users = User.objects.filter(is_active=True).count()
-        staff_users = User.objects.exclude(role='patient').count()
-        roles = list(User.objects.exclude(role__isnull=True).values('role').annotate(
+        if tenant is not None:
+            user_qs = User.objects.filter(tenant=tenant)
+        else:
+            user_qs = User.objects.all()
+        total_users = user_qs.count()
+        active_users = user_qs.filter(is_active=True).count()
+        staff_users = user_qs.exclude(role='patient').count()
+        roles = list(user_qs.exclude(role__isnull=True).values('role').annotate(
             count=Count('id')
         ).order_by('-count'))
-        last_24h = User.objects.filter(last_login__gte=now - timedelta(hours=24)).count()
-        last_7d = User.objects.filter(last_login__gte=now - timedelta(days=7)).count()
+        last_24h = user_qs.filter(last_login__gte=now - timedelta(hours=24)).count()
+        last_7d = user_qs.filter(last_login__gte=now - timedelta(days=7)).count()
         health['users'] = {
             'total': total_users,
             'active': active_users,

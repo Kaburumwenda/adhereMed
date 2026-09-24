@@ -13,7 +13,8 @@ class AuditEventSerializer(serializers.ModelSerializer):
             'id', 'actor_user_id', 'actor_email', 'actor_role', 'actor_display',
             'action', 'action_label', 'severity', 'severity_label',
             'object_type', 'object_id', 'object_repr', 'description',
-            'method', 'path', 'ip', 'user_agent', 'status_code',
+            'method', 'path', 'ip', 'latitude', 'longitude',
+            'user_agent', 'status_code',
             'payload_diff', 'extra', 'session_id',
             'created_at',
         ]
@@ -38,7 +39,7 @@ class AuditEventExportSerializer(serializers.ModelSerializer):
             'created_at', 'actor_display', 'actor_role', 'action', 'action_label',
             'severity', 'severity_label', 'object_type', 'object_id',
             'object_repr', 'description', 'method', 'path', 'ip',
-            'status_code',
+            'latitude', 'longitude', 'status_code',
         ]
 
     def get_action_label(self, obj):

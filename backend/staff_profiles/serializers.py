@@ -10,6 +10,8 @@ PHARMACY_ROLES = [
     'lab_tech', 'radiologist', 'receptionist',
     # Clinical roles (allow tenant admins to create them via staff module)
     'doctor', 'clinical_officer', 'nurse', 'midwife',
+    # Inventory / warehouse tenant roles
+    'inventory_admin', 'storekeeper',
 ]
 
 

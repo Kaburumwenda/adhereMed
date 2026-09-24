@@ -17,6 +17,18 @@ export function formatDateTime(v) {
   } catch { return v }
 }
 
+// e.g. "Aug 09 2026, 11:40 AM"
+export function formatStamp(v) {
+  if (!v) return '—'
+  const d = new Date(v)
+  if (isNaN(d)) return v
+  const mons = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  let h = d.getHours()
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  h = h % 12 || 12
+  return `${mons[d.getMonth()]} ${String(d.getDate()).padStart(2, '0')} ${d.getFullYear()}, ${h}:${String(d.getMinutes()).padStart(2, '0')} ${ampm}`
+}
+
 export function formatMoney(v, currency = 'KES') {
   if (v == null || v === '') return '—'
   const n = Number(v)

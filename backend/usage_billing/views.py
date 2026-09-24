@@ -42,7 +42,7 @@ from .serializers import (
 
 # Roles that are allowed to clear/pay bills on behalf of their tenant. Other
 # staff hitting an overdue account are shown a "contact your admin" screen.
-TENANT_BILLING_ADMIN_ROLES = {"tenant_admin", "homecare_admin", "admin"}
+TENANT_BILLING_ADMIN_ROLES = {"tenant_admin", "homecare_admin", "inventory_admin", "admin"}
 
 # Default number of days after a bill's due date before API access is locked.
 OVERDUE_GRACE_DAYS = 7

@@ -245,7 +245,8 @@ class StaffListView(generics.ListAPIView):
 class IsTenantAdminOrSuperAdmin(permissions.BasePermission):
     """Only tenant admins, clinic/hospital/pharmacy admins, or the super admin may manage users."""
     ADMIN_ROLES = {'super_admin', 'tenant_admin', 'clinic_admin', 'hospital_admin',
-                    'pharmacy_admin', 'lab_admin', 'radiology_admin', 'homecare_admin', 'admin'}
+                    'pharmacy_admin', 'lab_admin', 'radiology_admin', 'homecare_admin',
+                    'inventory_admin', 'admin'}
 
     def has_permission(self, request, view):
         u = request.user

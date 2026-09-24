@@ -15,6 +15,14 @@ class PurchaseOrder(models.Model):
     supplier = models.ForeignKey('suppliers.Supplier', on_delete=models.CASCADE, related_name='purchase_orders')
     items = models.JSONField(default=list, help_text='[{medication_stock_id, name, qty, unit_cost, total}]')
     total_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    shipping_cost = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        help_text='Recorded as an expense; NOT included in total_cost',
+    )
+    proof_image = models.ImageField(
+        upload_to='po_proofs/', null=True, blank=True,
+        help_text='Optional proof image (signed delivery note, receipt photo, etc.)',
+    )
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
     ordered_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='purchase_orders',

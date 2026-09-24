@@ -8,9 +8,9 @@
               <v-icon color="indigo-darken-2" size="32">mdi-cog</v-icon>
             </v-avatar>
             <div>
-              <div class="text-h5 text-md-h4 font-weight-bold">Pharmacy Settings</div>
+              <div class="text-h5 text-md-h4 font-weight-bold">{{ isInventory ? 'Warehouse Settings' : 'Pharmacy Settings' }}</div>
               <div class="text-body-2" style="opacity:0.9">
-                Configure your pharmacy profile, hours, delivery &amp; insurance.
+                {{ isInventory ? 'Configure your warehouse profile, hours, delivery & insurance.' : 'Configure your pharmacy profile, hours, delivery & insurance.' }}
               </div>
             </div>
           </div>
@@ -57,7 +57,7 @@
               <v-col cols="12" md="8">
                 <v-row dense>
                   <v-col cols="12">
-                    <v-text-field v-model="profile.name" label="Pharmacy name *"
+                    <v-text-field v-model="profile.name" :label="isInventory ? 'Organization name *' : 'Pharmacy name *'"
                                   variant="outlined" density="comfortable"
                                   :error-messages="errors.name" />
                   </v-col>
@@ -181,6 +181,8 @@ const { t } = useI18n()
 import { ref, reactive, onMounted } from 'vue'
 
 const { $api } = useNuxtApp()
+// Inventory tenants use their own /ims API namespace.
+const { isInventory, profile: profileApi } = useTenantEndpoints()
 
 const tab = ref('profile')
 const loading = ref(false)
@@ -217,7 +219,7 @@ function blankProfile() {
 async function loadProfile() {
   loading.value = true
   try {
-    const { data } = await $api.get('/pharmacy-profile/profile/')
+    const { data } = await $api.get(profileApi.value)
     const list = data?.results || data || []
     const p = Array.isArray(list) && list.length ? list[0] : null
     if (p) {
@@ -252,7 +254,7 @@ async function uploadLogo() {
   fd.append('logo', f)
   try {
     const { data } = await $api.post(
-      `/pharmacy-profile/profile/${profile.id}/upload-logo/`, fd,
+      `${profileApi.value}${profile.id}/upload-logo/`, fd,
       { headers: { 'Content-Type': 'multipart/form-data' } },
     )
     profile.logo = data.logo
@@ -285,10 +287,10 @@ async function save() {
       operating_hours: op,
     }
     if (profile.id) {
-      const { data } = await $api.patch(`/pharmacy-profile/profile/${profile.id}/`, payload)
+      const { data } = await $api.patch(`${profileApi.value}${profile.id}/`, payload)
       Object.assign(profile, data)
     } else {
-      const { data } = await $api.post('/pharmacy-profile/profile/', payload)
+      const { data } = await $api.post(profileApi.value, payload)
       Object.assign(profile, data)
     }
     notify('Settings saved')

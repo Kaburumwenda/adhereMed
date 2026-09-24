@@ -6,6 +6,12 @@ from .models import (
     StockTransfer, StockTransferLine,
     ControlledSubstanceLog,
 )
+from .rbac import can_view_cost
+
+
+def _scrub_cost(request):
+    """True when cost fields must be hidden for the requesting role."""
+    return not can_view_cost(request)
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -37,9 +43,17 @@ class StockBatchSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'received_date']
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # RBAC: cost prices are hidden from till roles (cashier, pharmacy tech…)
+        if _scrub_cost(self.context.get('request')):
+            data['cost_price_per_unit'] = None
+        return data
+
 
 class MedicationStockSerializer(serializers.ModelSerializer):
     total_quantity = serializers.IntegerField(read_only=True)
+    available_quantity = serializers.IntegerField(read_only=True)
     is_low_stock = serializers.BooleanField(read_only=True)
     batches = StockBatchSerializer(many=True, read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True, default=None)
@@ -61,11 +75,18 @@ class MedicationStockSerializer(serializers.ModelSerializer):
             'selling_price', 'cost_price', 'tax_percent', 'discount_percent',
             'reorder_level', 'reorder_quantity',
             'location_in_store', 'barcode', 'prescription_required', 'is_active',
-            'total_quantity', 'is_low_stock',
+            'total_quantity', 'available_quantity', 'is_low_stock',
             'batches', 'created_at', 'updated_at',
             'initial_quantity', 'batch_number', 'expiry_date',
         ]
         read_only_fields = ['id', 'medication_id', 'created_at', 'updated_at']
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # RBAC: cost prices are hidden from till roles (cashier, pharmacy tech…)
+        if _scrub_cost(self.context.get('request')):
+            data['cost_price'] = None
+        return data
 
     def create(self, validated_data):
         initial_quantity = validated_data.pop('initial_quantity', None)
@@ -157,14 +178,27 @@ class StockTransferLineSerializer(serializers.ModelSerializer):
     stock_name = serializers.CharField(source='stock.medication_name', read_only=True)
     stock_unit = serializers.CharField(source='stock.unit.abbreviation', read_only=True, default='')
     in_stock = serializers.SerializerMethodField()
+    variance = serializers.IntegerField(read_only=True)
+    line_value = serializers.SerializerMethodField()
 
     class Meta:
         model = StockTransferLine
         fields = ['id', 'stock', 'stock_name', 'stock_unit',
-                  'quantity', 'quantity_received', 'notes', 'in_stock']
+                  'quantity', 'quantity_received', 'variance', 'notes',
+                  'in_stock', 'line_value']
 
     def get_in_stock(self, obj):
         return obj.stock.total_quantity if obj.stock else 0
+
+    def get_line_value(self, obj):
+        if not obj.stock:
+            return 0
+        return round(float(obj.stock.cost_price or 0) * (obj.quantity or 0), 2)
+
+    def validate_quantity(self, value):
+        if value is None or value < 1:
+            raise serializers.ValidationError('Quantity must be at least 1.')
+        return value
 
 
 class StockTransferSerializer(serializers.ModelSerializer):
@@ -176,6 +210,8 @@ class StockTransferSerializer(serializers.ModelSerializer):
     lines = StockTransferLineSerializer(many=True)
     total_items = serializers.IntegerField(read_only=True)
     total_quantity = serializers.IntegerField(read_only=True)
+    total_value = serializers.SerializerMethodField()
+    total_variance = serializers.SerializerMethodField()
 
     class Meta:
         model = StockTransfer
@@ -185,15 +221,34 @@ class StockTransferSerializer(serializers.ModelSerializer):
                   'approved_by', 'approved_by_name',
                   'received_by', 'received_by_name',
                   'requested_at', 'shipped_at', 'received_at',
-                  'lines', 'total_items', 'total_quantity']
+                  'lines', 'total_items', 'total_quantity',
+                  'total_value', 'total_variance']
         read_only_fields = ['id', 'reference', 'requested_by', 'approved_by',
                             'received_by', 'requested_at', 'shipped_at', 'received_at']
+
+    def get_total_value(self, obj):
+        return round(sum(
+            float(l.stock.cost_price or 0) * l.quantity
+            for l in obj.lines.select_related('stock').all()
+        ), 2)
+
+    def get_total_variance(self, obj):
+        return sum(l.variance for l in obj.lines.all())
 
     def validate(self, data):
         src = data.get('source_branch') or getattr(self.instance, 'source_branch', None)
         dst = data.get('dest_branch') or getattr(self.instance, 'dest_branch', None)
         if src and dst and src == dst:
             raise serializers.ValidationError({'dest_branch': 'Destination must differ from source.'})
+        lines = data.get('lines', [])
+        if lines:
+            seen = set()
+            for line in lines:
+                stock = line.get('stock')
+                if stock and stock.pk in seen:
+                    raise serializers.ValidationError(
+                        {'lines': f'Duplicate item "{stock.medication_name}" — merge the quantities into one line.'})
+                seen.add(stock.pk if stock else None)
         return data
 
     def create(self, validated_data):

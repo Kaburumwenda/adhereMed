@@ -12,6 +12,7 @@ import PatientDashboard from '~/components/dashboards/PatientDashboard.vue'
 import HomecareDashboard from '~/components/dashboards/HomecareDashboard.vue'
 import CaregiverDashboard from '~/components/dashboards/CaregiverDashboard.vue'
 import ClinicDashboard from '~/components/dashboards/ClinicDashboard.vue'
+import InventoryDashboard from '~/components/dashboards/InventoryDashboard.vue'
 import GenericDashboard from '~/components/dashboards/GenericDashboard.vue'
 
 const auth = useAuthStore()
@@ -36,6 +37,11 @@ if (process.client && auth.tenantType === 'clinic' && !['patient'].includes(auth
   navigateTo('/clinics', { replace: true })
 }
 
+// Inventory / warehouse tenants use the /ims dashboard.
+if (process.client && auth.tenantType === 'inventory' && !['patient'].includes(auth.role)) {
+  navigateTo('/ims', { replace: true })
+}
+
 const component = computed(() => {
   if (auth.role === 'super_admin') {
     navigateTo('/superadmin')
@@ -49,6 +55,7 @@ const component = computed(() => {
   if (auth.tenantType === 'clinic') return ClinicDashboard
   if (auth.tenantType === 'pharmacy') return PharmacyDashboard
   if (auth.tenantType === 'lab') return LabDashboard
+  if (auth.tenantType === 'inventory') return InventoryDashboard
   return GenericDashboard
 })
 </script>

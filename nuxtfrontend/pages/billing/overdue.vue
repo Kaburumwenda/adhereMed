@@ -318,6 +318,7 @@ function homePath() {
   if (auth.tenantType === 'radiology_center') return '/radiology'
   if (auth.tenantType === 'hospital') return '/hos'
   if (auth.tenantType === 'clinic') return '/clinics'
+  if (auth.tenantType === 'inventory') return '/ims'
   return '/dashboard'
 }
 

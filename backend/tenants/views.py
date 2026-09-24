@@ -1,9 +1,22 @@
 from rest_framework import generics, serializers, status
-from rest_framework.permissions import AllowAny, IsAdminUser
+from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db import connection, transaction
 from .models import Tenant, Domain
-from .serializers import TenantSerializer, TenantRegistrationSerializer
+from .serializers import (
+    TenantSerializer, TenantRegistrationSerializer, TenantProfileSerializer,
+)
+
+
+# Roles allowed to update their tenant's organization profile (viewing is
+# allowed for every authenticated member of the tenant).
+TENANT_PROFILE_ADMIN_ROLES = {
+    'super_admin', 'tenant_admin', 'clinic_admin', 'hospital_admin',
+    'pharmacy_admin', 'lab_admin', 'radiology_admin', 'homecare_admin',
+    'inventory_admin', 'admin',
+}
 
 
 class TenantListView(generics.ListAPIView):
@@ -61,6 +74,9 @@ class TenantRegistrationView(generics.CreateAPIView):
             country=data.get('country', 'Kenya'),
             phone=data.get('phone', ''),
             email=data.get('email', ''),
+            latitude=data.get('latitude'),
+            longitude=data.get('longitude'),
+            place_name=data.get('place_name', ''),
         )
 
         Domain.objects.create(
@@ -86,8 +102,8 @@ class TenantRegistrationView(generics.CreateAPIView):
         from usage_billing.referral_models import CoinTransaction, Referral, ReferralProfile
         new_profile = ReferralProfile.objects.create(tenant=tenant)
 
-        # ── Auto-grant 300 coins for new pharmacy accounts ────────────
-        if tenant.type == 'pharmacy':
+        # ── Auto-grant 300 coins for new pharmacy / inventory accounts ───
+        if tenant.type in ('pharmacy', 'inventory'):
             new_profile.credit(300, 'Welcome bonus: 300 Adhere Coins on registration')
 
         referral_code = data.get('referral_code', '').strip().upper()
@@ -118,4 +134,87 @@ class TenantRegistrationView(generics.CreateAPIView):
         return Response(
             TenantSerializer(tenant).data,
             status=status.HTTP_201_CREATED,
+        )
+
+
+class TenantMeView(APIView):
+    """Organization profile self-service.
+
+    GET   /tenants/me/  -> full tenant details (any authenticated member)
+    PATCH /tenants/me/  -> update editable details (tenant admin roles only)
+    """
+    permission_classes = [IsAuthenticated]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
+
+    @staticmethod
+    def _get_tenant(request):
+        tenant = getattr(request, 'tenant', None) or getattr(request.user, 'tenant', None)
+        if tenant is None or getattr(tenant, 'schema_name', 'public') == 'public':
+            return None
+        return tenant
+
+    def get(self, request):
+        tenant = self._get_tenant(request)
+        if tenant is None:
+            return Response(
+                {'detail': 'No organization is associated with this account.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(
+            TenantSerializer(tenant, context={'request': request}).data
+        )
+
+    def patch(self, request):
+        tenant = self._get_tenant(request)
+        if tenant is None:
+            return Response(
+                {'detail': 'No organization is associated with this account.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if request.user.role not in TENANT_PROFILE_ADMIN_ROLES:
+            return Response(
+                {'detail': 'You do not have permission to update the organization profile.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        serializer = TenantProfileSerializer(
+            tenant, data=request.data, partial=True,
+            context={'request': request},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(
+            TenantSerializer(tenant, context={'request': request}).data
+        )
+
+
+class TenantMeLogoUploadView(APIView):
+    """POST /tenants/me/upload-logo/ (multipart) — update the org logo."""
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        tenant = getattr(request, 'tenant', None) or getattr(request.user, 'tenant', None)
+        if tenant is None or getattr(tenant, 'schema_name', 'public') == 'public':
+            return Response(
+                {'detail': 'No organization is associated with this account.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if request.user.role not in TENANT_PROFILE_ADMIN_ROLES:
+            return Response(
+                {'detail': 'You do not have permission to update the organization profile.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        logo = request.FILES.get('logo')
+        if not logo:
+            return Response({'detail': 'No logo file provided.'}, status=status.HTTP_400_BAD_REQUEST)
+        # Housekeeping: replace the previous file to avoid orphaned uploads.
+        if tenant.logo:
+            try:
+                tenant.logo.delete(save=False)
+            except Exception:
+                pass
+        tenant.logo = logo
+        tenant.save(update_fields=['logo'])
+        return Response(
+            TenantSerializer(tenant, context={'request': request}).data
         )

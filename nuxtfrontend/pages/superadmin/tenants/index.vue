@@ -259,7 +259,8 @@ const typeOptions = [
   { title: 'Hospital', value: 'hospital' },
   { title: 'Pharmacy', value: 'pharmacy' },
   { title: 'Lab', value: 'lab' },
-  { title: 'Homecare', value: 'homecare' }
+  { title: 'Homecare', value: 'homecare' },
+  { title: 'Inventory / Warehouse', value: 'inventory' }
 ]
 
 const statusOptions = [
@@ -315,11 +316,16 @@ function primaryDomain(t) {
 }
 
 function typeIcon(type) {
-  return type === 'pharmacy' ? 'mdi-pill' : type === 'lab' ? 'mdi-test-tube' : type === 'homecare' ? 'mdi-home-heart' : 'mdi-hospital-building'
+  return {
+    pharmacy: 'mdi-pill', lab: 'mdi-test-tube', homecare: 'mdi-home-heart',
+    clinic: 'mdi-doctor', radiology_center: 'mdi-radiology', inventory: 'mdi-warehouse',
+  }[type] || 'mdi-hospital-building'
 }
 
 function typeColor(type) {
-  return type === 'pharmacy' ? 'secondary' : type === 'lab' ? 'warning' : type === 'homecare' ? 'teal' : 'primary'
+  return {
+    pharmacy: 'secondary', lab: 'warning', homecare: 'teal', inventory: 'cyan-darken-1',
+  }[type] || 'primary'
 }
 
 function formatDate(v) {

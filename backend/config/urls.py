@@ -32,9 +32,12 @@ urlpatterns = [
     path('api/notifications/', include('notifications.urls')),
     # API — Pharmacy tenant apps
     path('api/pharmacy-profile/', include('pharmacy_profile.urls')),
+    # API — Independent inventory / warehouse tenant namespace
+    path('api/ims/', include('ims.urls')),
     path('api/inventory/', include('inventory.urls')),
     path('api/suppliers/', include('suppliers.urls')),
     path('api/purchase-orders/', include('purchase_orders.urls')),
+    path('api/sales-orders/', include('sales_orders.urls')),
     path('api/pos/', include('pos.urls')),
     path('api/dispensing/', include('dispensing.urls')),
     path('api/expenses/', include('expenses.urls')),

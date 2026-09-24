@@ -39,7 +39,7 @@ export function getNavSections(role, tenantType, t = (x) => x) {
     items: [{
       icon: 'mdi-view-dashboard',
       label: 'Dashboard',
-      path: tenantType === 'lab' ? '/lab' : tenantType === 'pharmacy' ? '/pharmacy' : tenantType === 'radiology_center' ? '/radiology' : tenantType === 'hospital' ? '/hos' : tenantType === 'clinic' ? '/clinics' : '/dashboard'
+      path: tenantType === 'lab' ? '/lab' : tenantType === 'pharmacy' ? '/pharmacy' : tenantType === 'radiology_center' ? '/radiology' : tenantType === 'hospital' ? '/hos' : tenantType === 'clinic' ? '/clinics' : tenantType === 'inventory' ? '/ims' : '/dashboard'
     }]
   })
 
@@ -173,15 +173,29 @@ export function getNavSections(role, tenantType, t = (x) => x) {
       items: [
         { icon: 'mdi-point-of-sale', label: t('nav.pos'), path: '/pharmacy/pos' },
         {
+          icon: 'mdi-cart-outline', label: t('nav.sales'), path: '/pharmacy/pos/history',
+          children: [
+            { icon: 'mdi-receipt-text-plus', label: t('nav.salesOrder'), path: '/pharmacy/sales-orders' },
+            { icon: 'mdi-history', label: t('nav.salesHistory'), path: '/pharmacy/pos/history' },
+            { icon: 'mdi-account-cash-outline', label: t('nav.credits'), path: '/pharmacy/credit' },
+            { icon: 'mdi-tray-arrow-up', label: t('nav.onHoldSales'), path: '/pharmacy/pos/parked' },
+            { icon: 'mdi-truck', label: t('nav.deliveries'), path: '/pharmacy/deliveries' },
+            { icon: 'mdi-clipboard-check', label: t('nav.dispensing'), path: '/pharmacy/dispensing' },
+            { icon: 'mdi-keyboard-return', label: t('nav.returns'), path: '/pharmacy/dispensing/returns' },
+          ]
+        },
+        {
+          icon: 'mdi-cart-variant', label: t('nav.purchases'), path: '/pharmacy/purchase-orders',
+          children: [
+            { icon: 'mdi-cart', label: t('nav.purchaseOrders'), path: '/pharmacy/purchase-orders' },
+          ]
+        },
+        {
           icon: 'mdi-bank', label: t('nav.accountsFinance'), path: '/pharmacy/accounts',
           children: [
             { icon: 'mdi-view-dashboard-outline', label: t('nav.overview'), path: '/pharmacy/accounts' },
-            { icon: 'mdi-history', label: t('nav.salesHistory'), path: '/pharmacy/pos/history' },
-            { icon: 'mdi-account-cash-outline', label: t('nav.credits'), path: '/pharmacy/credit' },
-            { icon: 'mdi-cart', label: t('nav.purchaseOrders'), path: '/pharmacy/purchase-orders' },
             { icon: 'mdi-receipt-text', label: t('nav.invoices'), path: '/pharmacy/invoices' },
             { icon: 'mdi-cash-minus', label: t('nav.expenses'), path: '/pharmacy/expenses' },
-            { icon: 'mdi-tray-arrow-up', label: t('nav.onHoldSales'), path: '/pharmacy/pos/parked' },
           ]
         },
         { icon: 'mdi-cash-register', label: t('nav.cashierShifts'), path: '/pharmacy/pos/shifts' },
@@ -189,7 +203,9 @@ export function getNavSections(role, tenantType, t = (x) => x) {
         {
           icon: 'mdi-package-variant', label: t('nav.inventory'), path: '/pharmacy/inventory',
           children: [
+            { icon: 'mdi-view-dashboard-outline', label: t('nav.overview'), path: '/pharmacy/inventory/overview' },
             { icon: 'mdi-pill', label: t('nav.stockItems'), path: '/pharmacy/inventory' },
+            { icon: 'mdi-bell-alert', label: t('nav.stockAlerts'), path: '/pharmacy/alerts' },
             { icon: 'mdi-shape', label: t('nav.categories'), path: '/pharmacy/categories' },
             { icon: 'mdi-ruler', label: t('nav.units'), path: '/pharmacy/units' },
             { icon: 'mdi-tune', label: t('nav.adjustments'), path: '/pharmacy/adjustments' },
@@ -216,16 +232,7 @@ export function getNavSections(role, tenantType, t = (x) => x) {
             { icon: 'mdi-credit-card-outline', label: 'Payments', path: '/pharmacy/billing/payments' }
           ]
         },
-        { icon: 'mdi-truck', label: t('nav.deliveries'), path: '/pharmacy/deliveries' },
-        {
-          icon: 'mdi-clipboard-check', label: t('nav.dispensing'), path: '/pharmacy/dispensing',
-          children: [
-            { icon: 'mdi-clipboard-check', label: t('nav.dispenseRecords'), path: '/pharmacy/dispensing' },
-            { icon: 'mdi-keyboard-return', label: t('nav.returns'), path: '/pharmacy/dispensing/returns' }
-          ]
-        },
         { icon: 'mdi-pill-multiple', label: t('nav.prescriptions'), path: '/pharmacy/rx' },
-        { icon: 'mdi-bell-alert', label: t('nav.alerts'), path: '/pharmacy/alerts' },
         { icon: 'mdi-shield-account', label: t('nav.insurance'), path: '/pharmacy/insurance' },
         {
           icon: 'mdi-pill', label: t('nav.medications'), path: '/pharmacy/medications',
@@ -243,7 +250,7 @@ export function getNavSections(role, tenantType, t = (x) => x) {
             { icon: 'mdi-school', label: t('nav.specializations'), path: '/pharmacy/specializations' },
             { icon: 'mdi-podium', label: t('nav.performance'), path: '/pharmacy/staff-performance' },
             { icon: 'mdi-truck', label: t('nav.suppliers'), path: '/pharmacy/suppliers' },
-            { icon: 'mdi-shield-key', label: t('nav.rolesPermissions'), path: '/pharmacy/roles' },
+            { icon: 'mdi-shield-key', label: t('nav.rolesPermissions'), path: '/pharmacy/rbac' },
             { icon: 'mdi-history', label: t('nav.auditLogs'), path: '/pharmacy/audit-logs' },
             { icon: 'mdi-heart-pulse', label: t('nav.systemHealth'), path: '/pharmacy/system-health' }
           ]
@@ -260,6 +267,98 @@ export function getNavSections(role, tenantType, t = (x) => x) {
         { icon: 'mdi-bank', label: t('nav.branches'), path: '/pharmacy/branches' }
       ]
     })
+  }
+
+  // ── INVENTORY / WAREHOUSE tenant type ──────────────────────────────────
+  // An independent inventory-management tenant (warehouses, distribution,
+  // medical supplies). Borrows the full stock-control feature set from the
+  // pharmacy tenant inventory and adds procurement, finance and admin modules
+  // under its own /ims namespace.
+  const inventoryRoles = ['tenant_admin', 'inventory_admin', 'branch_admin', 'storekeeper', 'pharmacist', 'pharmacy_tech', 'cashier', 'admin']
+  if (tenantType === 'inventory' && inventoryRoles.includes(role)) {
+    const inventoryItems = [
+      {
+        icon: 'mdi-package-variant', label: 'Inventory', path: '/ims/inventory',
+        children: [
+          { icon: 'mdi-view-dashboard-outline', label: 'Overview', path: '/ims/inventory/overview' },
+          { icon: 'mdi-package-variant-closed', label: 'Stock Items', path: '/ims/inventory' },
+          { icon: 'mdi-bell-alert', label: 'Stock Alerts', path: '/ims/alerts' },
+          { icon: 'mdi-tune', label: 'Adjustments', path: '/ims/adjustments' },
+          { icon: 'mdi-chart-line', label: 'Stock Analysis', path: '/ims/inventory/stock-analysis' },
+          { icon: 'mdi-clipboard-list-outline', label: 'Stock Take', path: '/ims/inventory/stock-take' },
+          { icon: 'mdi-truck-delivery-outline', label: 'Warehouse Transfers', path: '/ims/inventory/transfers' },
+          { icon: 'mdi-swap-vertical-bold', label: 'Stock Movements', path: '/ims/inventory/stock-movements' },
+          { icon: 'mdi-shield-lock-outline', label: 'Controlled Register', path: '/ims/inventory/controlled-register' },
+          { icon: 'mdi-upload-multiple', label: 'Bulk Upload', path: '/ims/inventory/bulk' },
+          { icon: 'mdi-file-excel', label: 'Excel Import/Export', path: '/ims/inventory/excel' },
+        ]
+      },
+      {
+        icon: 'mdi-cart-outline', label: 'Sales', path: '/ims/pos',
+        children: [
+          { icon: 'mdi-point-of-sale', label: 'POS', path: '/ims/pos' },
+          { icon: 'mdi-receipt-text-plus', label: 'Sales Orders', path: '/ims/sales-orders' },
+          { icon: 'mdi-history', label: 'Sales History', path: '/ims/pos/history' },
+          { icon: 'mdi-account-multiple', label: 'Customers', path: '/ims/customers' },
+          { icon: 'mdi-account-cash-outline', label: 'Credits', path: '/ims/credit' },
+          { icon: 'mdi-tray-arrow-up', label: 'On-Hold Sales', path: '/ims/pos/parked' },
+          { icon: 'mdi-truck', label: 'Deliveries', path: '/ims/deliveries' },
+          { icon: 'mdi-cash-register', label: 'Cashier Shifts', path: '/ims/pos/shifts' },
+        ]
+      },
+      {
+        icon: 'mdi-library-shelves', label: 'Catalog', path: '/ims/categories',
+        children: [
+          { icon: 'mdi-shape', label: 'Categories', path: '/ims/categories' },
+          { icon: 'mdi-ruler', label: 'Units of Measure', path: '/ims/units' },
+          { icon: 'mdi-pill-multiple', label: 'Medication Catalog', path: '/ims/medications' },
+        ]
+      },
+      {
+        icon: 'mdi-cart-variant', label: 'Procurement', path: '/ims/purchase-orders',
+        children: [
+          { icon: 'mdi-cart', label: 'Purchase Orders', path: '/ims/purchase-orders' },
+          { icon: 'mdi-truck', label: 'Suppliers', path: '/ims/suppliers' },
+        ]
+      },
+      {
+        icon: 'mdi-bank', label: 'Finance', path: '/ims/accounts',
+        children: [
+          { icon: 'mdi-view-dashboard-outline', label: 'Accounts', path: '/ims/accounts' },
+          { icon: 'mdi-receipt-text', label: 'Invoices', path: '/ims/invoices' },
+          { icon: 'mdi-cash-minus', label: 'Expenses', path: '/ims/expenses' },
+          { icon: 'mdi-cash-multiple', label: 'API Billing', path: '/ims/billing/usage' },
+        ]
+      },
+      {
+        icon: 'mdi-chart-bar', label: 'Insights', path: '/ims/analytics',
+        children: [
+          { icon: 'mdi-chart-bar', label: 'Analytics', path: '/ims/analytics' },
+          { icon: 'mdi-shape', label: 'Category Analysis', path: '/ims/analytics/categories' },
+          { icon: 'mdi-trophy', label: 'Product Analysis', path: '/ims/analytics/products' },
+          { icon: 'mdi-clipboard-text', label: 'Reports', path: '/ims/reports' },
+        ]
+      },
+      {
+        icon: 'mdi-office-building', label: 'Organization', path: '/ims/organization/profile',
+        children: [
+          { icon: 'mdi-card-account-details', label: 'Profile', path: '/ims/organization/profile' },
+          { icon: 'mdi-source-branch', label: 'Branches', path: '/ims/branches' },
+        ]
+      },
+      {
+        icon: 'mdi-account-cog', label: 'Administration', path: '/ims/staff',
+        children: [
+          { icon: 'mdi-badge-account', label: 'Staff', path: '/ims/staff' },
+          { icon: 'mdi-shield-key', label: 'Roles & Access', path: '/ims/rbac' },
+          { icon: 'mdi-history', label: 'Audit Logs', path: '/ims/audit-logs' },
+          { icon: 'mdi-heart-pulse', label: 'System Health', path: '/ims/system-health' },
+          { icon: 'mdi-cog', label: 'Settings', path: '/ims/settings' },
+          { icon: 'mdi-database-import', label: 'Setup / Seed', path: '/ims/setup' },
+        ]
+      },
+    ]
+    sections.push({ label: 'INVENTORY', items: inventoryItems })
   }
 
   if (tenantType === 'lab' && ['tenant_admin', 'lab_admin', 'lab_tech', 'admin'].includes(role)) {
@@ -551,7 +650,7 @@ export function getNavSections(role, tenantType, t = (x) => x) {
         { icon: 'mdi-account-circle', label: 'My Profile', path: ns ? `${ns}/my-profile` : '/my-profile' },
         { icon: 'mdi-receipt', label: 'My Prescriptions', path: ns ? `${ns}/my-prescriptions` : '/my-prescriptions' },
         {
-          icon: 'mdi-pharmacy', label: 'Pharmacies', path: '/pharmacy-store',
+          icon: 'mdi-medical-bag', label: 'Pharmacies', path: '/pharmacy-store',
           children: [
             { icon: 'mdi-storefront', label: 'Browse Pharmacies', path: '/pharmacy-store' },
             { icon: 'mdi-receipt-text', label: 'My Orders', path: '/pharmacy-store/orders' }

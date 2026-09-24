@@ -45,6 +45,7 @@ const map = {
   delivered: { color: 'success', icon: 'mdi-truck-check' },
   shipped: { color: 'info', icon: 'mdi-truck' },
   received: { color: 'success', icon: 'mdi-package-check' },
+  fulfilled: { color: 'success', icon: 'mdi-package-variant-closed-check' },
   returned: { color: 'error', icon: 'mdi-undo-variant' },
   partial: { color: 'warning', icon: 'mdi-progress-alert' },
   quoted: { color: 'info', icon: 'mdi-cash' },

@@ -4,6 +4,8 @@ export const palettes = {
     dark: false,
     colors: {
       primary: '#0D9488',
+      brand: '#2f6dff',
+      'brand-deep': '#143ce1',
       'primary-light': '#5EEAD4',
       'primary-dark': '#0F766E',
       secondary: '#6366F1',
@@ -24,6 +26,8 @@ export const palettes = {
     dark: true,
     colors: {
       primary: '#2DD4BF',
+      brand: '#2f6dff',
+      'brand-deep': '#143ce1',
       'primary-light': '#5EEAD4',
       'primary-dark': '#14B8A6',
       secondary: '#818CF8',
@@ -44,6 +48,8 @@ export const palettes = {
     dark: false,
     colors: {
       primary: '#0284C7',
+      brand: '#2f6dff',
+      'brand-deep': '#143ce1',
       'primary-light': '#7DD3FC',
       'primary-dark': '#0369A1',
       secondary: '#8B5CF6',
@@ -64,6 +70,8 @@ export const palettes = {
     dark: false,
     colors: {
       primary: '#DB2777',
+      brand: '#2f6dff',
+      'brand-deep': '#143ce1',
       'primary-light': '#F9A8D4',
       'primary-dark': '#BE185D',
       secondary: '#F97316',

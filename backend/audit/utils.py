@@ -58,16 +58,53 @@ def safe_body(request) -> dict:
     return redact_payload(data)
 
 
+def _client_geo(request) -> tuple:
+    """Return ``(latitude, longitude)`` from the request, or ``(None, None)``.
+
+    Clients may send coordinates via the ``X-Latitude`` / ``X-Longitude``
+    headers (preferred), the ``latitude`` / ``longitude`` query params, or
+    inside a JSON body. All values are parsed as ``float`` and validated to
+    a sane geographic range.
+    """
+    lat = lon = None
+    if request is None:
+        return lat, lon
+    meta = getattr(request, 'META', {})
+    try:
+        raw_lat = (meta.get('HTTP_X_LATITUDE')
+                   or request.GET.get('latitude'))
+        raw_lon = (meta.get('HTTP_X_LONGITUDE')
+                  or request.GET.get('longitude'))
+        if raw_lat is None or raw_lon is None:
+            body = getattr(request, '_audit_payload', None)
+            if isinstance(body, dict):
+                raw_lat = raw_lat or body.get('latitude')
+                raw_lon = raw_lon or body.get('longitude')
+        if raw_lat is not None:
+            lat = float(raw_lat)
+        if raw_lon is not None:
+            lon = float(raw_lon)
+    except (TypeError, ValueError):
+        return None, None
+    if lat is not None and not (-90.0 <= lat <= 90.0):
+        lat = None
+    if lon is not None and not (-180.0 <= lon <= 180.0):
+        lon = None
+    return lat, lon
+
+
 def log_event(*, request=None, action: str, object_type: str = '',
               object_id: Any = '', object_repr: str = '',
               description: str = '', payload_diff: Optional[dict] = None,
               extra: Optional[dict] = None, status_code: Optional[int] = None,
-              severity: Optional[str] = None, session_id: str = '') -> None:
+              severity: Optional[str] = None, session_id: str = '',
+              latitude: Any = None, longitude: Any = None) -> None:
     """Write a single audit event. Never raises.
 
     Designed to be called from any view (or signal) to record custom or
     READ events. Mutating writes are normally auto-logged by the
-    :mod:`audit.middleware`.
+    :mod:`audit.middleware`. ``latitude`` / ``longitude`` may be passed
+    explicitly; otherwise they are derived from the request.
     """
     try:
         from .models import AuditEvent
@@ -79,6 +116,8 @@ def log_event(*, request=None, action: str, object_type: str = '',
         ua = ''
         method = ''
         path = ''
+        lat = latitude
+        lon = longitude
         if request is not None:
             user = getattr(request, 'user', None)
             if user is not None and getattr(user, 'is_authenticated', False):
@@ -89,6 +128,8 @@ def log_event(*, request=None, action: str, object_type: str = '',
             ua = (request.META.get('HTTP_USER_AGENT') or '')[:512]
             method = request.method or ''
             path = request.path or ''
+            if lat is None and lon is None:
+                lat, lon = _client_geo(request)
         # Defer insert so log calls inside a request don't fail on rollback.
         with transaction.atomic():
             AuditEvent.objects.create(
@@ -104,6 +145,8 @@ def log_event(*, request=None, action: str, object_type: str = '',
                 method=method,
                 path=path[:512],
                 ip=ip,
+                latitude=lat,
+                longitude=lon,
                 user_agent=ua,
                 payload_diff=payload_diff or {},
                 extra=extra or {},

@@ -78,6 +78,14 @@ class Command(BaseCommand):
         methods = ["POST", "PUT", "PATCH", "DELETE", "GET", "GET", "GET"]
         statuses = [200, 201, 200, 400, 500, 200, 200]
         ips = ["105.60.224.81", "41.90.0.18", "197.232.84.10", "127.0.0.1"]
+        # Sample GPS coordinates around Nairobi, Kenya.
+        gps = [
+            (-1.286389, 36.817223),   # Nairobi CBD
+            (-1.292066, 36.821945),   # Westlands
+            (-1.310036, 36.821945),   # Karen
+            (-1.258730, 36.816830),   # Kilimani
+            (None, None),             # sometimes unavailable
+        ]
 
         created = 0
         for i in range(count):
@@ -91,6 +99,7 @@ class Command(BaseCommand):
                       {"login": "POST", "logout": "POST", "export": "GET"}.get(action, "GET"))
             status = random.choice(statuses) if action != "delete" else 204
             path = f"/api/{obj_type}/{obj_id}/" if obj_id else f"/api/{obj_type}/"
+            lat, lon = random.choice(gps)
 
             AuditEvent.objects.create(
                 actor_user_id=actor["id"],
@@ -105,6 +114,8 @@ class Command(BaseCommand):
                 method=method,
                 path=path,
                 ip=random.choice(ips),
+                latitude=lat,
+                longitude=lon,
                 user_agent="Mozilla/5.0 (AdhereMed/Edge)",
                 payload_diff={"before": {"status": "open"}, "after": {"status": "closed"}},
                 extra={"branch_id": 1, "module": obj_type},

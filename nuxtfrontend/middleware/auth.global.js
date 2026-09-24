@@ -10,6 +10,7 @@ const AUTH_ROUTES = new Set([
   '/register-patient',
   '/register-facility',
   '/register-pharmacy',
+  '/register-inventory',
   '/register-doctor',
   '/forgot-password',
   '/reset-password'
@@ -27,6 +28,7 @@ function getHomePath(auth) {
   if (auth.tenantType === 'radiology_center') return '/radiology'
   if (auth.tenantType === 'hospital') return '/hos'
   if (auth.tenantType === 'clinic') return '/clinics'
+  if (auth.tenantType === 'inventory') return '/ims'
   return '/dashboard'
 }
 
@@ -106,6 +108,27 @@ function shouldRedirectToClinic(auth, path) {
   for (const prefix of CLINIC_PREFIXED_ROUTES) {
     if (path === prefix || path.startsWith(prefix + '/')) {
       return '/clinics' + path
+    }
+  }
+  return null
+}
+
+// Routes that inventory / warehouse tenants should access under /ims/.
+// If an inventory user navigates to one of these unprefixed (e.g. via an
+// in-page link), redirect them to the /ims/ prefixed equivalent.
+const INVENTORY_PREFIXED_ROUTES = [
+  '/inventory', '/categories', '/units', '/adjustments', '/alerts',
+  '/purchase-orders', '/suppliers', '/branches', '/accounts', '/invoices',
+  '/expenses', '/analytics', '/reports', '/staff', '/settings', '/setup',
+  '/pos', '/sales-orders', '/deliveries', '/customers',
+]
+
+function shouldRedirectToInventory(auth, path) {
+  if (auth.tenantType !== 'inventory') return null
+  if (path.startsWith('/ims')) return null  // already prefixed
+  for (const prefix of INVENTORY_PREFIXED_ROUTES) {
+    if (path === prefix || path.startsWith(prefix + '/')) {
+      return '/ims' + path
     }
   }
   return null
@@ -192,6 +215,16 @@ export default defineNuxtRouteMiddleware(async (to) => {
     if (clinicPath) {
       const query = to.fullPath.includes('?') ? to.fullPath.slice(to.fullPath.indexOf('?')) : ''
       return navigateTo(clinicPath + query, { replace: true })
+    }
+  }
+
+  // Inventory tenant namespace redirect: inventory users accessing unprefixed
+  // inventory routes are sent to the /ims/ prefixed equivalent.
+  if (auth.isLoggedIn && auth.tenantType === 'inventory') {
+    const imsPath = shouldRedirectToInventory(auth, to.path)
+    if (imsPath) {
+      const query = to.fullPath.includes('?') ? to.fullPath.slice(to.fullPath.indexOf('?')) : ''
+      return navigateTo(imsPath + query, { replace: true })
     }
   }
 

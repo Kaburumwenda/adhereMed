@@ -32,7 +32,7 @@ const counts = reactive({ rx: 0, orders: 0, pharmacies: 0 })
 const stats = computed(() => [
   { title: 'My Prescriptions', value: counts.rx, icon: 'mdi-receipt', color: 'primary' },
   { title: 'My Orders', value: counts.orders, icon: 'mdi-receipt-text', color: 'info' },
-  { title: 'Pharmacies Nearby', value: counts.pharmacies, icon: 'mdi-pharmacy', color: 'success' }
+  { title: 'Pharmacies Nearby', value: counts.pharmacies, icon: 'mdi-medical-bag', color: 'success' }
 ])
 
 const actions = computed(() => {

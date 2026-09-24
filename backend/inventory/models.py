@@ -37,9 +37,9 @@ class MedicationStock(models.Model):
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, related_name='stocks')
     unit = models.ForeignKey(Unit, on_delete=models.SET_NULL, null=True, blank=True, related_name='stocks')
     branch = models.ForeignKey(
-        'pharmacy_profile.Branch', on_delete=models.SET_NULL,
-        null=True, blank=True, related_name='stocks',
-        help_text='Branch this stock item belongs to',
+        'pharmacy_profile.Branch', on_delete=models.PROTECT,
+        null=False, blank=False, related_name='stocks',
+        help_text='Warehouse this stock item belongs to (required)',
     )
     selling_price = models.DecimalField(max_digits=10, decimal_places=2)
     cost_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
@@ -62,6 +62,10 @@ class MedicationStock(models.Model):
         help_text='Whether a doctor prescription is needed',
     )
     is_active = models.BooleanField(default=True)
+    committed_qty = models.PositiveIntegerField(
+        default=0,
+        help_text='Quantity reserved by paid/partially-paid sales orders (not yet delivered)',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -110,6 +114,11 @@ class MedicationStock(models.Model):
         return sum(b.quantity_remaining for b in self.batches.filter(quantity_remaining__gt=0))
 
     @property
+    def available_quantity(self):
+        """Physical stock minus quantities committed to sales orders."""
+        return max(0, self.total_quantity - (self.committed_qty or 0))
+
+    @property
     def is_low_stock(self):
         return self.total_quantity <= self.reorder_level
 
@@ -153,6 +162,7 @@ class StockAdjustment(models.Model):
         EXPIRY = 'expiry', 'Expiry'
         COUNT_CORRECTION = 'count_correction', 'Count Correction'
         RETURN_TO_SUPPLIER = 'return_to_supplier', 'Return to Supplier'
+        SALES_ORDER = 'sales_order', 'Sales Order Fulfilment'
         OTHER = 'other', 'Other'
 
     stock = models.ForeignKey(MedicationStock, on_delete=models.CASCADE, related_name='adjustments')
@@ -325,6 +335,43 @@ class StockTransferLine(models.Model):
     @property
     def variance(self):
         return self.quantity_received - self.quantity
+
+
+# ─────────────────────────────────────────────────────────────────────────
+#  RBAC: tenant-defined custom roles (Roles & Access admin page)
+# ─────────────────────────────────────────────────────────────────────────
+class RoleDefinition(models.Model):
+    """A tenant-managed role definition.
+
+    * custom roles (is_system=False): tenant-created roles with an explicit
+      capability list;
+    * built-in overrides (is_system=True): a tenant's customized capability
+      list for a built-in role (e.g. trimmed Storekeeper powers). The `key`
+      matches the built-in role key on User.role. Deleting the row restores
+      the platform defaults.
+
+    The `key` is stored on User.role, so it must stay short (max 20 chars)
+    and cannot collide with the built-in role keys enforced in rbac.py.
+    """
+    key = models.SlugField(max_length=20, unique=True)
+    label = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    icon = models.CharField(max_length=50, default='mdi-badge-account-horizontal-outline')
+    capabilities = models.JSONField(default=list, help_text='List of capability keys (see rbac.py)')
+    is_system = models.BooleanField(
+        default=False,
+        help_text='True = capability override for a built-in role')
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['label']
+        verbose_name = 'Role definition'
+        verbose_name_plural = 'Role definitions'
+
+    def __str__(self):
+        return f'{self.label} ({len(self.capabilities or [])} capabilities)'
 
 
 # ─────────────────────────────────────────────────────────────────────────

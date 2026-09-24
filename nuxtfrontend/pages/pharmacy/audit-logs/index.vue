@@ -338,6 +338,19 @@
           <span class="text-body-2 text-medium-emphasis">{{ item.ip || '—' }}</span>
         </template>
 
+        <template #item.location="{ item }">
+          <v-tooltip v-if="item.latitude != null && item.longitude != null" location="top">
+            <template #activator="{ props }">
+              <v-chip size="x-small" variant="tonal" color="teal" v-bind="props" class="font-mono">
+                <v-icon start size="12">mdi-map-marker</v-icon>
+                {{ Number(item.latitude).toFixed(4) }}, {{ Number(item.longitude).toFixed(4) }}
+              </v-chip>
+            </template>
+            <span class="font-mono">{{ item.latitude }}, {{ item.longitude }}</span>
+          </v-tooltip>
+          <span v-else class="text-caption text-medium-emphasis">—</span>
+        </template>
+
         <template #item.created_at="{ item }">
           <div class="text-body-2">{{ formatDate(item.created_at) }}</div>
           <div class="text-caption text-medium-emphasis">{{ formatTime(item.created_at) }}</div>
@@ -394,6 +407,15 @@
             <v-list-item density="compact">
               <v-list-item-title class="text-caption text-medium-emphasis">{{ $t('auditLogs.ip') }}</v-list-item-title>
               <v-list-item-subtitle class="text-body-2">{{ detailsItem.ip || '—' }}</v-list-item-subtitle>
+            </v-list-item>
+            <v-list-item density="compact">
+              <v-list-item-title class="text-caption text-medium-emphasis">{{ $t('auditLogs.location') }}</v-list-item-title>
+              <v-list-item-subtitle class="text-body-2 font-mono">
+                <template v-if="detailsItem.latitude != null && detailsItem.longitude != null">
+                  {{ detailsItem.latitude }}, {{ detailsItem.longitude }}
+                </template>
+                <template v-else>—</template>
+              </v-list-item-subtitle>
             </v-list-item>
             <v-list-item density="compact">
               <v-list-item-title class="text-caption text-medium-emphasis">{{ $t('auditLogs.status') }}</v-list-item-title>
@@ -489,6 +511,7 @@ const headers = computed(() => [
   { title: t('auditLogs.status'), key: 'status_code', sortable: true, width: 80, align: 'center' },
   { title: '', key: 'severity', sortable: true, width: 50, align: 'center' },
   { title: t('auditLogs.ip'), key: 'ip', sortable: false, width: 130 },
+  { title: t('auditLogs.location'), key: 'location', sortable: false, width: 150 },
   { title: t('auditLogs.time'), key: 'created_at', sortable: true, width: 180 },
   { title: '', key: 'actions', sortable: false, align: 'end', width: 60 },
 ])

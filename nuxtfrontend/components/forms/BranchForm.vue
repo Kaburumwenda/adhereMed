@@ -1,5 +1,5 @@
 <template>
-  <ResourceFormPage :resource="r" :title="loadId ? 'Edit Branch' : 'New Branch'" icon="mdi-source-branch" back-path="/branches" :load-id="loadId" :initial="initial" @saved="() => router.push('/branches')">
+  <ResourceFormPage :resource="r" :title="isInventory ? (loadId ? 'Edit Warehouse' : 'New Warehouse') : (loadId ? 'Edit Branch' : 'New Branch')" icon="mdi-source-branch" :back-path="backPath" :load-id="loadId" :initial="initial" @saved="() => router.push(backPath)">
     <template #default="{ form }">
       <v-row dense>
         <v-col cols="12" sm="6"><v-text-field v-model="form.name" label="Name" :rules="req" /></v-col>
@@ -73,10 +73,16 @@
 import { ref } from 'vue'
 import { useResource } from '~/composables/useResource'
 import { useGoogleMaps } from '~/composables/useGoogleMaps'
+import { useTenantEndpoints } from '~/composables/useTenantEndpoints'
 
 const route = useRoute(); const router = useRouter()
 const loadId = computed(() => route.params.id || null)
-const r = useResource('/pharmacy_profile/branches/')
+
+// Inventory tenants use their own /ims API namespace and routes.
+const { isInventory, branches: branchesApi } = useTenantEndpoints()
+const backPath = computed(() => isInventory.value ? '/ims/branches' : '/branches')
+
+const r = useResource(branchesApi.value)
 const req = [v => !!v || 'Required']
 const initial = { name: '', phone: '', address: '', place_name: '', latitude: null, longitude: null }
 

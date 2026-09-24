@@ -82,8 +82,9 @@
                   autocomplete="email"
                   variant="outlined"
                   rounded="lg"
-                  class="field-dark mb-1"
+                  class="field-light mb-1"
                   density="comfortable"
+                  color="brand"
                 />
                 <v-text-field
                   v-model="password"
@@ -95,8 +96,9 @@
                   autocomplete="current-password"
                   variant="outlined"
                   rounded="lg"
-                  class="field-dark"
+                  class="field-light"
                   density="comfortable"
+                  color="brand"
                   @click:append-inner="show = !show"
                 />
 
@@ -117,7 +119,20 @@
 
                 <div class="text-center text-body-2 form-footer-text">
                   Don't have an account?
-                  <NuxtLink to="/register-pharmacy" class="form-link font-weight-medium">Register Pharmacy</NuxtLink>
+                </div>
+                <div class="d-flex flex-wrap justify-center ga-2 mt-3">
+                  <v-btn size="small" variant="tonal" color="primary" rounded="lg" class="text-none"
+                         prepend-icon="mdi-medical-bag" to="/register-pharmacy">
+                    Pharmacy
+                  </v-btn>
+                  <v-btn size="small" variant="tonal" color="teal" rounded="lg" class="text-none"
+                         prepend-icon="mdi-package-variant-closed" to="/register-inventory">
+                    Inventory / Warehouse
+                  </v-btn>
+                  <v-btn size="small" variant="tonal" color="indigo" rounded="lg" class="text-none"
+                         prepend-icon="mdi-account-heart" to="/register-patient">
+                    Patient
+                  </v-btn>
                 </div>
               </v-form>
             </div>
@@ -161,6 +176,7 @@ async function onSubmit() {
       : auth.tenantType === 'radiology_center' ? '/radiology'
       : auth.tenantType === 'hospital' ? '/hos'
       : auth.tenantType === 'clinic' ? '/clinics'
+      : auth.tenantType === 'inventory' ? '/ims'
       : '/dashboard'
     router.push(home)
   }
@@ -174,21 +190,21 @@ async function onSubmit() {
   position: relative;
   min-height: 100vh;
   overflow: hidden;
-  color: #fff;
+  color: #0a0f1f;
 }
 .bg-fill { position: absolute; inset: 0; }
 .bg-base {
   z-index: 0;
   background:
-    radial-gradient(1200px 600px at 80% -10%, rgba(37, 99, 235, 0.35), transparent 60%),
-    radial-gradient(900px 500px at 0% 20%, rgba(59, 130, 246, 0.18), transparent 55%),
-    linear-gradient(160deg, #060b18 0%, #081226 45%, #0a1530 100%);
+    radial-gradient(1200px 600px at 80% -10%, rgba(47, 109, 255, 0.12), transparent 60%),
+    radial-gradient(900px 500px at 0% 20%, rgba(55, 214, 255, 0.08), transparent 55%),
+    linear-gradient(160deg, #f8fafc 0%, #ffffff 45%, #f1f5f9 100%);
 }
 .bg-grid {
   z-index: 0;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+    linear-gradient(rgba(15, 23, 42, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 23, 42, 0.03) 1px, transparent 1px);
   background-size: 56px 56px;
   mask-image: radial-gradient(circle at 50% 0%, #000 0%, transparent 70%);
   -webkit-mask-image: radial-gradient(circle at 50% 0%, #000 0%, transparent 70%);
@@ -199,79 +215,81 @@ async function onSubmit() {
   filter: blur(70px);
   z-index: 0;
 }
-.blob-1 { top: -120px; right: -80px; width: 380px; height: 380px; background: rgba(37, 99, 235, 0.38); }
-.blob-2 { bottom: -80px; left: -80px; width: 340px; height: 340px; background: rgba(29, 78, 216, 0.28); }
+.blob-1 { top: -120px; right: -80px; width: 380px; height: 380px; background: rgba(47, 109, 255, 0.15); }
+.blob-2 { bottom: -80px; left: -80px; width: 340px; height: 340px; background: rgba(55, 214, 255, 0.1); }
 
 /* ---------- Brand ---------- */
 .brand-badge {
   width: 46px; height: 46px; border-radius: 13px;
-  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.5);
+  background: linear-gradient(135deg, #2f6dff 0%, #143ce1 100%);
+  box-shadow: 0 6px 18px rgba(47, 109, 255, 0.35);
   display: flex; align-items: center; justify-content: center;
 }
 .brand-word { font-size: 22px; letter-spacing: -0.4px; }
-.brand-word .bold { font-weight: 800; color: #fff; }
-.brand-word .light { font-weight: 300; color: #60a5fa; }
+.brand-word .bold { font-weight: 800; color: #0a0f1f; }
+.brand-word .light { font-weight: 300; color: #2f6dff; }
 
 /* ---------- Left panel ---------- */
-.nav-back { color: rgba(255,255,255,0.7) !important; }
+.nav-back { color: rgba(15, 23, 42, 0.6) !important; }
 .panel-headline {
   font-size: clamp(1.9rem, 3.4vw, 2.8rem);
   font-weight: 800;
   line-height: 1.12;
   letter-spacing: -1px;
+  color: #0a0f1f;
 }
 .grad-text {
-  background: linear-gradient(90deg, #60a5fa, #93c5fd, #3b82f6);
+  background: linear-gradient(90deg, #2f6dff, #37d6ff, #143ce1);
   background-size: 200% auto;
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
   animation: shimmer 5s linear infinite;
 }
-.panel-sub { font-size: 1rem; line-height: 1.65; color: rgba(255,255,255,0.65); }
-.bullet-row { color: rgba(255,255,255,0.82); font-size: 0.95rem; }
+.panel-sub { font-size: 1rem; line-height: 1.65; color: #475569; }
+.bullet-row { color: #334155; font-size: 0.95rem; }
 .bullet-dot {
   width: 26px; height: 26px; border-radius: 8px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+  background: linear-gradient(135deg, #2f6dff, #143ce1);
+  box-shadow: 0 4px 12px rgba(47, 109, 255, 0.3);
 }
 
 /* ---------- Form card ---------- */
 .form-card {
   border-radius: 24px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(47, 109, 255, 0.12);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 12px 40px rgba(10, 15, 31, 0.08);
 }
 .form-title {
-  font-size: 1.55rem; font-weight: 800; color: #fff; letter-spacing: -0.4px;
+  font-size: 1.55rem; font-weight: 800; color: #0a0f1f; letter-spacing: -0.4px;
 }
-.form-sub { font-size: 0.9rem; color: rgba(255,255,255,0.6); margin-top: 4px; }
-.form-footer-text { color: rgba(255,255,255,0.62); }
-.form-link { color: #60a5fa !important; }
-.forgot-link { color: #93c5fd !important; }
+.form-sub { font-size: 0.9rem; color: #64748b; margin-top: 4px; }
+.form-footer-text { color: #64748b; }
+.form-link { color: #2f6dff !important; }
+.forgot-link { color: #2f6dff !important; }
 
 /* ---------- Fields ---------- */
-:deep(.field-dark .v-field) {
-  background: rgba(255,255,255,0.06) !important;
-  border: 1px solid rgba(255,255,255,0.12) !important;
+:deep(.field-light .v-field) {
+  background: #f8fafc !important;
+  border: 1px solid rgba(15, 23, 42, 0.12) !important;
   border-radius: 12px !important;
-  color: #fff !important;
+  color: #0a0f1f !important;
 }
-:deep(.field-dark .v-field--focused) {
-  border-color: rgba(96,165,250,0.7) !important;
+:deep(.field-light .v-field--focused) {
+  border-color: rgba(47, 109, 255, 0.6) !important;
 }
-:deep(.field-dark .v-label) { color: rgba(255,255,255,0.55) !important; }
-:deep(.field-dark .v-icon) { color: rgba(255,255,255,0.45) !important; }
-:deep(.field-dark input) { color: #fff !important; }
+:deep(.field-light .v-label) { color: rgba(15, 23, 42, 0.5) !important; }
+:deep(.field-light .v-icon) { color: rgba(47, 109, 255, 0.5) !important; }
+:deep(.field-light input) { color: #0a0f1f !important; }
 
 /* ---------- Button ---------- */
 .btn-primary {
-  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
+  background: linear-gradient(135deg, #2f6dff 0%, #143ce1 100%) !important;
   color: #fff !important;
   font-weight: 600;
-  box-shadow: 0 10px 26px rgba(37, 99, 235, 0.4);
+  box-shadow: 0 10px 26px rgba(47, 109, 255, 0.35);
 }
 
 @keyframes shimmer { to { background-position: 200% center; } }

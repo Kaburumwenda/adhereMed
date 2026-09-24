@@ -66,7 +66,7 @@
               <template #prepend><v-icon size="18">mdi-alert-outline</v-icon></template>
               <div class="text-body-2">"<strong>{{ nameQuery }}</strong>" is not in the medication catalog. Please add it to the catalog first.</div>
               <div class="d-flex ga-2 mt-3">
-                <v-btn size="small" variant="flat" color="warning" rounded="lg" class="text-none" prepend-icon="mdi-book-plus-outline" @click="router.push('/pharmacy/medications')">
+                <v-btn size="small" variant="flat" color="warning" rounded="lg" class="text-none" prepend-icon="mdi-book-plus-outline" @click="router.push(catalogPath)">
                   Go to Catalog
                 </v-btn>
               </div>
@@ -110,7 +110,7 @@
             <v-autocomplete v-model="form.unit" :items="units" item-title="name" item-value="id" label="Unit of Measure *" :rules="req" variant="outlined" density="comfortable" rounded="lg" clearable :disabled="formDisabled" />
           </v-col>
           <v-col cols="12" md="6">
-            <v-autocomplete v-model="form.branch" :items="branches" item-title="name" item-value="id" label="Branch" variant="outlined" density="comfortable" rounded="lg" clearable :disabled="formDisabled || branchLocked" :readonly="branchLocked" prepend-inner-icon="mdi-store-outline" :hint="branchLocked ? 'Assigned to your branch' : 'Assign to a specific branch'" persistent-hint />
+            <v-autocomplete v-model="form.branch" :items="branches" item-title="name" item-value="id" label="Branch *" variant="outlined" density="comfortable" rounded="lg" :rules="[v => !!v || 'Warehouse is required']" :disabled="formDisabled || branchLocked" :readonly="branchLocked" prepend-inner-icon="mdi-store-outline" :hint="branchLocked ? 'Assigned to your branch' : 'Warehouse this stock item belongs to (required)'" persistent-hint />
           </v-col>
           <v-col cols="12" md="6" class="d-flex align-center">
             <v-switch
@@ -313,6 +313,9 @@ import { formatMoney } from '~/utils/format'
 import { useBranchStore } from '~/stores/branch'
 const route = useRoute(); const router = useRouter()
 const { $api } = useNuxtApp()
+// Inventory tenants use their own /ims routes & API namespace.
+const { isInventory } = useTenantEndpoints()
+const catalogPath = computed(() => isInventory.value ? '/ims/medications' : '/pharmacy/medications')
 const branchStore = useBranchStore()
 const branchLocked = computed(() => branchStore.branchLocked)
 const loadId = computed(() => route.params.id || null)
@@ -501,17 +504,36 @@ function generateBatch() { return `BN-${ymd()}-${rand(4)}` }
 
 // Auto-fill on create only; never overwrite existing values (e.g. when editing)
 const filled = ref(false)
+const activeForm = ref(null)   // stash of the live form object (template render)
 function autofill(form) {
+  activeForm.value = form
   if (filled.value || loadId.value) return false
   if (!form.barcode) form.barcode = generateSku()
   if (!form.batch_number) form.batch_number = generateBatch()
-  // Auto-assign branch when user is locked to a branch
-  if (!form.branch && branchStore.branchLocked && branchStore.currentBranchId) {
-    form.branch = branchStore.currentBranchId
+  // Branch is compulsory — default to the locked branch, else main warehouse
+  if (!form.branch) {
+    if (branchStore.branchLocked && branchStore.currentBranchId) {
+      form.branch = branchStore.currentBranchId
+    } else if (branches.value.length) {
+      const main = branches.value.find(b => b.is_main)
+      form.branch = main ? main.id : branches.value[0].id
+    }
   }
   filled.value = true
   return false
 }
+
+// Once branches finish loading, default any new-item form that still has
+// no warehouse selected (autofill may have run before the list resolved).
+watch(branches, (list) => {
+  if (!list.length || loadId.value) return
+  const f = activeForm.value
+  if (f && !f.branch) {
+    const main = list.find(b => b.is_main)
+    f.branch = (branchStore.branchLocked ? branchStore.currentBranchId : null)
+      || (main ? main.id : list[0].id)
+  }
+}, { immediate: true })
 
 // On edit: mirror server-computed total_quantity into the displayed quantity field once loaded.
 // total_quantity is NOT in `initial`, so it is undefined until the API response populates it.
@@ -625,9 +647,11 @@ function transformPayload(data) {
 }
 onMounted(async () => {
   const safe = (p) => $api.get(p).then(r => r.data?.results || r.data || []).catch(() => [])
+  // Inventory tenants use their own /ims API namespace.
+  const { branches: branchesApi } = useTenantEndpoints()
   categories.value = await safe('/inventory/categories/')
   units.value = await safe('/inventory/units/')
-  branches.value = await safe('/pharmacy-profile/branches/')
+  branches.value = await safe(branchesApi.value)
 })
 </script>
 

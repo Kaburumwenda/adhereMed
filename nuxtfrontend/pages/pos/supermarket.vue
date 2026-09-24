@@ -70,7 +70,7 @@
         <v-badge :content="parkedSales.length" :model-value="parkedSales.length > 0" color="warning" offset-x="6" offset-y="6">
           <v-btn variant="text" icon="mdi-tray-arrow-up" to="/pos/parked" title="Sales on hold" />
         </v-badge>
-        <v-btn variant="text" icon="mdi-store" to="/pos" title="Pharmacy POS" />
+        <v-btn variant="text" icon="mdi-store" to="/pos" title="POS" />
       </div>
     </header>
 

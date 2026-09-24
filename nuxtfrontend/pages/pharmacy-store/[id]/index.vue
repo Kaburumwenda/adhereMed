@@ -1,6 +1,6 @@
 <template>
   <v-container fluid class="pa-4 pa-md-6">
-    <PageHeader :title="pharmacy?.name || 'Pharmacy'" icon="mdi-pharmacy" :subtitle="pharmacy?.address">
+    <PageHeader :title="pharmacy?.name || 'Pharmacy'" icon="mdi-medical-bag" :subtitle="pharmacy?.address">
       <template #actions>
         <v-btn variant="text" prepend-icon="mdi-arrow-left" to="/pharmacy-store" class="text-none">{{ $t('common.back') }}</v-btn>
         <v-badge :content="cart.count" :model-value="cart.count > 0" color="primary" class="ml-2">

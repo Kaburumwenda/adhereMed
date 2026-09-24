@@ -1662,9 +1662,11 @@ async function loadImageDataUrl(url) {
 }
 
 async function loadPharmacyInfo() {
+  // Inventory tenants use their own /ims API namespace.
+  const { profile: profileApi, branches: branchesApi } = useTenantEndpoints()
   const [profile, branches] = await Promise.all([
-    safeList('/pharmacy-profile/profile/').then(arr => arr[0] || null).catch(() => null),
-    safeList('/pharmacy-profile/branches/')
+    safeList(profileApi.value).then(arr => arr[0] || null).catch(() => null),
+    safeList(branchesApi.value)
   ])
   const main = branches.find(b => b.is_main) || branches[0] || null
   pharmacy.value = {

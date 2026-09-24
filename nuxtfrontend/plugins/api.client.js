@@ -23,6 +23,16 @@ export default defineNuxtPlugin((nuxtApp) => {
 
   // Request interceptor: attach token + tenant schema
   api.interceptors.request.use((req) => {
+    // File uploads: drop the JSON content type so the browser can set the
+    // multipart/form-data boundary itself (otherwise axios serializes the
+    // FormData to JSON and the server sees no file).
+    if (typeof window !== 'undefined' && req.data instanceof FormData) {
+      if (req.headers && typeof req.headers.setContentType === 'function') {
+        req.headers.setContentType(false)
+      } else {
+        delete req.headers['Content-Type']
+      }
+    }
     if (typeof window !== 'undefined') {
       const token = localStorage.getItem(AppConstants.storageKeys.accessToken)
       if (token) {

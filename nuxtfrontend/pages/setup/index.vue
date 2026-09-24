@@ -142,6 +142,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useNuxtApp } from '#app'
 
 const { $api } = useNuxtApp()
+// Inventory tenants use their own /ims API namespace.
+const { setupSeed: setupSeedApi, setupSeedRun: setupSeedRunApi } = useTenantEndpoints()
 
 const loading = ref(false)
 const seeds = ref([])
@@ -175,7 +177,7 @@ function iconFor(key) {
 async function loadCatalog() {
   loading.value = true
   try {
-    const { data } = await $api.get('/pharmacy-profile/setup/seed/')
+    const { data } = await $api.get(setupSeedApi.value)
     seeds.value = data
   } catch (e) {
     showSnack('Failed to load seed catalog', 'error')
@@ -189,7 +191,7 @@ async function runSeed(key) {
   busy.value[key] = true
   results.value[key] = null
   try {
-    await $api.post('/pharmacy-profile/setup/seed/run/', { command: key })
+    await $api.post(setupSeedRunApi.value, { command: key })
     results.value[key] = 'success'
     history.value.unshift({
       label: seed?.label || key,

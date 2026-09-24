@@ -37,7 +37,7 @@ class UserSerializer(serializers.ModelSerializer):
             return None
 
     def get_is_tenant_admin(self, obj):
-        return obj.role in {'tenant_admin', 'homecare_admin', 'admin'}
+        return obj.role in {'tenant_admin', 'homecare_admin', 'inventory_admin', 'admin'}
 
     def get_billing(self, obj):
         """Lightweight overdue-lock summary so the frontend can gate access."""

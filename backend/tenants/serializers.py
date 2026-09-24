@@ -30,8 +30,15 @@ class TenantRegistrationSerializer(serializers.Serializer):
     domain = serializers.CharField(max_length=253)
     address = serializers.CharField(required=False, allow_blank=True)
     city = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    country = serializers.CharField(max_length=100, required=False, allow_blank=True)
     phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
     email = serializers.EmailField(required=False, allow_blank=True)
+    # Coordinates (captured from a Google Places selection)
+    latitude = serializers.DecimalField(max_digits=30, decimal_places=12,
+                                        required=False, allow_null=True)
+    longitude = serializers.DecimalField(max_digits=30, decimal_places=12,
+                                         required=False, allow_null=True)
+    place_name = serializers.CharField(required=False, allow_blank=True)
     # Admin user details
     admin_email = serializers.EmailField()
     admin_first_name = serializers.CharField(max_length=150)
@@ -55,3 +62,21 @@ class TenantRegistrationSerializer(serializers.Serializer):
         if User.objects.filter(email=value).exists():
             raise serializers.ValidationError('A user with this email already exists.')
         return value
+
+
+class TenantProfileSerializer(serializers.ModelSerializer):
+    """Self-service serializer: tenant admins viewing / updating their own
+    organization profile. Type, slug and schema are managed by the platform
+    and cannot be changed here."""
+
+    class Meta:
+        model = Tenant
+        fields = [
+            'name', 'address', 'city', 'country',
+            'latitude', 'longitude', 'place_name',
+            'phone', 'email', 'website',
+        ]
+        extra_kwargs = {
+            'name': {'required': True, 'allow_blank': False},
+            'country': {'required': False, 'allow_blank': True},
+        }

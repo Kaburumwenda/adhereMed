@@ -212,6 +212,8 @@ const { t } = useI18n()
 
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 const { $api } = useNuxtApp()
+// Inventory tenants use their own /ims API namespace.
+const { branches: branchesApi } = useTenantEndpoints()
 
 const loading = ref(false)
 const saving = ref(false)
@@ -276,7 +278,7 @@ async function load() {
     const [list, cur, br] = await Promise.all([
       $api.get('/pos/shifts/').then(r => r.data?.results || r.data || []),
       $api.get('/pos/shifts/current/').then(r => r.data).catch(() => null),
-      $api.get('/pharmacy-profile/branches/').then(r => r.data?.results || r.data || []).catch(() => []),
+      $api.get(branchesApi.value).then(r => r.data?.results || r.data || []).catch(() => []),
     ])
     shifts.value = list
     current.value = cur

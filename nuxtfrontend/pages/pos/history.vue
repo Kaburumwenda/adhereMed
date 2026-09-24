@@ -349,7 +349,7 @@ const branchFilterItems = computed(() => {
   items.unshift({ id: null, name: 'All Branches' })
   return items
 })
-const tenantName = computed(() => auth.tenantName || 'Pharmacy')
+const tenantName = computed(() => auth.tenantName || 'Store')
 
 const loading = ref(false)
 const txAll = ref([])
@@ -585,7 +585,7 @@ function printReceipt(t) {
       .total { font-weight: bold; font-size: 14px; }
       .center { text-align:center; }
     </style></head><body>
-      <h2>${escapeHtml(tenantName.value || 'Pharmacy')}</h2>
+        <h2>${escapeHtml(tenantName.value || 'Store')}</h2>
       <div class="center"><small>${formatDateTime(t.created_at)}</small><br>
       <small>Receipt #${escapeHtml(t.transaction_number || String(t.id))}</small></div>
       <hr>

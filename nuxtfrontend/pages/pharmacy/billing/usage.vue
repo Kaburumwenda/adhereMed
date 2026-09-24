@@ -2,7 +2,7 @@
   <v-container fluid class="pa-4 pa-md-6">
     <PageHeader
       title="Pharmacy API Usage & Billing"
-      icon="mdi-pharmacy"
+      icon="mdi-medical-bag"
       subtitle="Monthly request metering for your pharmacy account"
     >
       <template #actions>

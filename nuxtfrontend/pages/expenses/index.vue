@@ -5,6 +5,8 @@
         <v-btn variant="tonal" rounded="lg" class="text-none" prepend-icon="mdi-shape-outline" to="/expenses/categories">{{ $t('categoriesPage.title') }}</v-btn>
         <v-btn variant="tonal" rounded="lg" class="text-none" prepend-icon="mdi-refresh" :loading="loading" @click="reload">{{ $t('common.refresh') }}</v-btn>
         <v-btn variant="tonal" rounded="lg" class="text-none" prepend-icon="mdi-download" @click="exportCsv">Export</v-btn>
+        <v-btn variant="tonal" color="teal" rounded="lg" class="text-none" prepend-icon="mdi-file-chart-outline" :loading="reportLoading" @click="downloadReport">Report (PDF)</v-btn>
+        <v-btn variant="tonal" color="success" rounded="lg" class="text-none" prepend-icon="mdi-microsoft-excel" to="/expenses/excel">Import / Export</v-btn>
         <v-btn color="primary" rounded="lg" class="text-none" prepend-icon="mdi-plus" to="/expenses/new">{{ $t('expenses.newExpense') }}</v-btn>
       </template>
     </PageHeader>
@@ -51,14 +53,30 @@
           bg-color="surface" prepend-inner-icon="mdi-credit-card-outline" clearable
           style="max-width: 180px; min-width: 150px"
         />
-        <v-text-field
-          v-model="dateFrom" type="date" label="From" variant="solo-filled" density="comfortable"
-          hide-details flat rounded="lg" bg-color="surface" style="max-width: 170px"
+        <v-select
+          v-model="datePreset"
+          :items="dateOptions"
+          item-title="label"
+          item-value="value"
+          variant="solo-filled"
+          density="comfortable"
+          hide-details
+          flat
+          rounded="lg"
+          bg-color="surface"
+          prepend-inner-icon="mdi-calendar-range"
+          style="max-width: 200px; min-width: 170px"
         />
-        <v-text-field
-          v-model="dateTo" type="date" label="To" variant="solo-filled" density="comfortable"
-          hide-details flat rounded="lg" bg-color="surface" style="max-width: 170px"
-        />
+        <template v-if="datePreset === 'custom'">
+          <v-text-field
+            v-model="dateFrom" type="date" label="From" variant="solo-filled" density="comfortable"
+            hide-details flat rounded="lg" bg-color="surface" style="max-width: 170px"
+          />
+          <v-text-field
+            v-model="dateTo" type="date" label="To" variant="solo-filled" density="comfortable"
+            hide-details flat rounded="lg" bg-color="surface" style="max-width: 170px"
+          />
+        </template>
         <v-select
           v-if="branchStore.hasBranches"
           v-model="branchFilter"
@@ -103,6 +121,9 @@
         :items-per-page-options="[10, 20, 50, 100]" density="comfortable" hover
         class="exp-data-table" @click:row="(_, { item }) => goDetail(item)"
       >
+        <template #item.rowIndex="{ item }">
+          <span class="text-caption text-medium-emphasis">{{ filtered.findIndex(p => p.id === item.id) + 1 }}</span>
+        </template>
         <template #item.reference="{ item }">
           <span class="font-weight-bold text-primary">{{ item.reference }}</span>
         </template>
@@ -222,6 +243,7 @@ const search = ref('')
 const statusFilter = ref('all')
 const categoryFilter = ref(null)
 const methodFilter = ref(null)
+const datePreset = ref('all')
 const dateFrom = ref('')
 const dateTo = ref('')
 const viewMode = ref('table')
@@ -245,6 +267,61 @@ const methodOptions = [
   { label: 'Other', value: 'other' },
 ]
 function methodLabel(v) { return methodOptions.find(o => o.value === v)?.label || v }
+
+// ── Date preset filter ─────────────────────────────────────────────
+const dateOptions = [
+  { label: 'All time', value: 'all' },
+  { label: 'Today', value: 'today' },
+  { label: 'This week', value: 'week' },
+  { label: 'This month', value: 'month' },
+  { label: 'Last 30 days', value: '30d' },
+  { label: 'Last 90 days', value: '90d' },
+  { label: 'This year', value: 'year' },
+  { label: 'Custom range', value: 'custom' },
+]
+
+function isoDate(d) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function applyDatePreset() {
+  if (datePreset.value === 'all') {
+    dateFrom.value = ''
+    dateTo.value = ''
+    return
+  }
+  if (datePreset.value === 'custom') return
+  const now = new Date()
+  const to = isoDate(now)
+  let from = now
+  if (datePreset.value === 'today') {
+    from = now
+  } else if (datePreset.value === 'week') {
+    from = new Date(now)
+    from.setDate(now.getDate() - ((now.getDay() + 6) % 7)) // Monday
+  } else if (datePreset.value === 'month') {
+    from = new Date(now.getFullYear(), now.getMonth(), 1)
+  } else if (datePreset.value === '30d') {
+    from = new Date(now)
+    from.setDate(now.getDate() - 30)
+  } else if (datePreset.value === '90d') {
+    from = new Date(now)
+    from.setDate(now.getDate() - 90)
+  } else if (datePreset.value === 'year') {
+    from = new Date(now.getFullYear(), 0, 1)
+  }
+  dateFrom.value = isoDate(from)
+  dateTo.value = to
+}
+
+watch(datePreset, () => {
+  applyDatePreset()
+  // reset stale custom values when leaving custom mode
+  if (datePreset.value === 'all') { dateFrom.value = ''; dateTo.value = '' }
+})
 
 const categoryOptions = computed(() =>
   (cats.items.value || []).map(c => ({ label: c.name, value: c.id }))
@@ -287,6 +364,7 @@ const statCards = computed(() => {
 })
 
 const headers = [
+  { title: '#', key: 'rowIndex', width: 55, sortable: false },
   { title: 'Reference', key: 'reference', width: 130 },
   { title: 'Title / Vendor', key: 'title' },
   { title: 'Category', key: 'category_name', width: 140 },
@@ -346,6 +424,36 @@ function exportCsv() {
   const a = document.createElement('a')
   a.href = url; a.download = `expenses-${new Date().toISOString().slice(0,10)}.csv`
   a.click(); URL.revokeObjectURL(url)
+}
+
+const reportLoading = ref(false)
+
+async function downloadReport() {
+  reportLoading.value = true
+  try {
+    const params = {}
+    if (statusFilter.value !== 'all') params.status = statusFilter.value
+    if (categoryFilter.value) params.category = categoryFilter.value
+    if (methodFilter.value) params.payment_method = methodFilter.value
+    if (dateFrom.value) params.date_from = dateFrom.value
+    if (dateTo.value) params.date_to = dateTo.value
+    const blob = (await $api.get('/expenses/expenses/report-pdf/', { params, responseType: 'blob' })).data
+    const objectUrl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = objectUrl
+    a.download = `operating_expenses_report_${new Date().toISOString().slice(0, 10)}.pdf`
+    a.click()
+    URL.revokeObjectURL(objectUrl)
+    snack.text = 'Report download started.'
+    snack.color = 'success'
+    snack.show = true
+  } catch (e) {
+    snack.text = 'Report download failed.'
+    snack.color = 'error'
+    snack.show = true
+  } finally {
+    reportLoading.value = false
+  }
 }
 
 watch(branchFilter, () => reload())

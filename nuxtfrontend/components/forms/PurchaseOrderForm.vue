@@ -75,6 +75,63 @@
                   hide-details="auto"
                 />
               </v-col>
+              <v-col cols="6" md="3">
+                <v-text-field
+                  v-model.number="form.shipping_cost"
+                  label="Shipping cost"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  variant="outlined"
+                  density="comfortable"
+                  prepend-inner-icon="mdi-truck-delivery"
+                  hide-details="auto"
+                  prefix="KSh"
+                  hint="Recorded in Expenses; excluded from order totals"
+                  persistent-hint
+                />
+              </v-col>
+            </v-row>
+            <v-row dense>
+              <v-col cols="12">
+                <div
+                  class="proof-dropzone"
+                  :class="{ 'proof-dropzone-active': proofDragging }"
+                  @dragover.prevent="proofDragging = true"
+                  @dragleave.prevent="proofDragging = false"
+                  @drop.prevent="onProofDrop"
+                  @click="proofInputRef?.click()"
+                >
+                  <input ref="proofInputRef" type="file" accept="image/*" class="d-none" @change="onProofInputChange" />
+                  <svg class="proof-ants" aria-hidden="true">
+                    <rect x="1.25" y="1.25" width="calc(100% - 2.5px)" height="calc(100% - 2.5px)" rx="10" />
+                  </svg>
+                  <div v-if="proofPreview || proofUrl" class="d-flex align-center justify-center flex-wrap ga-3">
+                    <v-avatar rounded="lg" size="72" class="proof-thumb">
+                      <v-img :src="proofPreview || proofUrl" cover />
+                    </v-avatar>
+                    <div class="text-body-2 text-medium-emphasis">
+                      {{ proofFile ? 'New proof image ready to upload' : 'Proof image attached' }} · optional
+                    </div>
+                    <v-btn
+                      icon="mdi-close-circle-outline"
+                      size="small"
+                      variant="text"
+                      color="error"
+                      title="Remove proof image"
+                      :loading="proofBusy"
+                      @click.stop="removeProof"
+                    />
+                  </div>
+                  <div v-else class="d-flex flex-column align-center py-1">
+                    <v-icon size="30" color="primary" class="mb-1">{{ proofDragging ? 'mdi-file-image-plus-outline' : 'mdi-image-plus-outline' }}</v-icon>
+                    <div class="text-body-2 text-medium-emphasis">
+                      Drop a <b>PO proof image</b> here or <span class="text-primary font-weight-medium">browse</span> · optional
+                    </div>
+                    <div class="text-caption text-disabled">Signed delivery note, receipt photo, etc.</div>
+                  </div>
+                </div>
+              </v-col>
             </v-row>
             <v-alert
               v-if="form.status === 'received'"
@@ -95,6 +152,28 @@
               <div class="text-subtitle-1 font-weight-bold">Items</div>
               <v-chip v-if="form.items.length" size="x-small" color="primary" variant="tonal" class="ml-2">{{ form.items.length }}</v-chip>
               <v-spacer />
+              <input ref="importFileRef" type="file" accept=".xlsx,.csv" class="d-none" @change="onImportFile" />
+              <v-btn
+                color="success"
+                variant="tonal"
+                rounded="lg"
+                prepend-icon="mdi-microsoft-excel"
+                size="small"
+                class="mr-2"
+                :loading="importParsing"
+                @click="importFileRef?.click()"
+              >Import Excel</v-btn>
+              <v-btn
+                variant="tonal"
+                color="success"
+                rounded="lg"
+                prepend-icon="mdi-file-export"
+                size="small"
+                class="mr-2"
+                :disabled="!form.items.length"
+                :loading="exportingItems"
+                @click="exportItems"
+              >Export Items</v-btn>
               <v-btn color="primary" variant="tonal" rounded="lg" prepend-icon="mdi-plus" size="small" @click="addItem">Add Item</v-btn>
             </div>
 
@@ -279,7 +358,7 @@
                           <span class="text-caption text-medium-emphasis d-block">Line total</span>
                           <span class="text-h6 font-weight-bold text-primary">{{ formatMoney(lineTotal(it)) }}</span>
                           <span v-if="Number(it.tax_percent) > 0" class="text-caption text-medium-emphasis d-block">
-                            incl. {{ formatMoney(lineTax(it)) }} VAT
+                            excl. {{ formatMoney(lineTax(it)) }} VAT
                           </span>
                         </div>
                       </div>
@@ -384,6 +463,17 @@
               </v-col>
             </v-row>
 
+            <v-alert
+              v-if="Number(form.shipping_cost) > 0"
+              type="info"
+              variant="tonal"
+              density="compact"
+              class="mt-3"
+              icon="mdi-truck-delivery"
+            >
+              Shipping <b>{{ formatMoney(form.shipping_cost) }}</b> is excluded from the order total — when the order is <b>received</b>, it is recorded in Expenses under the <b>Shipping Cost</b> category (auto-approved).
+            </v-alert>
+
             <v-alert v-if="topError" type="error" variant="tonal" density="compact" class="mt-4">{{ topError }}</v-alert>
 
             <div class="d-flex flex-wrap justify-end ga-2 mt-4">
@@ -409,6 +499,98 @@
         </v-card>
     </v-form>
 
+    <!-- Excel import review dialog -->
+    <v-dialog v-model="importDialog" max-width="960" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="d-flex align-center flex-wrap ga-2">
+          <v-icon color="success">mdi-microsoft-excel</v-icon>
+          Review imported items
+          <v-spacer />
+          <v-chip v-if="importRows.length" size="small" variant="tonal" color="primary" prepend-icon="mdi-table">{{ importRows.length }} rows</v-chip>
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-4">
+          <v-alert v-if="importError" type="error" variant="tonal" density="compact" class="mb-4">
+            <template #prepend><v-icon>mdi-alert-circle</v-icon></template>
+            {{ importError }}
+          </v-alert>
+
+          <template v-if="importRows.length">
+            <div class="d-flex align-center flex-wrap ga-2 mb-3">
+              <v-chip size="small" variant="tonal" color="success" prepend-icon="mdi-check-circle-outline">
+                {{ importSummary.matched }} matched in inventory
+              </v-chip>
+              <v-chip size="small" variant="tonal" color="warning" prepend-icon="mdi-plus-circle-outline">
+                {{ importSummary.new }} new (created on save)
+              </v-chip>
+              <v-chip v-if="importSummary.error" size="small" variant="tonal" color="error" prepend-icon="mdi-alert-circle-outline">
+                {{ importSummary.error }} skipped
+              </v-chip>
+              <span class="text-caption text-medium-emphasis">Rows with errors are skipped; the rest are added to the order.</span>
+            </div>
+
+            <div class="po-import-sheet-wrap">
+              <table class="po-import-sheet">
+                <thead>
+                  <tr>
+                    <th>Row</th>
+                    <th>Status</th>
+                    <th>Item</th>
+                    <th>Qty</th>
+                    <th>Unit cost</th>
+                    <th>Selling</th>
+                    <th>Disc %</th>
+                    <th>VAT %</th>
+                    <th>Batch #</th>
+                    <th>Expiry</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="r in importRows" :key="r.row_num" :class="`po-import-row-${r.status}`">
+                    <td class="text-caption text-medium-emphasis">{{ r.row_num }}</td>
+                    <td>
+                      <v-chip :color="importStatusColor(r.status)" variant="tonal" size="x-small">
+                        <v-icon start size="12">{{ importStatusIcon(r.status) }}</v-icon>
+                        {{ r.status }}
+                      </v-chip>
+                    </td>
+                    <td>
+                      <div class="font-weight-medium">{{ r.name }}</div>
+                      <div v-if="r.errors && r.errors.name" class="text-caption text-error">{{ r.errors.name }}</div>
+                    </td>
+                    <td>
+                      <div>{{ r.qty }}</div>
+                      <div v-if="r.errors && r.errors.qty" class="text-caption text-error">{{ r.errors.qty }}</div>
+                    </td>
+                    <td>{{ formatMoney(r.unit_cost) }}</td>
+                    <td>{{ formatMoney(r.unit_selling_price) }}</td>
+                    <td>{{ r.discount_percent }}</td>
+                    <td>{{ r.tax_percent }}</td>
+                    <td>{{ r.batch_number || '—' }}</td>
+                    <td>{{ r.expiry_date || '—' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </template>
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="pa-4">
+          <v-btn variant="text" rounded="lg" class="text-none" prepend-icon="mdi-file-download-outline" :loading="importDownloading" @click="downloadPoTemplate">Download template</v-btn>
+          <v-spacer />
+          <v-btn variant="text" rounded="lg" class="text-none" @click="closeImportDialog">Cancel</v-btn>
+          <v-btn
+            color="primary"
+            rounded="lg"
+            class="text-none"
+            prepend-icon="mdi-plus-circle"
+            :disabled="!importApplyCount"
+            @click="applyImport"
+          >Add {{ importApplyCount }} item{{ importApplyCount === 1 ? '' : 's' }}</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-snackbar v-model="snack.show" :color="snack.color" location="top right" timeout="3000">{{ snack.text }}</v-snackbar>
   </v-container>
 </template>
@@ -431,6 +613,65 @@ const formRef = ref(null)
 const saving = ref(false)
 const topError = ref('')
 const snack = reactive({ show: false, color: 'success', text: '' })
+
+// ── Proof image (optional) ───────────────────────────────────────────
+const proofInputRef = ref(null)
+const proofFile = ref(null)
+const proofPreview = ref(null)
+const proofUrl = ref('')
+const proofBusy = ref(false)
+const proofDragging = ref(false)
+
+function onProofSelected(file) {
+  const f = Array.isArray(file) ? file[0] : file
+  if (!f) { proofPreview.value = null; return }
+  const reader = new FileReader()
+  reader.onload = e => { proofPreview.value = e.target.result }
+  reader.readAsDataURL(f)
+}
+
+function onProofInputChange(e) {
+  const file = e.target?.files?.[0]
+  if (file) {
+    proofFile.value = file
+    onProofSelected(file)
+  }
+  e.target.value = ''
+}
+
+function onProofDrop(e) {
+  proofDragging.value = false
+  const file = e.dataTransfer?.files?.[0]
+  if (file && file.type.startsWith('image/')) {
+    proofFile.value = file
+    onProofSelected(file)
+  }
+}
+
+async function removeProof() {
+  // Clearing a newly selected (not yet uploaded) file — keep any existing proof
+  if (!loadId.value || !proofUrl.value || proofFile.value) {
+    proofFile.value = null
+    proofPreview.value = null
+    return
+  }
+  proofBusy.value = true
+  try {
+    await $api.post(`/purchase-orders/orders/${loadId.value}/clear-proof/`)
+    proofUrl.value = ''
+    proofFile.value = null
+    proofPreview.value = null
+    snack.text = 'Proof image removed.'
+    snack.color = 'success'
+    snack.show = true
+  } catch {
+    snack.text = 'Could not remove proof image.'
+    snack.color = 'error'
+    snack.show = true
+  } finally {
+    proofBusy.value = false
+  }
+}
 
 const req = [v => (v !== null && v !== undefined && v !== '') || 'Required']
 const qtyRules = [v => (Number(v) > 0) || 'Must be > 0']
@@ -476,6 +717,7 @@ const form = reactive({
   branch: null,
   expected_delivery: '',
   status: 'draft',
+  shipping_cost: 0,
   notes: '',
   items: [],
 })
@@ -567,6 +809,155 @@ function newItem() {
 }
 
 function addItem() { form.items.push(newItem()) }
+
+// --- Excel import for items ---
+const importFileRef = ref(null)
+const importDialog = ref(false)
+const importParsing = ref(false)
+const importDownloading = ref(false)
+const importError = ref('')
+const importRows = ref([])
+
+const importSummary = computed(() => ({
+  matched: importRows.value.filter(r => r.status === 'matched').length,
+  new: importRows.value.filter(r => r.status === 'new').length,
+  error: importRows.value.filter(r => r.status === 'error').length,
+}))
+const importApplyCount = computed(() => importRows.value.filter(r => r.status !== 'error').length)
+
+function importStatusColor(s) { return { matched: 'success', new: 'warning', error: 'error' }[s] || 'grey' }
+function importStatusIcon(s) { return { matched: 'mdi-check', new: 'mdi-plus', error: 'mdi-alert' }[s] || 'mdi-help' }
+
+function closeImportDialog() {
+  importDialog.value = false
+  importRows.value = []
+  importError.value = ''
+}
+
+async function onImportFile(e) {
+  const file = e.target?.files?.[0]
+  e.target.value = ''
+  if (!file) return
+  if (!/\.(xlsx|csv)$/i.test(file.name)) {
+    importError.value = 'Unsupported file type. Use .xlsx or .csv'
+    importRows.value = []
+    importDialog.value = true
+    return
+  }
+  importParsing.value = true
+  importError.value = ''
+  try {
+    const fd = new FormData()
+    fd.append('file', file)
+    const params = {}
+    if (form.branch) params.branch = form.branch
+    const { data } = await $api.post('/purchase-orders/orders/import-items-preview/', fd, { params })
+    importRows.value = data.rows || []
+    if (!importRows.value.length) importError.value = 'No data rows found in the file.'
+    importDialog.value = true
+  } catch (err) {
+    importError.value = err?.response?.data?.detail || 'Could not read the file. Check the format and try again.'
+    importRows.value = []
+    importDialog.value = true
+  } finally {
+    importParsing.value = false
+  }
+}
+
+function applyImport() {
+  // Drop untouched blank rows (e.g. the initial empty item) before appending
+  const keep = form.items.filter(it => it.stock_id || (it.name && it.name.trim()))
+  form.items.splice(0, form.items.length, ...keep)
+
+  for (const row of importRows.value) {
+    if (row.status === 'error') continue
+    const it = newItem()
+    it.name = row.name
+    it.qty = Number(row.qty) > 0 ? Number(row.qty) : 1
+    it.unit_cost = Number(row.unit_cost || 0)
+    it.unit_selling_price = Number(row.unit_selling_price || 0)
+    it.discount_percent = Number(row.discount_percent || 0)
+    it.tax_percent = Number(row.tax_percent || 0)
+    it.batch_number = row.batch_number || ''
+    it.expiry_date = row.expiry_date || ''
+    if (row.stock_id) {
+      it.stock_id = row.stock_id
+      it._source = 'inventory'
+      it._current_stock = row.current_stock
+      const stockObj = stocks.value.find(s => s.id === row.stock_id)
+      it.pick = stockObj || { id: row.stock_id, medication_name: row.name }
+    } else {
+      it.pick = row.name
+    }
+    form.items.push(it)
+  }
+
+  snack.text = `${importApplyCount.value} item(s) added from spreadsheet`
+  snack.color = 'success'
+  snack.show = true
+  closeImportDialog()
+}
+
+async function downloadPoTemplate() {
+  importDownloading.value = true
+  try {
+    const blob = (await $api.get('/purchase-orders/orders/import-items-template/', { responseType: 'blob' })).data
+    const objectUrl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = objectUrl
+    a.download = `po_items_import_template_${new Date().toISOString().slice(0, 10)}.xlsx`
+    a.click()
+    URL.revokeObjectURL(objectUrl)
+  } catch {
+    snack.text = 'Template download failed.'
+    snack.color = 'error'
+    snack.show = true
+  } finally {
+    importDownloading.value = false
+  }
+}
+
+const exportingItems = ref(false)
+
+async function exportItems() {
+  const items = form.items
+    .filter(it => it.stock_id || (it.name && it.name.trim()))
+    .map(it => ({
+      name: it.name,
+      qty: Number(it.qty || 0),
+      unit_cost: Number(it.unit_cost || 0),
+      unit_selling_price: Number(it.unit_selling_price || 0),
+      discount_percent: Number(it.discount_percent || 0),
+      tax_percent: Number(it.tax_percent || 0),
+      batch_number: it.batch_number || '',
+      expiry_date: it.expiry_date || '',
+    }))
+  if (!items.length) {
+    snack.text = 'No items to export.'
+    snack.color = 'warning'
+    snack.show = true
+    return
+  }
+  exportingItems.value = true
+  try {
+    const blob = (await $api.post('/purchase-orders/orders/export-items/', { items }, { responseType: 'blob' })).data
+    const objectUrl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = objectUrl
+    a.download = `po_items_${form.po_number ? form.po_number.toLowerCase().replace(/\s+/g, '_') : new Date().toISOString().slice(0, 10)}.xlsx`
+    a.click()
+    URL.revokeObjectURL(objectUrl)
+    snack.text = 'Item export download started.'
+    snack.color = 'success'
+    snack.show = true
+  } catch (e) {
+    snack.text = e?.response?.data?.detail || 'Export failed.'
+    snack.color = 'error'
+    snack.show = true
+  } finally {
+    exportingItems.value = false
+  }
+}
 
 function onPickItem(it, value) {
   if (value && typeof value === 'object') {
@@ -661,7 +1052,9 @@ function hydrateFromServer(data) {
   supplierPick.value = suppliers.value.find(s => s.id === form.supplier) || null
   form.expected_delivery = data.expected_delivery || ''
   form.status = data.status || 'draft'
+  form.shipping_cost = Number(data.shipping_cost || 0)
   form.notes = data.notes || ''
+  proofUrl.value = data.proof_image_url || ''
   form.items = (data.items || []).map(raw => {
     const stock_id = raw.medication_stock_id || raw.stock || null
     const stockObj = stock_id ? stocks.value.find(x => x.id === stock_id) : null
@@ -781,6 +1174,7 @@ async function onSubmit() {
     branch: form.branch || undefined,
     expected_delivery: form.expected_delivery || null,
     status: form.status,
+    shipping_cost: Number(form.shipping_cost || 0),
     notes: form.notes,
     items: form.items.map(it => ({
       medication_stock_id: it.stock_id,
@@ -800,6 +1194,21 @@ async function onSubmit() {
     const result = loadId.value
       ? await r.update(loadId.value, payload)
       : await r.create(payload)
+    // Optional proof image — uploaded after the PO is saved
+    const f = Array.isArray(proofFile.value) ? proofFile.value[0] : proofFile.value
+    if (f && result?.id) {
+      try {
+        const fd = new FormData()
+        fd.append('image', f)
+        await $api.post(`/purchase-orders/orders/${result.id}/upload-proof/`, fd)
+      } catch {
+        snack.text = 'Order saved, but the proof image failed to upload.'
+        snack.color = 'warning'
+        snack.show = true
+        router.push('/purchase-orders')
+        return result
+      }
+    }
     snack.text = form.status === 'received' ? 'Saved & stock updated' : 'Saved'
     snack.color = 'success'
     snack.show = true
@@ -875,5 +1284,92 @@ async function onSubmit() {
 .po-summary-stat.is-total {
   background: linear-gradient(135deg, #4f46e5, #7c3aed);
   color: white;
+}
+
+/* Excel import review table */
+.po-import-sheet-wrap {
+  overflow: auto;
+  max-height: 55vh;
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 12px;
+}
+.po-import-sheet {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.po-import-sheet thead th {
+  position: sticky;
+  top: 0;
+  background: rgb(var(--v-theme-surface));
+  border-bottom: 2px solid rgba(var(--v-theme-on-surface), 0.08);
+  padding: 10px;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+  text-align: left;
+  white-space: nowrap;
+  z-index: 1;
+}
+.po-import-sheet tbody td {
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.05);
+  padding: 8px 10px;
+  white-space: nowrap;
+  vertical-align: top;
+}
+.po-import-row-matched td { background: rgba(var(--v-theme-success), 0.05); }
+.po-import-row-new td { background: rgba(var(--v-theme-warning), 0.05); }
+.po-import-row-error td { background: rgba(var(--v-theme-error), 0.07); }
+
+/* Proof image dropzone — dotted animated border */
+.proof-dropzone {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 14px 16px;
+  border: 2px dashed rgba(var(--v-theme-primary), 0.18);
+  border-radius: 12px;
+  background: rgba(var(--v-theme-primary), 0.02);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.proof-dropzone-active {
+  background: rgba(var(--v-theme-primary), 0.06);
+}
+
+/* Marching-ants dotted border (animated dots) */
+.proof-ants {
+  position: absolute;
+  inset: -2px;
+  width: calc(100% + 4px);
+  height: calc(100% + 4px);
+  pointer-events: none;
+}
+.proof-ants rect {
+  fill: none;
+  stroke: rgb(var(--v-theme-primary));
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 0.5 14;
+  opacity: 0.55;
+  animation: proof-march 1.2s linear infinite;
+}
+.proof-dropzone:hover .proof-ants rect,
+.proof-dropzone-active .proof-ants rect {
+  opacity: 1;
+  animation-duration: 0.45s;
+}
+@keyframes proof-march {
+  to { stroke-dashoffset: -29; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .proof-ants rect { animation: none; }
+}
+.proof-thumb {
+  border: 2px solid rgba(var(--v-theme-primary), 0.25);
 }
 </style>

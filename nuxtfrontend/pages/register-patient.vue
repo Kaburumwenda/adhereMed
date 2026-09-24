@@ -5,7 +5,7 @@
       <div class="rp-grid rp-fill" />
 
       <v-container class="rp-container">
-        <v-btn variant="text" color="white" class="text-none mb-4"
+        <v-btn variant="text" color="brand" class="text-none mb-4"
                prepend-icon="mdi-arrow-left" @click="goBack">
           {{ step === 'policy' ? 'Back to hub' : 'Back' }}
         </v-btn>
@@ -48,7 +48,7 @@
               </div>
             </v-fade-transition>
 
-            <v-checkbox v-model="accepted" color="teal" hide-details density="comfortable"
+            <v-checkbox v-model="accepted" color="brand" hide-details density="comfortable"
                         class="rp-check" @update:model-value="onAccept">
               <template #label>
                 <span class="rp-check-label">
@@ -70,7 +70,7 @@
                 Cancel
               </v-btn>
               <v-spacer />
-              <v-btn color="teal" variant="flat" rounded="lg" class="text-none"
+              <v-btn color="brand" variant="flat" rounded="lg" class="text-none"
                      :disabled="!accepted" append-icon="mdi-arrow-right" @click="proceed">
                 Continue
               </v-btn>
@@ -145,22 +145,22 @@
               </v-col>
             </v-row>
 
-            <v-btn type="submit" color="teal" size="large" block rounded="lg"
+            <v-btn type="submit" color="brand" size="large" block rounded="lg"
                    class="text-none mt-2" :loading="loading">
               Create Account
             </v-btn>
 
             <div class="text-center mt-5 text-body-2">
               Already have an account?
-              <NuxtLink to="/login" class="text-teal font-weight-medium">Sign in</NuxtLink>
+              <NuxtLink to="/login" class="text-brand font-weight-medium">Sign in</NuxtLink>
             </div>
           </v-form>
         </v-card>
 
         <!-- STEP 3: Success -->
         <v-card v-else rounded="xl" elevation="12" class="rp-card rp-form-card mx-auto pa-8 text-center">
-          <v-avatar size="72" color="teal" variant="tonal" class="mb-4">
-            <v-icon size="40" color="teal">mdi-check-decagram</v-icon>
+          <v-avatar size="72" color="brand" variant="tonal" class="mb-4">
+            <v-icon size="40" color="brand">mdi-check-decagram</v-icon>
           </v-avatar>
           <h2 class="text-h5 font-weight-bold mb-1">Welcome to AdhereMed!</h2>
           <p class="text-body-2 text-medium-emphasis">Your patient account is ready.</p>
@@ -168,7 +168,7 @@
             <div class="text-caption text-medium-emphasis">Your Patient ID</div>
             <div class="rp-idvalue">{{ newPatientId || '—' }}</div>
           </div>
-          <v-btn color="teal" size="large" block rounded="lg" class="text-none"
+          <v-btn color="brand" size="large" block rounded="lg" class="text-none"
                  append-icon="mdi-arrow-right" @click="router.push('/dashboard')">
             Go to my dashboard
           </v-btn>
@@ -272,52 +272,53 @@ async function onSubmit() {
 </script>
 
 <style scoped>
-.rp-root { position: relative; min-height: 100vh; overflow: hidden; background: #060B18; }
+.rp-root { position: relative; min-height: 100vh; overflow: hidden; background: #f8fafc; }
 .rp-fill { position: absolute; inset: 0; z-index: 0; }
 .rp-bg {
   background:
-    radial-gradient(1000px 600px at 85% -10%, rgba(13,148,136,0.22), transparent 60%),
-    radial-gradient(900px 500px at 0% 110%, rgba(37,99,235,0.16), transparent 60%),
-    #060B18;
+    radial-gradient(1000px 600px at 85% -10%, rgba(47, 109, 255, 0.1), transparent 60%),
+    radial-gradient(900px 500px at 0% 110%, rgba(55, 214, 255, 0.06), transparent 60%),
+    #f8fafc;
 }
 .rp-grid {
   background-image:
-    linear-gradient(rgba(148,163,184,0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(148,163,184,0.06) 1px, transparent 1px);
+    linear-gradient(rgba(15, 23, 42, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 23, 42, 0.03) 1px, transparent 1px);
   background-size: 44px 44px;
   mask-image: radial-gradient(900px 700px at 50% 10%, #000 40%, transparent 80%);
 }
 .rp-container { position: relative; z-index: 2; max-width: 720px; padding-top: 28px; padding-bottom: 40px; }
-.rp-card { width: 100%; max-width: 680px; overflow: hidden; }
+.rp-card { width: 100%; max-width: 680px; overflow: hidden; background: #fff; box-shadow: 0 12px 40px rgba(10, 15, 31, 0.08); }
 .rp-form-card { max-width: 620px; }
-.rp-card-head { padding: 20px 24px; border-bottom: 1px solid rgba(15,23,42,0.08); }
+.rp-card-head { padding: 20px 24px; border-bottom: 1px solid rgba(15, 23, 42, 0.08); }
 .rp-badge {
   width: 44px; height: 44px; border-radius: 12px;
-  background: linear-gradient(135deg, #0d9488, #2563EB);
-  box-shadow: 0 8px 22px rgba(13,148,136,0.4);
+  background: linear-gradient(135deg, #2f6dff, #143ce1);
+  box-shadow: 0 8px 22px rgba(47, 109, 255, 0.35);
 }
 .rp-policy { max-height: 46vh; overflow-y: auto; padding: 18px 24px; background: #f8fafc; }
 .rp-sec { margin-bottom: 16px; }
-.rp-sec-title { font-size: 14px; font-weight: 800; color: #0f172a; margin-bottom: 6px; }
+.rp-sec-title { font-size: 14px; font-weight: 800; color: #0a0f1f; margin-bottom: 6px; }
 .rp-subh { font-size: 12.5px; font-weight: 700; color: #334155; margin: 8px 0 4px; }
 .rp-p { font-size: 12.5px; color: #475569; line-height: 1.6; margin-bottom: 8px; }
 .rp-ul { margin: 0 0 8px 0; padding-left: 18px; }
 .rp-ul li { font-size: 12.5px; color: #475569; line-height: 1.55; margin-bottom: 3px; }
 .rp-policy-end { text-align: center; color: #94a3b8; font-size: 12px; padding: 10px 0 4px; }
-.rp-policy-foot { padding: 14px 24px 20px; border-top: 1px solid rgba(15,23,42,0.08); }
-.rp-scrollhint { font-size: 12px; color: #0d9488; margin-bottom: 6px; display: flex; align-items: center; }
+.rp-policy-foot { padding: 14px 24px 20px; border-top: 1px solid rgba(15, 23, 42, 0.08); }
+.rp-scrollhint { font-size: 12px; color: #2f6dff; margin-bottom: 6px; display: flex; align-items: center; }
 .rp-check :deep(.v-selection-control) { min-height: 34px; }
 .rp-check-label { font-size: 13px; }
 .rp-idnote {
   display: inline-flex; align-items: center;
-  font-size: 12.5px; color: #0d9488;
-  background: rgba(13,148,136,0.1); border: 1px solid rgba(13,148,136,0.2);
+  font-size: 12.5px; color: #2f6dff;
+  background: rgba(47, 109, 255, 0.08); border: 1px solid rgba(47, 109, 255, 0.2);
   padding: 6px 12px; border-radius: 999px;
 }
 .rp-idcard {
-  border: 1px dashed rgba(13,148,136,0.4);
-  background: rgba(13,148,136,0.06);
+  border: 1px dashed rgba(47, 109, 255, 0.3);
+  background: rgba(47, 109, 255, 0.05);
   border-radius: 14px; padding: 14px;
 }
-.rp-idvalue { font-size: 30px; font-weight: 800; letter-spacing: 2px; color: #0d9488; }
+.rp-idvalue { font-size: 30px; font-weight: 800; letter-spacing: 2px; color: #2f6dff; }
+:deep(.text-brand) { color: #2f6dff !important; }
 </style>

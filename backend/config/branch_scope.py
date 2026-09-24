@@ -15,7 +15,7 @@ BRANCH_ADMIN_BYPASS_ROLES = {'super_admin', 'tenant_admin'}
 
 # Roles that are soft-assigned to a branch but allowed to view other branches
 # when they explicitly pass a ?branch= filter.
-SOFT_ASSIGN_ROLES = {'cashier', 'pharmacist', 'pharmacy_tech'}
+SOFT_ASSIGN_ROLES = {'cashier', 'pharmacist', 'pharmacy_tech', 'storekeeper'}
 
 
 def get_user_branch(user):

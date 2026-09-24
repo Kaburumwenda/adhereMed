@@ -2,9 +2,12 @@ import uuid
 from decimal import Decimal
 
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import serializers
 
 from .models import PurchaseOrder, GoodsReceivedNote
+
+SHIPPING_CATEGORY_NAME = 'Shipping Cost'
 
 
 class GoodsReceivedNoteSerializer(serializers.ModelSerializer):
@@ -219,25 +222,91 @@ def revert_received_items(purchase_order, force=False):
     return {'ok': True, 'warnings': warnings, 'used_items': used_items}
 
 
+def _sync_shipping_expense(purchase_order):
+    """Keep the auto-created shipping Expense in sync with the PO.
+
+    The shipping cost is NOT part of the PO total — it is tracked as an
+    expense under the 'Shipping Cost' category, but only once the PO is
+    actually received. The expense is created as approved. The linked
+    expense uses a deterministic reference (SHP-PO<id>) so it is updated
+    (not duplicated) when the PO is edited, and removed if the shipping
+    cost is cleared or the PO is no longer received.
+    """
+    from expenses.models import Expense, ExpenseCategory
+
+    amount = purchase_order.shipping_cost or Decimal('0')
+    reference = f'SHP-PO{purchase_order.pk}'
+    expense = Expense.objects.filter(reference=reference).first()
+
+    is_received = purchase_order.status == PurchaseOrder.Status.RECEIVED
+    if not is_received or amount <= 0:
+        # Only touch expenses still in an auto-managed state (never paid ones)
+        if expense and expense.status in (Expense.Status.PENDING, Expense.Status.APPROVED):
+            expense.delete()
+        return
+
+    category, _ = ExpenseCategory.objects.get_or_create(name=SHIPPING_CATEGORY_NAME)
+    title = f'Shipping for {purchase_order.po_number}'
+    vendor = purchase_order.supplier.name if purchase_order.supplier else ''
+    if expense is None:
+        Expense.objects.create(
+            reference=reference,
+            title=title,
+            description=f'Shipping cost for purchase order {purchase_order.po_number}',
+            category=category,
+            amount=amount,
+            expense_date=purchase_order.order_date or timezone.localdate(),
+            vendor=vendor,
+            supplier=purchase_order.supplier,
+            submitted_by=purchase_order.ordered_by,
+            status=Expense.Status.APPROVED,
+            approved_by=purchase_order.ordered_by,
+            approved_at=timezone.now(),
+            notes=f'Auto-created from purchase order {purchase_order.po_number}',
+        )
+    else:
+        expense.title = title
+        expense.description = f'Shipping cost for purchase order {purchase_order.po_number}'
+        expense.category = category
+        expense.amount = amount
+        expense.vendor = vendor
+        expense.supplier = purchase_order.supplier
+        expense.save(update_fields=[
+            'title', 'description', 'category', 'amount', 'vendor', 'supplier', 'updated_at',
+        ])
+
+
 class PurchaseOrderSerializer(serializers.ModelSerializer):
     supplier_name = serializers.CharField(source='supplier.name', read_only=True)
     ordered_by_name = serializers.CharField(source='ordered_by.full_name', read_only=True)
     grns = GoodsReceivedNoteSerializer(many=True, read_only=True)
     po_number = serializers.CharField(required=False, allow_blank=True)
+    proof_image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = PurchaseOrder
         fields = [
             'id', 'po_number', 'supplier', 'supplier_name',
-            'items', 'total_cost', 'status',
+            'items', 'total_cost', 'shipping_cost', 'status',
             'ordered_by', 'ordered_by_name',
             'order_date', 'expected_delivery', 'notes',
             'branch', 'grns', 'created_at',
+            'proof_image', 'proof_image_url',
         ]
         read_only_fields = [
             'id', 'order_date', 'created_at', 'total_cost',
             'ordered_by_name', 'supplier_name', 'grns',
         ]
+
+    def get_proof_image_url(self, obj):
+        if not obj.proof_image:
+            return None
+        try:
+            url = obj.proof_image.url
+        except Exception:
+            return None
+        request = self.context.get('request')
+        return request.build_absolute_uri(url) if request else url
 
     def _ensure_po_number(self, value):
         return value or f'PO-{uuid.uuid4().hex[:8].upper()}'
@@ -256,6 +325,7 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
         if po.status == PurchaseOrder.Status.RECEIVED:
             _sync_received_items(po)
             po.refresh_from_db()
+        _sync_shipping_expense(po)
         return po
 
     @transaction.atomic
@@ -285,4 +355,5 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
         if po.status == PurchaseOrder.Status.RECEIVED:
             _sync_received_items(po)
             po.refresh_from_db()
+        _sync_shipping_expense(po)
         return po

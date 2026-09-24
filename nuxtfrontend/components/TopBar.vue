@@ -31,7 +31,7 @@
 
     <!-- Branch selector -->
     <v-select
-      v-if="branchStore.hasBranches && auth.tenantType === 'pharmacy'"
+      v-if="branchStore.hasBranches && ['pharmacy', 'inventory'].includes(auth.tenantType)"
       :model-value="branchStore.currentBranchId"
       :items="branchItems"
       item-title="name"
