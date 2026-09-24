@@ -141,9 +141,14 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const auth = useAuthStore()
   await auth.restore()
 
-  if (PUBLIC_ROUTES.has(to.path)) return
+  // The static host serves directory-style URLs (e.g. /register-inventory/)
+  // and 301-redirects the bare path to it. Normalize the trailing slash so
+  // the route-set lookups below still match on direct URL entry.
+  const path = to.path && to.path !== '/' ? to.path.replace(/\/+$/, '') : to.path
 
-  const isAuthRoute = AUTH_ROUTES.has(to.path)
+  if (PUBLIC_ROUTES.has(path)) return
+
+  const isAuthRoute = AUTH_ROUTES.has(path)
 
   if (!auth.isLoggedIn && !isAuthRoute) {
     return navigateTo('/welcome')
@@ -162,23 +167,23 @@ export default defineNuxtRouteMiddleware(async (to) => {
     const lockedPage = tenantPrefix ? `${tenantPrefix}/billing/locked` : '/billing/locked'
     const lockPage = auth.isTenantAdmin ? overduePage : lockedPage
     const lockPages = [overduePage, lockedPage, '/billing/overdue', '/billing/locked']
-    if (!lockPages.includes(to.path)) {
+    if (!lockPages.includes(path)) {
       return navigateTo(lockPage)
     }
     // If a non-admin lands on the admin overdue screen (or vice-versa), send
     // them to the correct one.
-    if ((to.path === overduePage || to.path === '/billing/overdue') && !auth.isTenantAdmin) return navigateTo(lockedPage)
-    if ((to.path === lockedPage || to.path === '/billing/locked') && auth.isTenantAdmin) return navigateTo(overduePage)
+    if ((path === overduePage || path === '/billing/overdue') && !auth.isTenantAdmin) return navigateTo(lockedPage)
+    if ((path === lockedPage || path === '/billing/locked') && auth.isTenantAdmin) return navigateTo(overduePage)
   }
 
   // When NOT locked, keep the gate pages from being visited directly.
   if (auth.isLoggedIn && !auth.billingLocked
-      && (to.path === '/billing/overdue' || to.path === '/billing/locked'
-          || to.path === '/hos/billing/overdue' || to.path === '/hos/billing/locked'
-          || to.path === '/clinics/billing/overdue' || to.path === '/clinics/billing/locked')) {
+      && (path === '/billing/overdue' || path === '/billing/locked'
+          || path === '/hos/billing/overdue' || path === '/hos/billing/locked'
+          || path === '/clinics/billing/overdue' || path === '/clinics/billing/locked')) {
     // Allow the overdue page for admins with any outstanding overdue balance
     // (so they can pre-empt a lock); otherwise send them home.
-    const isOverdue = to.path === '/billing/overdue' || to.path === '/hos/billing/overdue' || to.path === '/clinics/billing/overdue'
+    const isOverdue = path === '/billing/overdue' || path === '/hos/billing/overdue' || path === '/clinics/billing/overdue'
     if (!(isOverdue && auth.isTenantAdmin && auth.hasOverdue)) {
       return navigateTo(getHomePath(auth))
     }
@@ -188,7 +193,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   // an unprefixed route (e.g. /pos from a router.push inside a page),
   // redirect them to the /pharmacy/ prefixed equivalent.
   if (auth.isLoggedIn && auth.tenantType === 'pharmacy') {
-    const pharmacyPath = shouldRedirectToPharmacy(auth, to.path)
+    const pharmacyPath = shouldRedirectToPharmacy(auth, path)
     if (pharmacyPath) {
       // Preserve query string from original navigation
       const query = to.fullPath.includes('?') ? to.fullPath.slice(to.fullPath.indexOf('?')) : ''
@@ -200,7 +205,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   // an unprefixed route (e.g. /patients from a router.push inside a page),
   // redirect them to the /hos/ prefixed equivalent.
   if (auth.isLoggedIn && auth.tenantType === 'hospital') {
-    const hosPath = shouldRedirectToHospital(auth, to.path)
+    const hosPath = shouldRedirectToHospital(auth, path)
     if (hosPath) {
       // Preserve query string from original navigation
       const query = to.fullPath.includes('?') ? to.fullPath.slice(to.fullPath.indexOf('?')) : ''
@@ -211,7 +216,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   // Clinic tenant namespace redirect: clinic users accessing unprefixed
   // routes are sent to the /clinics/ prefixed equivalent.
   if (auth.isLoggedIn && auth.tenantType === 'clinic') {
-    const clinicPath = shouldRedirectToClinic(auth, to.path)
+    const clinicPath = shouldRedirectToClinic(auth, path)
     if (clinicPath) {
       const query = to.fullPath.includes('?') ? to.fullPath.slice(to.fullPath.indexOf('?')) : ''
       return navigateTo(clinicPath + query, { replace: true })
@@ -221,7 +226,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   // Inventory tenant namespace redirect: inventory users accessing unprefixed
   // inventory routes are sent to the /ims/ prefixed equivalent.
   if (auth.isLoggedIn && auth.tenantType === 'inventory') {
-    const imsPath = shouldRedirectToInventory(auth, to.path)
+    const imsPath = shouldRedirectToInventory(auth, path)
     if (imsPath) {
       const query = to.fullPath.includes('?') ? to.fullPath.slice(to.fullPath.indexOf('?')) : ''
       return navigateTo(imsPath + query, { replace: true })
@@ -230,7 +235,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
   // Role-based access guard: prevent non-admin roles (e.g. cashier)
   // from reaching admin/management screens via direct URL.
-  if (auth.isLoggedIn && !canAccessRoute(auth.role, to.path)) {
+  if (auth.isLoggedIn && !canAccessRoute(auth.role, path)) {
     if (process.client) {
       // Surface a friendly toast if the snackbar plugin is available.
       try {

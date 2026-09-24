@@ -215,6 +215,11 @@ def _role_caps(role):
 
 def get_role_capabilities(request):
     """Resolve the requesting user's full capability set (per-request cache)."""
+    # A request-less call (e.g. a serializer instantiated without context)
+    # has no user and cannot carry a per-request cache — resolve to no
+    # capabilities rather than raising on attribute assignment.
+    if request is None:
+        return set()
     cache = getattr(request, '_rbac_caps_cache', None)
     if cache is not None:
         return cache
@@ -224,7 +229,12 @@ def get_role_capabilities(request):
         caps = ALL_CAP_KEYS
     else:
         caps = _role_caps(role)
-    request._rbac_caps_cache = caps
+    try:
+        request._rbac_caps_cache = caps
+    except (AttributeError, TypeError):
+        # Objects that disallow arbitrary attribute assignment (or proxy
+        # wrappers) still get the resolved capabilities, just uncached.
+        pass
     return caps
 
 

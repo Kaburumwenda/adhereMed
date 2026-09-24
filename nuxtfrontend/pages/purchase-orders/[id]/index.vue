@@ -63,6 +63,46 @@
         </v-row>
       </v-card>
 
+      <!-- Proof image / document -->
+      <v-card v-if="item.proof_image_url" rounded="lg" class="pa-4 pa-md-5 mb-4 po-card">
+        <div class="d-flex align-center mb-3">
+          <v-icon color="primary" class="mr-2">mdi-image-outline</v-icon>
+          <div class="text-subtitle-1 font-weight-bold">Proof / Document</div>
+        </div>
+        <div class="d-flex align-center ga-4">
+          <v-img
+            :src="item.proof_image_url"
+            max-width="220"
+            max-height="160"
+            rounded="lg"
+            cover
+            class="po-proof-thumb"
+            style="cursor: pointer"
+            @click="proofDialog = true"
+          />
+          <div class="d-flex flex-column ga-2">
+            <v-btn
+              variant="tonal"
+              color="primary"
+              rounded="lg"
+              class="text-none"
+              prepend-icon="mdi-magnify-plus"
+              @click="proofDialog = true"
+            >View full size</v-btn>
+            <v-btn
+              variant="text"
+              color="primary"
+              rounded="lg"
+              class="text-none"
+              prepend-icon="mdi-open-in-new"
+              :href="item.proof_image_url"
+              target="_blank"
+              rel="noopener"
+            >Open in new tab</v-btn>
+          </div>
+        </div>
+      </v-card>
+
       <!-- Items (full width) -->
       <v-card rounded="lg" class="pa-4 pa-md-5 mb-4 po-card">
         <div class="d-flex align-center mb-3">
@@ -165,6 +205,18 @@
         </v-col>
       </v-row>
     </div>
+
+    <!-- Proof image lightbox -->
+    <v-dialog v-model="proofDialog" max-width="760">
+      <v-card rounded="lg" class="overflow-hidden">
+        <v-toolbar color="transparent" flat>
+          <v-toolbar-title class="text-subtitle-1 font-weight-bold">Proof / Document</v-toolbar-title>
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" @click="proofDialog = false" />
+        </v-toolbar>
+        <v-img v-if="item && item.proof_image_url" :src="item.proof_image_url" contain max-height="70vh" class="bg-grey-darken-4" />
+      </v-card>
+    </v-dialog>
 
     <!-- Return purchase dialog -->
     <v-dialog v-model="returnDialog.show" max-width="640" persistent>
@@ -285,6 +337,8 @@ function marginColor(it) {
   if (m >= 0) return 'warning'
   return 'error'
 }
+
+const proofDialog = ref(false)
 
 const returnDialog = reactive({ show: false, loading: false, busy: false, preview: [], hasConsumed: false, force: false })
 

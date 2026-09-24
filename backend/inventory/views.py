@@ -403,7 +403,8 @@ class MedicationStockViewSet(BranchScopedMixin, viewsets.ModelViewSet):
             },
             'movements': movements_limited,
             'batches': StockBatchSerializer(
-                stock.batches.all(), many=True).data if hasattr(stock, 'batches') else [],
+                stock.batches.all(), many=True,
+                context={'request': request}).data if hasattr(stock, 'batches') else [],
             'trend': days_list,
         })
 
