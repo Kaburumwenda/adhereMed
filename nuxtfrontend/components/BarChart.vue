@@ -1,7 +1,7 @@
 <template>
-  <div class="bar-chart-outer" :style="{ height: (height + extraBottom) + 'px' }">
+  <div class="bar-chart-outer" :style="{ height: (svgHeight + labelAreaHeight) + 'px' }">
     <!-- Fixed Y-axis (does not scroll) -->
-    <svg class="bar-chart-yaxis" :width="yAxisW" :height="height + extraBottom">
+    <svg class="bar-chart-yaxis" :width="yAxisW" :height="svgHeight">
       <g>
         <text v-for="(t, i) in yTicks" :key="i"
           :x="yAxisW - 6"
@@ -13,9 +13,9 @@
         >{{ t }}</text>
       </g>
     </svg>
-    <div class="bar-chart-wrap" :style="{ height: (height + extraBottom) + 'px' }">
-      <div class="bar-chart" :style="{ height: (height + extraBottom) + 'px', width: chartWidth + 'px', minWidth: '100%' }">
-        <svg :viewBox="`0 0 ${chartWidth} ${height + extraBottom}`" preserveAspectRatio="none" :width="chartWidth" :height="height + extraBottom">
+    <div class="bar-chart-wrap" :style="{ height: (svgHeight + labelAreaHeight) + 'px' }">
+      <div class="bar-chart" :style="{ height: (svgHeight + labelAreaHeight) + 'px' }">
+        <svg :viewBox="`0 0 ${chartWidth} ${svgHeight}`" preserveAspectRatio="none" width="100%" :height="svgHeight">
           <!-- Grid lines -->
           <g v-if="showGrid">
             <line v-for="i in 4" :key="i"
@@ -32,33 +32,24 @@
               <title>{{ b.label }}: {{ b.value }}</title>
             </rect>
           </g>
-          <!-- Value labels above bars -->
-          <g v-if="showValues">
-            <text v-for="(b, i) in bars" :key="`v${i}`"
-              :x="b.x + b.w / 2"
-              :y="Math.max(b.y - 6, padY + 6)"
-              text-anchor="middle"
-              font-size="10"
-              font-weight="600"
-              fill="currentColor"
-              fill-opacity="0.75"
-            >{{ fmt(b.value) }}</text>
-          </g>
-          <!-- Rotated labels -->
-          <g v-if="rotateLabels">
-            <text v-for="(b, i) in bars" :key="`l${i}`"
-              :x="b.x + b.w / 2"
-              :y="height - 2"
-              text-anchor="end"
-              font-size="11"
-              fill="currentColor"
-              fill-opacity="0.7"
-              :transform="`rotate(-35 ${b.x + b.w / 2} ${height - 2})`"
-            >{{ b.label }}</text>
-          </g>
         </svg>
+        <!-- Value labels (HTML overlay — no SVG text distortion) -->
+        <div v-if="showValues" class="value-labels" :style="{ height: svgHeight + 'px' }">
+          <div v-for="(v, i) in valueLabels" :key="`v${i}`"
+            class="value-label"
+            :style="{ left: v.left, top: v.top }"
+          >{{ v.text }}</div>
+        </div>
+        <!-- Non-rotated labels: flex row -->
         <div v-if="!rotateLabels" class="d-flex justify-space-between mt-1 px-1">
           <div v-for="(l, i) in displayLabels" :key="i" class="text-caption text-medium-emphasis bar-label">{{ l }}</div>
+        </div>
+        <!-- Rotated labels (HTML overlay) -->
+        <div v-else class="rotated-labels">
+          <div v-for="(l, i) in rotatedLabels" :key="`rl${i}`"
+            class="rotated-label text-caption text-medium-emphasis"
+            :style="{ left: l.left }"
+          >{{ l.text }}</div>
         </div>
       </div>
     </div>
@@ -91,8 +82,9 @@ const chartWidth = computed(() => {
   return Math.max(baseWidth, n * slotPx.value + padX * 2)
 })
 const innerW = computed(() => chartWidth.value - padX * 2)
-const extraBottom = computed(() => props.rotateLabels ? 100 : 0)
-const innerH = computed(() => props.height - padY * 2 - (props.rotateLabels ? 48 : 0))
+const svgHeight = computed(() => props.height)
+const labelAreaHeight = computed(() => props.rotateLabels ? 56 : 20)
+const innerH = computed(() => svgHeight.value - padY * 2)
 const max = computed(() => Math.max(1, ...props.values))
 
 function defaultFormat(v) {
@@ -119,6 +111,23 @@ const bars = computed(() => {
     return { x, y, w, h, value: v, label: props.labels[i] || '', color: props.colors[i] || props.color }
   })
 })
+
+const valueLabels = computed(() => {
+  return bars.value
+    .filter(b => b.value > 0)
+    .map(b => ({
+      left: ((b.x + b.w / 2) / chartWidth.value * 100) + '%',
+      top: (Math.max(b.y - 6, padY + 6) / svgHeight.value * 100) + '%',
+      text: fmt(b.value),
+    }))
+})
+
+const rotatedLabels = computed(() => {
+  return bars.value.map(b => ({
+    left: ((b.x + b.w / 2) / chartWidth.value * 100) + '%',
+    text: b.label,
+  }))
+})
 const displayLabels = computed(() => {
   const arr = props.labels
   if (arr.length <= 12) return arr
@@ -140,14 +149,44 @@ const displayLabels = computed(() => {
 .bar-chart-wrap {
   flex: 1;
   min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: hidden;
 }
-.bar-chart-wrap::-webkit-scrollbar { height: 8px; }
-.bar-chart-wrap::-webkit-scrollbar-thumb {
-  background: rgba(var(--v-theme-on-surface), 0.2);
-  border-radius: 4px;
+.bar-chart {
+  position: relative;
+  width: 100%;
 }
 .bar-chart svg { display: block; }
 .bar-label { flex: 1; text-align: center; font-size: 10px; }
+.value-labels {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  pointer-events: none;
+}
+.value-label {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  font-size: 10px;
+  font-weight: 600;
+  color: currentColor;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+.rotated-labels {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 56px;
+  pointer-events: none;
+}
+.rotated-label {
+  position: absolute;
+  bottom: 4px;
+  transform: translateX(-50%) rotate(-35deg);
+  transform-origin: bottom center;
+  white-space: nowrap;
+  font-size: 11px;
+}
 </style>

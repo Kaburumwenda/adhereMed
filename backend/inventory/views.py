@@ -11,15 +11,16 @@ from django.http import HttpResponse
 from datetime import timedelta
 import csv
 import io
+import os
 
 from .models import (
-    Category, Unit, MedicationStock, StockBatch, StockAdjustment,
+    Category, Unit, Classification, MedicationStock, StockBatch, StockAdjustment,
     InventoryCount, InventoryCountLine,
     StockTransfer, StockTransferLine,
     ControlledSubstanceLog,
 )
 from .serializers import (
-    CategorySerializer, UnitSerializer,
+    CategorySerializer, UnitSerializer, ClassificationSerializer,
     MedicationStockSerializer, StockBatchSerializer, StockAdjustmentSerializer,
     InventoryCountSerializer, InventoryCountLineSerializer,
     StockTransferSerializer,
@@ -89,12 +90,29 @@ class UnitViewSet(viewsets.ModelViewSet):
     ordering_fields = ['name', 'created_at']
 
 
+class ClassificationViewSet(viewsets.ModelViewSet):
+    """Manage stock-item classifications (Routine, Emergency, Cold Chain,
+    Controlled, …). Tenant-scoped lookup table seeded with "Routine" on
+    first use."""
+    serializer_class = ClassificationSerializer
+    permission_classes = [InventoryPermission]
+    pagination_class = None
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['name', 'description']
+    ordering_fields = ['name', 'created_at']
+
+    def get_queryset(self):
+        return Classification.objects.annotate(
+            stock_count=Count('stocks'),
+        ).order_by('name')
+
+
 class MedicationStockViewSet(BranchScopedMixin, viewsets.ModelViewSet):
     queryset = MedicationStock.objects.select_related('category', 'unit', 'branch').prefetch_related('batches').all()
     serializer_class = MedicationStockSerializer
     permission_classes = [InventoryPermission]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['is_active', 'category', 'unit']
+    filterset_fields = ['is_active', 'category', 'unit', 'classification', 'branch']
     search_fields = ['medication_name', 'abbreviation', 'barcode']
     ordering_fields = ['medication_name', 'selling_price', 'created_at']
 
@@ -408,6 +426,620 @@ class MedicationStockViewSet(BranchScopedMixin, viewsets.ModelViewSet):
             'trend': days_list,
         })
 
+    # ── Stock item PDF report ────────────────────────────────────────────
+    @action(detail=True, methods=['get'], url_path='report-pdf')
+    def report_pdf(self, request, pk=None):
+        """Branded PDF report for a single stock item: overview, KPIs,
+        batches, recent purchases, recent sales and movement ledger."""
+        import io as _io
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.units import mm
+        from reportlab.lib.colors import HexColor, white, Color
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.lib.enums import TA_RIGHT, TA_CENTER, TA_LEFT
+        from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
+                                        Table, TableStyle, Image, Flowable)
+        from config.pdf_branding import resolve_branding
+
+        stock = self.get_object()
+        logo_path, business_name = resolve_branding(request)
+
+        # Organization (tenant) details for the header
+        tenant = getattr(request, 'tenant', None)
+        org_name = getattr(tenant, 'name', '') or business_name or 'AdhereMed'
+        org_address = getattr(tenant, 'address', '') or ''
+        org_phone = getattr(tenant, 'phone', '') or ''
+        org_email = getattr(tenant, 'email', '') or ''
+        org_website = getattr(tenant, 'website', '') or ''
+
+        # ── Branding colors from tenant (set via /ims/organization/branding) ─
+        def _hex_color(attr, default):
+            """Read a hex colour from the tenant, fall back to default."""
+            val = getattr(tenant, attr, '') if tenant else ''
+            if val and isinstance(val, str) and val.startswith('#') and len(val) == 7:
+                try:
+                    return HexColor(val)
+                except Exception:
+                    pass
+            return HexColor(default)
+
+        BRAND_PRIMARY   = _hex_color('brand_primary',   '#2f6dff')
+        BRAND_SECONDARY = _hex_color('brand_secondary', '#143ce1')
+        BRAND_ACCENT    = _hex_color('brand_accent',    '#37d6ff')
+
+        # ── Premium palette ──────────────────────────────────────────
+        NAVY      = HexColor('#0F172A')
+        INDIGO    = BRAND_PRIMARY   # use brand primary for section bars etc.
+        SKY       = BRAND_ACCENT     # accent for highlights
+        SLATE     = HexColor('#64748B')
+        SLATE_LT  = HexColor('#94A3B8')
+        BORDER    = HexColor('#E2E8F0')
+        BORDER_LT = HexColor('#F1F5F9')
+        BG_CARD   = HexColor('#F8FAFC')
+        GREEN     = HexColor('#16A34A')
+        GREEN_BG  = HexColor('#F0FDF4')
+        RED       = HexColor('#EF4444')
+        RED_BG    = HexColor('#FEF2F2')
+        AMBER     = HexColor('#F59E0B')
+        AMBER_BG  = HexColor('#FFFBEB')
+        BLUE_BG   = HexColor('#EFF6FF')
+        PURPLE_BG = HexColor('#FAF5FF')
+
+        # ── Styles ───────────────────────────────────────────────────
+        st_report_title = ParagraphStyle('rt', fontName='Helvetica-Bold', fontSize=20,
+                                          textColor=white, leading=24)
+        st_report_sub   = ParagraphStyle('rs', fontName='Helvetica', fontSize=8,
+                                          textColor=HexColor('#CBD5E1'), leading=12)
+        st_org_name     = ParagraphStyle('on', fontName='Helvetica-Bold', fontSize=13,
+                                          textColor=NAVY, leading=16)
+        st_org_detail   = ParagraphStyle('od', fontName='Helvetica', fontSize=7.5,
+                                          textColor=SLATE, leading=11)
+        st_section       = ParagraphStyle('sec', fontName='Helvetica-Bold', fontSize=10,
+                                           textColor=white, leading=13)
+        st_section_alt   = ParagraphStyle('seca', fontName='Helvetica-Bold', fontSize=10,
+                                           textColor=NAVY, leading=13)
+        st_k    = ParagraphStyle('k',  fontName='Helvetica-Bold', fontSize=7,
+                                textColor=SLATE, leading=9)
+        st_v    = ParagraphStyle('v',  fontName='Helvetica', fontSize=9,
+                                textColor=NAVY, leading=12)
+        st_kpi_label = ParagraphStyle('kl', fontName='Helvetica-Bold', fontSize=7,
+                                       textColor=SLATE_LT, leading=10, alignment=TA_CENTER)
+        st_kpi_value_s = ParagraphStyle('ks', fontName='Helvetica-Bold', fontSize=16,
+                                         textColor=NAVY, leading=18, alignment=TA_CENTER)
+        st_kpi_value_m = ParagraphStyle('km', fontName='Helvetica-Bold', fontSize=11,
+                                         textColor=NAVY, leading=14, alignment=TA_CENTER)
+        st_cell    = ParagraphStyle('c',  fontName='Helvetica', fontSize=7.5, leading=10,
+                                    textColor=NAVY)
+        st_cell_r  = ParagraphStyle('cr', parent=st_cell, alignment=TA_RIGHT)
+        st_cell_c  = ParagraphStyle('cc', parent=st_cell, alignment=TA_CENTER)
+        st_th      = ParagraphStyle('th', fontName='Helvetica-Bold', fontSize=7,
+                                    textColor=SLATE, leading=9)
+        st_empty   = ParagraphStyle('e',  fontName='Helvetica-Oblique', fontSize=8,
+                                    textColor=SLATE_LT, alignment=TA_CENTER)
+        st_foot       = ParagraphStyle('foot',  fontName='Helvetica', fontSize=7,
+                                       textColor=SLATE, alignment=TA_CENTER, leading=10)
+        st_foot_brand = ParagraphStyle('fbr',  fontName='Helvetica-Bold', fontSize=9,
+                                       textColor=INDIGO, alignment=TA_CENTER, leading=11)
+        st_foot_link  = ParagraphStyle('flk',  fontName='Helvetica', fontSize=7,
+                                       textColor=SKY, alignment=TA_CENTER, leading=10)
+
+        def money(v):
+            return f'KSh {float(v or 0):,.2f}'
+
+        def stamp(d):
+            if not d:
+                return '—'
+            from datetime import datetime as _dtc
+            try:
+                return _dtc.fromisoformat(str(d)).strftime('%b %d %Y')
+            except (TypeError, ValueError):
+                return str(d)
+
+        # ── Data gathering (same as before) ───────────────────────────
+        from datetime import timedelta
+        now = timezone.localtime().replace(tzinfo=None)
+        period_start = (now - timedelta(days=30)).replace(
+            hour=0, minute=0, second=0, microsecond=0)
+        period_end = now
+
+        batches = list(stock.batches.all().order_by('-received_date')[:50]) if hasattr(stock, 'batches') else []
+
+        on_hand = stock.total_quantity or 0
+        committed = stock.committed_qty or 0
+        available = stock.available_quantity
+        reorder = stock.reorder_level or 0
+        low_stock = stock.is_low_stock
+        stock_value = on_hand * float(stock.cost_price or 0)
+
+        from purchase_orders.models import PurchaseOrder
+        purchases = []
+        for po in (PurchaseOrder.objects.select_related('supplier')
+                   .only('po_number', 'supplier__name', 'order_date', 'items')
+                   .order_by('-created_at')[:200]):
+            for it in (po.items or []):
+                if it.get('medication_stock_id') == stock.pk:
+                    purchases.append({
+                        'po_number': po.po_number,
+                        'date': po.order_date.isoformat() if po.order_date else '',
+                        'supplier': po.supplier.name if po.supplier else '',
+                        'qty': int(it.get('qty') or 0),
+                        'unit_cost': float(it.get('unit_cost') or 0),
+                    })
+                    break
+            if len(purchases) >= 15:
+                break
+
+        recent_sales = []
+        try:
+            from pos.models import TransactionItem
+            for ti in (TransactionItem.objects
+                       .filter(stock=stock, transaction__status='completed')
+                       .select_related('transaction')
+                       .order_by('-transaction__created_at')[:15]
+                       .only('quantity', 'unit_price', 'total_price',
+                             'transaction__transaction_number',
+                             'transaction__created_at')):
+                recent_sales.append({
+                    'txn': ti.transaction.transaction_number,
+                    'date': timezone.localtime(ti.transaction.created_at).strftime('%b %d %Y'),
+                    'qty': int(ti.quantity or 0),
+                    'price': float(ti.unit_price or 0),
+                    'total': float(ti.total_price or 0),
+                })
+        except Exception:
+            pass
+
+        movements = []
+        for adj in (StockAdjustment.objects.filter(stock=stock)
+                    .only('quantity_change', 'reason', 'created_at', 'notes')
+                    .order_by('-created_at')[:30]):
+            movements.append({
+                'date': timezone.localtime(adj.created_at).strftime('%b %d %Y'),
+                'reason': adj.get_reason_display() if adj.reason else 'Adjustment',
+                'change': int(adj.quantity_change or 0),
+                'notes': (adj.notes or '')[:60],
+            })
+
+        # ── Helper: section header bar ───────────────────────────────
+        def section_bar(title):
+            """Indigo pill-bar section header with white text."""
+            t = Table(
+                [[Paragraph(title, st_section)]],
+                colWidths=[182 * mm],
+            )
+            t.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, -1), INDIGO),
+                ('LEFTPADDING', (0, 0), (-1, -1), 5 * mm),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 5 * mm),
+                ('TOPPADDING', (0, 0), (-1, -1), 2.5 * mm),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 2.5 * mm),
+                ('ROUNDEDCORNERS', [3, 3, 3, 3]),
+            ]))
+            return t
+
+        # ── Helper: modern table style ───────────────────────────────
+        def modern_table_style(num_cols, num_rows, right_cols=()):
+            """Clean borderless look: header tinted, subtle row separators,
+            zebra striping, right-aligned numeric columns."""
+            cmds = [
+                # Header row
+                ('BACKGROUND', (0, 0), (-1, 0), BG_CARD),
+                ('TEXTCOLOR',  (0, 0), (-1, 0), SLATE),
+                ('FONTNAME',   (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE',   (0, 0), (-1, 0), 7),
+                ('LINEBELOW',  (0, 0), (-1, 0), 1.2, INDIGO),
+                # Body rows
+                ('FONTSIZE',   (0, 1), (-1, -1), 7.5),
+                ('TEXTCOLOR',  (0, 1), (-1, -1), NAVY),
+                ('LINEBELOW',  (0, 1), (-1, -1), 0.3, BORDER_LT),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [white, BG_CARD]),
+                # Common
+                ('VALIGN',     (0, 0), (-1, -1), 'MIDDLE'),
+                ('TOPPADDING', (0, 0), (-1, -1), 2.5 * mm),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 2.5 * mm),
+                ('LEFTPADDING', (0, 0), (-1, -1), 3 * mm),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 3 * mm),
+            ]
+            for rc in right_cols:
+                cmds.append(('ALIGN', (rc, 0), (rc, -1), 'RIGHT'))
+            return TableStyle(cmds)
+
+        # ── Org logo helper ──────────────────────────────────────────
+        def fit_logo(path, max_h_mm, max_w_mm):
+            try:
+                if path and os.path.exists(path):
+                    from reportlab.lib.utils import ImageReader
+                    ir = ImageReader(path)
+                    iw, ih = ir.getSize()
+                    th = max_h_mm * mm
+                    tw = iw * (th / ih)
+                    if tw > max_w_mm * mm:
+                        tw = max_w_mm * mm
+                        th = ih * (tw / iw)
+                    return Image(path, width=tw, height=th)
+            except Exception:
+                pass
+            return ''
+
+        # ── Build document ───────────────────────────────────────────
+        buf = _io.BytesIO()
+        doc = SimpleDocTemplate(
+            buf, pagesize=A4,
+            leftMargin=14 * mm, rightMargin=14 * mm,
+            topMargin=10 * mm, bottomMargin=16 * mm,
+            title=f'Stock Report - {stock.medication_name}',
+        )
+        story = []
+
+        # ═══════════════════════════════════════════════════════════════
+        #  HEADER: Deep navy band with org logo + name + contact details
+        # ═══════════════════════════════════════════════════════════════
+        org_logo = fit_logo(logo_path, 22, 42)
+
+        # Org contact line
+        contact_parts = []
+        if org_phone:
+            contact_parts.append(f'Tel: {org_phone}')
+        if org_email:
+            contact_parts.append(f'Email: {org_email}')
+        if org_website:
+            contact_parts.append(f'Web: {org_website}')
+        contact_str = '  ·  '.join(contact_parts)
+
+        org_info_html = f'<font color="#0F172A"><b>{org_name}</b></font>'
+        if org_address:
+            org_info_html += f'<br/><font color="#64748B">{org_address}</font>'
+        if contact_str:
+            org_info_html += f'<br/><font color="#64748B">{contact_str}</font>'
+
+        # Top header: navy strip
+        header_inner = Table(
+            [[org_logo, Paragraph(org_info_html, st_org_detail)]],
+            colWidths=[44 * mm, 138 * mm],
+        )
+        header_inner.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (0, 0), 2 * mm),
+            ('RIGHTPADDING', (1, 0), (1, 0), 2 * mm),
+            ('TOPPADDING', (0, 0), (-1, -1), 3 * mm),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3 * mm),
+        ]))
+
+        header_band = Table(
+            [[header_inner]],
+            colWidths=[182 * mm],
+        )
+        header_band.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), NAVY),
+            ('TEXTCOLOR',  (0, 0), (-1, -1), white),
+            ('LEFTPADDING', (0, 0), (-1, -1), 5 * mm),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 5 * mm),
+            ('TOPPADDING', (0, 0), (-1, -1), 4 * mm),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4 * mm),
+        ]))
+        # Wrap to get the org text white
+        st_org_white = ParagraphStyle('ow', fontName='Helvetica', fontSize=8,
+                                       textColor=white, leading=11)
+        st_org_name_w = ParagraphStyle('onw', fontName='Helvetica-Bold', fontSize=12,
+                                        textColor=white, leading=15)
+        org_info_w = f'<font color="white"><b>{org_name}</b></font>'
+        if org_address:
+            org_info_w += f'<br/><font color="#94A3B8">{org_address}</font>'
+        if contact_str:
+            org_info_w += f'<br/><font color="#94A3B8">{contact_str}</font>'
+        header_inner2 = Table(
+            [[org_logo, Paragraph(org_info_w, st_org_white)]],
+            colWidths=[44 * mm, 138 * mm],
+        )
+        header_inner2.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (0, 0), 2 * mm),
+            ('RIGHTPADDING', (1, 0), (1, 0), 2 * mm),
+            ('TOPPADDING', (0, 0), (-1, -1), 3 * mm),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3 * mm),
+        ]))
+        header_band = Table(
+            [[header_inner2]],
+            colWidths=[182 * mm],
+        )
+        header_band.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), BRAND_SECONDARY),
+            ('LEFTPADDING', (0, 0), (-1, -1), 5 * mm),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 5 * mm),
+            ('TOPPADDING', (0, 0), (-1, -1), 5 * mm),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 5 * mm),
+        ]))
+        story.append(header_band)
+
+        # Accent strip (indigo → sky → indigo thin line)
+        accent = Table([['']], colWidths=[182 * mm], rowHeights=[2 * mm])
+        accent.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), INDIGO),
+        ]))
+        story.append(accent)
+
+        # ═══════════════════════════════════════════════════════════════
+        #  REPORT TITLE BAND
+        # ═══════════════════════════════════════════════════════════════
+        title_data = [[
+            Paragraph('Stock Item Report', st_report_title),
+            Paragraph(
+                timezone.localtime().strftime('%b %d, %Y  ·  %I:%M %p'),
+                st_report_sub),
+        ]]
+        title_tbl = Table(title_data, colWidths=[120 * mm, 62 * mm])
+        title_tbl.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (0, 0), 0),
+            ('RIGHTPADDING', (1, 0), (1, 0), 0),
+            ('TOPPADDING', (0, 0), (-1, -1), 5 * mm),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3 * mm),
+        ]))
+        story.append(title_tbl)
+        story.append(Spacer(1, 4 * mm))
+
+        # ═══════════════════════════════════════════════════════════════
+        #  ITEM INFO — card with colored left-accent key column
+        # ═══════════════════════════════════════════════════════════════
+        story.append(section_bar('Item Details'))
+        story.append(Spacer(1, 3 * mm))
+
+        status_text = 'LOW STOCK' if low_stock else 'Healthy'
+        status_color = '#EF4444' if low_stock else '#16A34A'
+
+        def kv_row(k1, v1, k2, v2, v2_html=None):
+            return [
+                Paragraph(k1, st_k),
+                Paragraph(v1 or '—', st_v),
+                Paragraph(k2, st_k),
+                Paragraph(v2_html or (v2 or '—'), st_v),
+            ]
+
+        info_rows = [
+            kv_row('Item name', stock.medication_name, 'Category',
+                   getattr(stock.category, 'name', None)),
+            kv_row('Unit', getattr(stock.unit, 'name', None), 'Barcode', stock.barcode),
+            kv_row('Branch / Warehouse', getattr(stock.branch, 'name', None),
+                   'Store location', stock.location_in_store),
+            kv_row('Cost price', money(stock.cost_price), 'Selling price',
+                   money(stock.selling_price)),
+            [Paragraph('Reorder level', st_k), Paragraph(str(reorder), st_v),
+             Paragraph('Status', st_k),
+             Paragraph(f'<font color="{status_color}"><b>{"●"}</b></font>  '
+                        f'<font color="{status_color}"><b>{status_text}</b></font>', st_v)],
+        ]
+        info_tbl = Table(info_rows, colWidths=[30 * mm, 61 * mm, 30 * mm, 61 * mm])
+        info_tbl.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 3 * mm),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3 * mm),
+            ('LEFTPADDING', (0, 0), (-1, -1), 4 * mm),
+            ('BACKGROUND', (0, 0), (0, -1), BG_CARD),
+            ('BACKGROUND', (2, 0), (2, -1), BG_CARD),
+            ('LINEBELOW', (0, 0), (-1, -2), 0.3, BORDER_LT),
+        ]))
+        story.append(info_tbl)
+        story.append(Spacer(1, 5 * mm))
+
+        # ═══════════════════════════════════════════════════════════════
+        #  KPI CARDS — 4 premium cards with accent borders
+        # ═══════════════════════════════════════════════════════════════
+        kpi_items = [
+            ('ON HAND', str(on_hand), None, GREEN_BG, GREEN),
+            ('COMMITTED', str(committed), None, AMBER_BG, AMBER),
+            ('AVAILABLE', str(available), None, BLUE_BG, SKY),
+            ('STOCK VALUE', money(stock_value), None, PURPLE_BG, INDIGO),
+        ]
+
+        def kpi_card(label, value, bg, accent):
+            inner = Table(
+                [
+                    [Paragraph(label, st_kpi_label)],
+                    [Paragraph(value, st_kpi_value_m if len(str(value)) > 14 else st_kpi_value_s)],
+                ],
+                colWidths=[42 * mm],
+            )
+            inner.setStyle(TableStyle([
+                ('TOPPADDING', (0, 0), (-1, -1), 1.5 * mm),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 1.5 * mm),
+            ]))
+            card = Table([[inner]], colWidths=[42 * mm])
+            card.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, -1), bg),
+                ('LINEBEFORE', (0, 0), (0, -1), 3, accent),
+                ('TOPPADDING', (0, 0), (-1, -1), 5 * mm),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 5 * mm),
+            ]))
+            return card
+
+        kpi_cards = [kpi_card(lbl, val, bg, ac) for lbl, val, _, bg, ac in kpi_items]
+        kpi_row = Table([kpi_cards], colWidths=[45.5 * mm] * 4)
+        kpi_row.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 0),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+            ('TOPPADDING', (0, 0), (-1, -1), 0),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+        ]))
+        story.append(kpi_row)
+        story.append(Spacer(1, 6 * mm))
+
+        # ═══════════════════════════════════════════════════════════════
+        #  BATCHES TABLE
+        # ═══════════════════════════════════════════════════════════════
+        story.append(section_bar('Batches'))
+        story.append(Spacer(1, 3 * mm))
+        if batches:
+            bt_rows = [[
+                Paragraph('#', st_th), Paragraph('Batch #', st_th),
+                Paragraph('Received', st_th), Paragraph('Qty In', st_th),
+                Paragraph('Remaining', st_th), Paragraph('Cost/Unit', st_th),
+                Paragraph('Expiry', st_th), Paragraph('Supplier', st_th),
+            ]]
+            for i, b in enumerate(batches[:20], 1):
+                # Colour-code remaining
+                rem = b.quantity_remaining or 0
+                rem_html = (f'<font color="#EF4444"><b>{rem}</b></font>' if rem <= 0
+                            else str(rem))
+                # Colour-code expiry
+                exp_display = stamp(b.expiry_date)
+                if b.expiry_date:
+                    from datetime import datetime as _dtc
+                    try:
+                        exp_date = _dtc.fromisoformat(str(b.expiry_date)).date()
+                        days_left = (exp_date - now.date()).days
+                        if days_left < 0:
+                            exp_display = f'<font color="#EF4444"><b>{stamp(b.expiry_date)}</b></font>'
+                        elif days_left < 90:
+                            exp_display = f'<font color="#F59E0B"><b>{stamp(b.expiry_date)}</b></font>'
+                    except Exception:
+                        pass
+
+                bt_rows.append([
+                    Paragraph(str(i), st_cell_c),
+                    Paragraph(str(b.batch_number or '—'), st_cell),
+                    stamp(b.received_date),
+                    str(b.quantity_received or 0),
+                    Paragraph(rem_html, st_cell_r),
+                    Paragraph(money(b.cost_price_per_unit), st_cell_r),
+                    Paragraph(exp_display, st_cell),
+                    Paragraph(getattr(b.supplier, 'name', None) or '—', st_cell),
+                ])
+            bt_tbl = Table(bt_rows, colWidths=[8 * mm, 24 * mm, 22 * mm, 14 * mm,
+                                               17 * mm, 22 * mm, 23 * mm, 52 * mm])
+            bt_tbl.setStyle(modern_table_style(8, len(bt_rows), right_cols=(3, 4, 5)))
+            story.append(bt_tbl)
+        else:
+            story.append(Paragraph('No batches recorded.', st_empty))
+        story.append(Spacer(1, 6 * mm))
+
+        # ═══════════════════════════════════════════════════════════════
+        #  RECENT PURCHASES
+        # ═══════════════════════════════════════════════════════════════
+        if purchases:
+            story.append(section_bar('Recent Purchases'))
+            story.append(Spacer(1, 3 * mm))
+            po_rows = [[
+                Paragraph('PO #', st_th), Paragraph('Date', st_th),
+                Paragraph('Supplier', st_th), Paragraph('Qty', st_th),
+                Paragraph('Unit Cost', st_th),
+            ]]
+            for p in purchases:
+                po_rows.append([
+                    Paragraph(p['po_number'], st_cell),
+                    stamp(p['date']),
+                    Paragraph(p['supplier'] or '—', st_cell),
+                    str(p['qty']),
+                    Paragraph(money(p['unit_cost']), st_cell_r),
+                ])
+            po_tbl = Table(po_rows, colWidths=[28 * mm, 28 * mm, 58 * mm, 22 * mm, 46 * mm])
+            po_tbl.setStyle(modern_table_style(5, len(po_rows), right_cols=(3, 4)))
+            story.append(po_tbl)
+            story.append(Spacer(1, 6 * mm))
+
+        # ═══════════════════════════════════════════════════════════════
+        #  RECENT SALES
+        # ═══════════════════════════════════════════════════════════════
+        if recent_sales:
+            story.append(section_bar('Recent Sales'))
+            story.append(Spacer(1, 3 * mm))
+            sa_rows = [[
+                Paragraph('Receipt', st_th), Paragraph('Date', st_th),
+                Paragraph('Qty', st_th), Paragraph('Unit Price', st_th),
+                Paragraph('Total', st_th),
+            ]]
+            for s in recent_sales:
+                sa_rows.append([
+                    Paragraph(s['txn'], st_cell),
+                    s['date'],
+                    str(s['qty']),
+                    Paragraph(money(s['price']), st_cell_r),
+                    Paragraph(money(s['total']), st_cell_r),
+                ])
+            sa_tbl = Table(sa_rows, colWidths=[40 * mm, 35 * mm, 25 * mm, 40 * mm, 42 * mm])
+            sa_tbl.setStyle(modern_table_style(5, len(sa_rows), right_cols=(2, 3, 4)))
+            story.append(sa_tbl)
+            story.append(Spacer(1, 6 * mm))
+
+        # ═══════════════════════════════════════════════════════════════
+        #  MOVEMENT LEDGER
+        # ═══════════════════════════════════════════════════════════════
+        if movements:
+            story.append(section_bar('Recent Stock Movements'))
+            story.append(Spacer(1, 3 * mm))
+            mv_rows = [[
+                Paragraph('Date', st_th), Paragraph('Reason', st_th),
+                Paragraph('Change', st_th), Paragraph('Notes', st_th),
+            ]]
+            for m in movements:
+                chg = m['change']
+                color_str = '#16A34A' if chg >= 0 else '#EF4444'
+                sign = '+' if chg >= 0 else ''
+                mv_rows.append([
+                    m['date'],
+                    Paragraph(m['reason'], st_cell),
+                    Paragraph(f'<font color="{color_str}"><b>{sign}{chg}</b></font>', st_cell_r),
+                    Paragraph(m['notes'] or '—', st_cell),
+                ])
+            mv_tbl = Table(mv_rows, colWidths=[28 * mm, 40 * mm, 22 * mm, 92 * mm])
+            mv_tbl.setStyle(modern_table_style(4, len(mv_rows), right_cols=(2,)))
+            story.append(mv_tbl)
+
+        # ═══════════════════════════════════════════════════════════════
+        #  FOOTER — Powered by AdhereMed
+        # ═══════════════════════════════════════════════════════════════
+        story.append(Spacer(1, 10 * mm))
+
+        adheremed_logo_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            '..', 'assets', 'logo.png')
+        adheremed_logo_path = os.path.normpath(adheremed_logo_path)
+        footer_logo = fit_logo(adheremed_logo_path, 10, 35)
+
+        footer_text_block = [
+            Paragraph('Powered by', st_foot),
+            Paragraph('AdhereMed', st_foot_brand),
+            Paragraph('www.adheremed.co', st_foot_link),
+        ]
+
+        footer_inner = Table(
+            [[footer_logo, footer_text_block]],
+            colWidths=[38 * mm, 80 * mm],
+        )
+        footer_inner.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('ALIGN', (1, 0), (1, 0), 'CENTER'),
+            ('LEFTPADDING', (1, 0), (1, 0), 6 * mm),
+            ('RIGHTPADDING', (0, 0), (0, 0), 4 * mm),
+            ('TOPPADDING', (0, 0), (-1, -1), 3 * mm),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3 * mm),
+        ]))
+
+        footer_wrapper = Table([[footer_inner]], colWidths=[182 * mm])
+        footer_wrapper.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LINEABOVE', (0, 0), (-1, 0), 1.5, INDIGO),
+            ('TOPPADDING', (0, 0), (-1, -1), 5 * mm),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3 * mm),
+        ]))
+        story.append(footer_wrapper)
+
+        story.append(Spacer(1, 3 * mm))
+        story.append(Paragraph(
+            f'Generated on {timezone.localtime().strftime("%b %d %Y at %I:%M %p")}  ·  '
+            f'{org_name}  ·  Confidential',
+            st_foot))
+
+        doc.build(story)
+        buf.seek(0)
+
+        from django.http import HttpResponse
+        resp = HttpResponse(buf.getvalue(), content_type='application/pdf')
+        safe_name = (stock.medication_name or 'item').replace(' ', '_').replace('/', '-')
+        resp['Content-Disposition'] = f'attachment; filename="stock_report_{safe_name}.pdf"'
+        return resp
+
     # ── Bulk operations ───────────────────────────────────────────────────
     _BULK_EDITABLE_FIELDS = {
         'medication_name', 'category', 'unit',
@@ -535,14 +1167,18 @@ class MedicationStockViewSet(BranchScopedMixin, viewsets.ModelViewSet):
             expiry_date__lte=cutoff,
             quantity_remaining__gt=0,
         ).select_related('stock').order_by('expiry_date')
+        branch = request.query_params.get('branch')
+        if branch:
+            batches = batches.filter(Q(branch_id=branch) | Q(branch__isnull=True))
         serializer = StockBatchSerializer(batches, many=True)
         return Response(serializer.data)
 
     # ── Export ────────────────────────────────────────────────────────────────
     _EXPORT_HEADERS = [
-        'ID', 'Medication Name', 'Category', 'Unit',
+        'ID', 'Medication Name', 'Brand Name', 'Generic Name', 'Strength', 'Dosage Form',
+        'Category', 'Classification', 'Unit', 'Warehouse',
         'Selling Price (KSh)', 'Cost Price (KSh)',
-        'Total Quantity', 'Reorder Level', 'Reorder Quantity',
+        'Total Quantity', 'Items Per Unit', 'Reorder Level', 'Reorder Quantity',
         'Location', 'Barcode', 'Prescription Required', 'Active',
         'Created At',
     ]
@@ -550,10 +1186,13 @@ class MedicationStockViewSet(BranchScopedMixin, viewsets.ModelViewSet):
     def _stock_row(self, s):
         return [
             s.id, s.medication_name,
+            s.brand_name or '', s.generic_name or '', s.strength or '', s.dosage_form or '',
             s.category.name if s.category else '',
+            s.classification.name if s.classification else '',
             s.unit.name if s.unit else '',
+            s.branch.name if s.branch else '',
             float(s.selling_price), float(s.cost_price),
-            s.total_quantity, s.reorder_level, s.reorder_quantity,
+            s.total_quantity, s.items_per_unit or '', s.reorder_level, s.reorder_quantity,
             s.location_in_store or '', s.barcode or '',
             s.prescription_required, 'Yes' if s.is_active else 'No',
             s.created_at.strftime('%Y-%m-%d'),
@@ -687,7 +1326,7 @@ class MedicationStockViewSet(BranchScopedMixin, viewsets.ModelViewSet):
         created = updated = errors = 0
         error_details = []
 
-        def _process_row(row_num, name, category_name, selling_price_str, cost_price_str, reorder_level_str, reorder_qty_str, location, barcode, prescription):
+        def _process_row(row_num, name, branch_name, category_name, selling_price_str, cost_price_str, reorder_level_str, reorder_qty_str, location, barcode, prescription):
             nonlocal created, updated, errors
             name = (name or '').strip()
             if not name:
@@ -708,6 +1347,11 @@ class MedicationStockViewSet(BranchScopedMixin, viewsets.ModelViewSet):
             if category_name and category_name.strip():
                 category, _ = Category.objects.get_or_create(name=category_name.strip())
 
+            # Resolve branch warehouse by name (case-insensitive)
+            branch_obj = None
+            if branch_name and str(branch_name).strip():
+                branch_obj = Branch.objects.filter(name__iexact=str(branch_name).strip()).first()
+
             valid_rx = {'none', 'recommended', 'required'}
             rx = (prescription or 'none').strip().lower()
             if rx not in valid_rx:
@@ -715,6 +1359,7 @@ class MedicationStockViewSet(BranchScopedMixin, viewsets.ModelViewSet):
 
             stock, was_created = MedicationStock.objects.update_or_create(
                 medication_name=name,
+                branch=branch_obj,
                 defaults=dict(
                     category=category,
                     selling_price=selling_price,
@@ -739,6 +1384,7 @@ class MedicationStockViewSet(BranchScopedMixin, viewsets.ModelViewSet):
                     _process_row(
                         i,
                         row.get('Medication Name') or row.get('medication_name', ''),
+                        row.get('Branch') or row.get('Branch (Warehouse)') or row.get('branch', ''),
                         row.get('Category') or row.get('category', ''),
                         row.get('Selling Price (KSh)') or row.get('selling_price', ''),
                         row.get('Cost Price (KSh)') or row.get('cost_price', ''),
@@ -773,6 +1419,7 @@ class MedicationStockViewSet(BranchScopedMixin, viewsets.ModelViewSet):
                     _process_row(
                         i,
                         _get(row, 'Medication Name') or _get(row, 'medication_name'),
+                        _get(row, 'Branch (Warehouse)') or _get(row, 'Branch') or _get(row, 'branch'),
                         _get(row, 'Category') or _get(row, 'category'),
                         _get(row, 'Selling Price (KSh)') or _get(row, 'selling_price'),
                         _get(row, 'Cost Price (KSh)') or _get(row, 'cost_price'),
@@ -797,14 +1444,20 @@ class MedicationStockViewSet(BranchScopedMixin, viewsets.ModelViewSet):
     # ── Excel import/export (template, review, commit) ────────────────────────
     _IMPORT_COLUMNS = {
         'medication_name': ['Medication Name', 'medication_name', 'name'],
+        'brand_name': ['Brand Name', 'brand_name', 'brand'],
+        'generic_name': ['Generic Name', 'generic_name', 'generic'],
+        'strength': ['Strength', 'strength'],
+        'dosage_form': ['Dosage Form', 'dosage_form', 'form'],
         'branch': ['Branch (Warehouse)', 'Branch', 'Warehouse', 'branch', 'warehouse'],
         'category': ['Category', 'category'],
+        'classification': ['Classification', 'classification'],
         'unit': ['Unit', 'unit'],
         'selling_price': ['Selling Price (KSh)', 'selling_price', 'Selling Price'],
         'cost_price': ['Cost Price (KSh)', 'cost_price', 'Cost Price'],
         'discount_percent': ['Discount %', 'discount_percent'],
         'tax_percent': ['Tax %', 'tax_percent'],
         'total_quantity': ['Total Quantity', 'total_quantity'],
+        'items_per_unit': ['Items Per Unit', 'items_per_unit'],
         'reorder_level': ['Reorder Level', 'reorder_level'],
         'reorder_quantity': ['Reorder Quantity', 'reorder_quantity'],
         'location_in_store': ['Location', 'location_in_store', 'location'],
@@ -890,11 +1543,11 @@ class MedicationStockViewSet(BranchScopedMixin, viewsets.ModelViewSet):
                 cleaned[f] = str(v)
                 errors[f] = 'Must be 0 – 100'
 
-        for f in ('total_quantity', 'reorder_level', 'reorder_quantity'):
+        for f in ('total_quantity', 'items_per_unit', 'reorder_level', 'reorder_quantity'):
             v = raw.get(f)
-            if f != 'total_quantity' and v in (None, ''):
+            if f not in ('total_quantity', 'items_per_unit') and v in (None, ''):
                 continue
-            if f == 'total_quantity' and v in (None, ''):
+            if f in ('total_quantity', 'items_per_unit') and v in (None, ''):
                 cleaned[f] = None
                 continue
             try:
@@ -922,7 +1575,8 @@ class MedicationStockViewSet(BranchScopedMixin, viewsets.ModelViewSet):
                 cleaned['is_active'] = str(act)
                 errors['is_active'] = 'Must be Yes or No'
 
-        for f in ('category', 'unit', 'location_in_store', 'barcode'):
+        for f in ('category', 'unit', 'classification', 'location_in_store', 'barcode',
+                  'brand_name', 'generic_name', 'strength', 'dosage_form'):
             v = raw.get(f)
             cleaned[f] = str(v).strip() if v not in (None, '') else None
 
@@ -957,14 +1611,20 @@ class MedicationStockViewSet(BranchScopedMixin, viewsets.ModelViewSet):
 
         HEADERS = [
             ('Medication Name', 32, 'required'),
+            ('Brand Name', 22, 'brand / trade name'),
+            ('Generic Name', 22, 'generic / INN name'),
+            ('Strength', 16, 'e.g. 500mg'),
+            ('Dosage Form', 16, 'tablet / capsule / syrup…'),
             ('Branch (Warehouse)', 22, 'required for new items'),
             ('Category', 20, 'auto-created if missing'),
+            ('Classification', 20, 'auto-created if missing'),
             ('Unit', 14, 'auto-created if missing'),
             ('Selling Price (KSh)', 18, 'number'),
             ('Cost Price (KSh)', 18, 'number'),
             ('Discount %', 12, '0 – 100'),
             ('Tax %', 12, '0 – 100'),
             ('Total Quantity', 16, 'blank = keep current stock'),
+            ('Items Per Unit', 16, 'items inside one box/pack/strip'),
             ('Reorder Level', 15, 'whole number'),
             ('Reorder Quantity', 16, 'whole number'),
             ('Location', 18, 'free text'),
@@ -975,8 +1635,9 @@ class MedicationStockViewSet(BranchScopedMixin, viewsets.ModelViewSet):
         main_branch = (Branch.objects.filter(is_main=True).first()
                        or Branch.objects.filter(is_active=True).first())
         example_branch = main_branch.name if main_branch else ''
-        EXAMPLE = ['Paracetamol 500mg', example_branch, 'Analgesics', 'tablets', 25.00, 15.00,
-                    0, 16, 500, 10, 50, 'Shelf A2', '890123456789', 'none', 'Yes']
+        EXAMPLE = ['Paracetamol 500mg', 'Panadol', 'paracetamol', '500mg', 'tablet',
+                   example_branch, 'Analgesics', 'Routine', 'tablets', 25.00, 15.00,
+                    0, 16, 500, 24, 10, 50, 'Shelf A2', '890123456789', 'none', 'Yes']
 
         wb = Workbook()
         ws = wb.active
@@ -1014,16 +1675,27 @@ class MedicationStockViewSet(BranchScopedMixin, viewsets.ModelViewSet):
             ws.add_data_validation(dv_br)
             dv_br.add('B3:B1000')
 
+        # Classification dropdown (best effort)
+        class_list = ','.join(
+            Classification.objects.filter(is_active=True)
+            .values_list('name', flat=True)[:20])
+        if class_list and len(class_list) <= 250:
+            dv_cl = DataValidation(type='list', formula1=f'"{class_list}"',
+                                   allow_blank=True, showDropDown=False)
+            dv_cl.error = 'Pick or type a classification (auto-created if new)'
+            ws.add_data_validation(dv_cl)
+            dv_cl.add('D3:D1000')
+
         dv_rx = DataValidation(type='list', formula1='"none,recommended,required"',
                                allow_blank=True, showDropDown=False)
         dv_rx.error = 'Must be none, recommended or required'
         ws.add_data_validation(dv_rx)
-        dv_rx.add('N3:N1000')
+        dv_rx.add('P3:P1000')
         dv_act = DataValidation(type='list', formula1='"Yes,No"',
                                 allow_blank=True, showDropDown=False)
         dv_act.error = 'Must be Yes or No'
         ws.add_data_validation(dv_act)
-        dv_act.add('O3:O1000')
+        dv_act.add('Q3:Q1000')
 
         ins = wb.create_sheet('Instructions')
         ins.column_dimensions['A'].width = 6
@@ -1036,11 +1708,12 @@ class MedicationStockViewSet(BranchScopedMixin, viewsets.ModelViewSet):
             '1. Fill one row per medication in the "Inventory" sheet (or edit an exported file).',
             '2. "Medication Name" is required — rows without a name are skipped.',
             '3. "Branch (Warehouse)" is required for new items — match an existing warehouse name. Existing items keep their warehouse when blank.',
-            '4. Existing medications are matched by name (case-insensitive) and updated. New names create new items.',
+            '4. Existing medications are matched by name AND warehouse (case-insensitive). The same item can exist in multiple warehouses — uploading the same name with a different warehouse creates a new entry.',
             '5. "Total Quantity" is optional — leave blank to keep current stock. A value creates a count-correction adjustment.',
-            '6. Blank cells keep existing values on update; defaults apply to new items.',
-            '7. Category and Unit are created automatically if they do not exist.',
-            '8. Supported formats: .xlsx and .csv',
+            '6. "Items Per Unit" — when the unit is a box/pack/strip etc, enter how many individual items are inside one unit.',
+            '7. Blank cells keep existing values on update; defaults apply to new items.',
+            '8. Category, Classification and Unit are created automatically if they do not exist.',
+            '9. Supported formats: .xlsx and .csv',
             '',
             'REVIEW WORKFLOW',
             '· Upload the file on the Excel Import / Export page.',
@@ -1080,11 +1753,11 @@ class MedicationStockViewSet(BranchScopedMixin, viewsets.ModelViewSet):
             return Response({'detail': str(exc)}, status=400)
 
         existing = {
-            s.medication_name.lower(): {'id': s.id, 'quantity': int(s.qty or 0)}
+            (s.medication_name.lower(), s.branch_id): {'id': s.id, 'quantity': int(s.qty or 0)}
             for s in (MedicationStock.objects
                       .annotate(qty=Coalesce(Sum('batches__quantity_remaining',
                                                   filter=Q(batches__quantity_remaining__gt=0)), 0))
-                      .only('id', 'medication_name'))
+                      .only('id', 'medication_name', 'branch_id'))
         }
         branch_names = {b.id: b.name for b in Branch.objects.filter(is_active=True)}
 
@@ -1092,7 +1765,8 @@ class MedicationStockViewSet(BranchScopedMixin, viewsets.ModelViewSet):
         counts = {'new': 0, 'update': 0, 'error': 0}
         for num, raw in parsed:
             cleaned, errors = self._clean_import_row(raw)
-            key = cleaned['medication_name'].lower()
+            branch_id = cleaned['branch'] if isinstance(cleaned['branch'], int) else None
+            key = (cleaned['medication_name'].lower(), branch_id)
             if cleaned['medication_name'] and key in seen:
                 errors['medication_name'] = f'Duplicate of row {seen[key]}'
             elif cleaned['medication_name']:
@@ -1104,7 +1778,6 @@ class MedicationStockViewSet(BranchScopedMixin, viewsets.ModelViewSet):
                 errors['branch'] = 'Required - pick a warehouse'
             status_ = 'error' if errors else ('update' if ex else 'new')
             counts[status_] += 1
-            branch_id = cleaned['branch'] if isinstance(cleaned['branch'], int) else None
             rows.append({
                 'row_num': num,
                 **{k: v for k, v in cleaned.items() if k != 'branch'},
@@ -1146,15 +1819,10 @@ class MedicationStockViewSet(BranchScopedMixin, viewsets.ModelViewSet):
                 if not name:
                     raise ValueError('Medication name is required')
 
-                stock = MedicationStock.objects.filter(medication_name__iexact=name).first()
-                is_new = stock is None
-                if is_new:
-                    stock = MedicationStock(medication_name=name)
-
-                # Branch / warehouse (compulsory for new items).
+                # Resolve branch FIRST so we can match stock by (name, branch)
                 branch_val = item.get('branch')
+                branch = None
                 if branch_val not in (None, ''):
-                    branch = None
                     if isinstance(branch_val, int) or (isinstance(branch_val, str) and branch_val.isdigit()):
                         branch = Branch.objects.filter(id=int(branch_val)).first()
                     if branch is None:
@@ -1163,6 +1831,16 @@ class MedicationStockViewSet(BranchScopedMixin, viewsets.ModelViewSet):
                                   .first())
                     if branch is None:
                         raise ValueError(f'Unknown warehouse "{branch_val}"')
+
+                # Match existing stock by (name, branch) — allows same item in multiple branches
+                if branch:
+                    stock = MedicationStock.objects.filter(medication_name__iexact=name, branch=branch).first()
+                else:
+                    stock = MedicationStock.objects.filter(medication_name__iexact=name).first()
+                is_new = stock is None
+                if is_new:
+                    stock = MedicationStock(medication_name=name)
+                if branch:
                     stock.branch = branch
                 elif is_new:
                     raise ValueError('Branch (warehouse) is required for new items')
@@ -1170,6 +1848,9 @@ class MedicationStockViewSet(BranchScopedMixin, viewsets.ModelViewSet):
                 if item.get('category'):
                     stock.category, _ = Category.objects.get_or_create(
                         name=str(item['category']).strip())
+                if item.get('classification'):
+                    stock.classification, _ = Classification.objects.get_or_create(
+                        name=str(item['classification']).strip())
                 if item.get('unit'):
                     stock.unit, _ = Unit.objects.get_or_create(name=str(item['unit']).strip())
 
@@ -1188,7 +1869,14 @@ class MedicationStockViewSet(BranchScopedMixin, viewsets.ModelViewSet):
                     elif is_new:
                         setattr(stock, f, default)
 
-                for f in ('location_in_store', 'barcode'):
+                ipu = item.get('items_per_unit')
+                if ipu not in (None, ''):
+                    stock.items_per_unit = int(float(ipu))
+                elif is_new:
+                    stock.items_per_unit = 0
+
+                for f in ('location_in_store', 'barcode',
+                          'brand_name', 'generic_name', 'strength', 'dosage_form'):
                     v = item.get(f)
                     if v not in (None, ''):
                         setattr(stock, f, str(v).strip())
@@ -1242,7 +1930,7 @@ class StockAdjustmentViewSet(viewsets.ModelViewSet):
     serializer_class = StockAdjustmentSerializer
     permission_classes = [AdjustmentPermission]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['stock', 'reason']
+    filterset_fields = ['stock', 'reason', 'stock__branch']
     search_fields = ['stock__medication_name', 'notes']
     ordering_fields = ['created_at']
 
@@ -1251,7 +1939,15 @@ class InventoryAnalyticsView(APIView):
     """Aggregated inventory analytics for the pharmacy dashboard."""
 
     def get(self, request):
+        branch_id = request.query_params.get('branch_id') or request.query_params.get('branch')
+        # Force non-admin users to their own branch
+        from config.branch_scope import BRANCH_ADMIN_BYPASS_ROLES, get_user_branch
+        role = getattr(request.user, 'role', '')
+        if role not in BRANCH_ADMIN_BYPASS_ROLES and not getattr(request.user, 'is_superuser', False):
+            branch_id = get_user_branch(request.user)
         stocks = MedicationStock.objects.prefetch_related('batches').filter(is_active=True)
+        if branch_id:
+            stocks = stocks.filter(Q(branch_id=branch_id) | Q(branch__isnull=True))
         now = timezone.now().date()
 
         total_items = stocks.count()
@@ -1267,19 +1963,19 @@ class InventoryAnalyticsView(APIView):
             total_retail_value += float(s.selling_price) * qty
 
         # Expiring within 30/90 days
-        expiring_30 = StockBatch.objects.filter(
+        batch_qs = StockBatch.objects.filter(quantity_remaining__gt=0)
+        if branch_id:
+            batch_qs = batch_qs.filter(Q(branch_id=branch_id) | Q(branch__isnull=True))
+        expiring_30 = batch_qs.filter(
             expiry_date__lte=now + timedelta(days=30),
             expiry_date__gt=now,
-            quantity_remaining__gt=0,
         ).count()
-        expiring_90 = StockBatch.objects.filter(
+        expiring_90 = batch_qs.filter(
             expiry_date__lte=now + timedelta(days=90),
             expiry_date__gt=now,
-            quantity_remaining__gt=0,
         ).count()
-        expired = StockBatch.objects.filter(
+        expired = batch_qs.filter(
             expiry_date__lt=now,
-            quantity_remaining__gt=0,
         ).count()
 
         return Response({
@@ -1322,7 +2018,21 @@ class InventoryOverviewView(APIView):
         date_from = self._parse_date(request.query_params.get('date_from'))
         date_to = self._parse_date(request.query_params.get('date_to'))
 
+        # Optional branch filter — restricts all data to the given branch.
+        # Items with branch=NULL are shared/unassigned and always included.
+        branch_id = request.query_params.get('branch_id') or request.query_params.get('branch')
+        # Force non-admin users to their own branch
+        from config.branch_scope import BRANCH_ADMIN_BYPASS_ROLES, get_user_branch
+        role = getattr(request.user, 'role', '')
+        if role not in BRANCH_ADMIN_BYPASS_ROLES and not getattr(request.user, 'is_superuser', False):
+            branch_id = get_user_branch(request.user)
+        branch_q = None
+        if branch_id:
+            branch_q = Q(branch_id=branch_id) | Q(branch__isnull=True)
+
         stocks = MedicationStock.objects.prefetch_related('batches').filter(is_active=True)
+        if branch_id:
+            stocks = stocks.filter(branch_q)
 
         # ── Stock health ────────────────────────────────────────────────
         total_items = stocks.count()
@@ -1338,19 +2048,19 @@ class InventoryOverviewView(APIView):
                 low_stock += 1
 
         # ── Expiry ──────────────────────────────────────────────────────
-        expiring_30 = StockBatch.objects.filter(
+        batch_qs = StockBatch.objects.filter(quantity_remaining__gt=0)
+        if branch_id:
+            batch_qs = batch_qs.filter(branch_q)
+        expiring_30 = batch_qs.filter(
             expiry_date__lte=today + timedelta(days=30),
             expiry_date__gte=today,
-            quantity_remaining__gt=0,
         ).count()
-        expiring_90 = StockBatch.objects.filter(
+        expiring_90 = batch_qs.filter(
             expiry_date__lte=today + timedelta(days=90),
             expiry_date__gte=today,
-            quantity_remaining__gt=0,
         ).count()
-        expired = StockBatch.objects.filter(
+        expired = batch_qs.filter(
             expiry_date__lt=today,
-            quantity_remaining__gt=0,
         ).count()
 
         # ── Deliveries (outbound fulfilment) ────────────────────────────
@@ -1378,6 +2088,8 @@ class InventoryOverviewView(APIView):
         try:
             from purchase_orders.models import PurchaseOrder, GoodsReceivedNote
             po_qs = PurchaseOrder.objects.all()
+            if branch_id:
+                po_qs = po_qs.filter(Q(branch_id=branch_id) | Q(branch__isnull=True))
             if date_from:
                 po_qs = po_qs.filter(order_date__gte=date_from)
             if date_to:
@@ -1386,6 +2098,9 @@ class InventoryOverviewView(APIView):
                 status__in=('draft', 'sent', 'partial')).count()
 
             grn_qs = GoodsReceivedNote.objects.all()
+            if branch_id:
+                grn_qs = grn_qs.filter(
+                    Q(purchase_order__branch_id=branch_id) | Q(purchase_order__branch__isnull=True))
             if date_from:
                 grn_qs = grn_qs.filter(received_date__gte=date_from)
             if date_to:
@@ -1408,6 +2123,8 @@ class InventoryOverviewView(APIView):
         try:
             from pos.models import POSTransaction, TransactionItem
             txn_qs = POSTransaction.objects.filter(status='completed')
+            if branch_id:
+                txn_qs = txn_qs.filter(Q(branch_id=branch_id) | Q(branch__isnull=True))
             if date_from:
                 txn_qs = txn_qs.filter(created_at__date__gte=date_from)
             if date_to:
@@ -1645,7 +2362,7 @@ class InventoryCountViewSet(viewsets.ModelViewSet):
 # ─────────────────────────────────────────────────────────────────────────
 #  Stock Transfers
 # ─────────────────────────────────────────────────────────────────────────
-from django_filters import DateFilter, FilterSet
+from django_filters import DateFilter, FilterSet, CharFilter
 
 
 class StockTransferFilterSet(FilterSet):
@@ -1653,10 +2370,17 @@ class StockTransferFilterSet(FilterSet):
     standard status / source / destination filters."""
     from_date = DateFilter(field_name='requested_at__date', lookup_expr='gte')
     to_date = DateFilter(field_name='requested_at__date', lookup_expr='lte')
+    branch = CharFilter(method='filter_branch', help_text='Filter by either source or dest branch')
 
     class Meta:
         model = StockTransfer
         fields = ['status', 'source_branch', 'dest_branch', 'from_date', 'to_date']
+
+    def filter_branch(self, queryset, name, value):
+        from django.db.models import Q
+        if not value:
+            return queryset
+        return queryset.filter(Q(source_branch_id=value) | Q(dest_branch_id=value))
 
 
 class StockTransferViewSet(viewsets.ModelViewSet):
@@ -1680,10 +2404,55 @@ class StockTransferViewSet(viewsets.ModelViewSet):
             transfer.received_at = timezone.now()
         transfer.save()
 
+    # ── Notification helper for transfer status changes ──
+    def _notify_transfer(self, transfer, new_status, actor):
+        """Create a system notification about a transfer status change.
+
+        Notifies the transfer's requester (and approver/receiver if
+        different from the actor) so they can track progress.
+        """
+        from notifications.models import Notification
+
+        status_labels = {
+            'draft': 'saved as draft',
+            'requested': 'submitted for approval',
+            'in_transit': 'approved and shipped',
+            'completed': 'received and completed',
+            'cancelled': 'cancelled',
+        }
+        label = status_labels.get(new_status, new_status)
+        title = f'Transfer {transfer.reference} — {label.title()}'
+        message = (
+            f'Stock transfer {transfer.reference} ({transfer.source_branch_name} → '
+            f'{transfer.dest_branch_name}) has been {label}.'
+        )
+        # Build recipient set: requester, approver, receiver — but not the actor
+        recipients = set()
+        for u in [transfer.requested_by, transfer.approved_by]:
+            if u and u != actor:
+                recipients.add(u)
+        # Always notify the requester unless they are the actor
+        if transfer.requested_by and transfer.requested_by != actor:
+            recipients.add(transfer.requested_by)
+        for user in recipients:
+            Notification.objects.create(
+                recipient=user,
+                type=Notification.NotificationType.SYSTEM,
+                title=title,
+                message=message,
+                data={
+                    'transfer_id': transfer.id,
+                    'reference': transfer.reference,
+                    'status': new_status,
+                    'source_branch': transfer.source_branch_name,
+                    'dest_branch': transfer.dest_branch_name,
+                },
+            )
+
     @action(detail=False, methods=['get'])
     def stats(self, request):
         """KPIs for the transfers dashboard header."""
-        qs = self.get_queryset()
+        qs = self.filter_queryset(self.get_queryset())
         by_status = {s: qs.filter(status=s).count() for s in
                      ['draft', 'requested', 'in_transit', 'completed', 'cancelled']}
         in_transit = qs.filter(status='in_transit').prefetch_related('lines__stock')
@@ -1716,6 +2485,7 @@ class StockTransferViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Only drafts can be submitted.'}, status=400)
         transfer.status = StockTransfer.Status.REQUESTED
         transfer.save(update_fields=['status'])
+        self._notify_transfer(transfer, 'requested', request.user)
         return Response(self.get_serializer(transfer).data)
 
     @action(detail=True, methods=['post'])
@@ -1775,6 +2545,7 @@ class StockTransferViewSet(viewsets.ModelViewSet):
                     remaining -= take
 
             self._set_status(transfer, StockTransfer.Status.IN_TRANSIT, request.user, 'approved_by')
+        self._notify_transfer(transfer, 'in_transit', request.user)
         return Response(self.get_serializer(transfer).data)
 
     @action(detail=True, methods=['post'])
@@ -1849,6 +2620,7 @@ class StockTransferViewSet(viewsets.ModelViewSet):
         if hasattr(transfer, '_prefetched_objects_cache'):
             transfer._prefetched_objects_cache.pop('lines', None)
 
+        self._notify_transfer(transfer, 'completed', request.user)
         return Response({
             **self.get_serializer(transfer).data,
             'receipt_summary': {
@@ -1871,6 +2643,7 @@ class StockTransferViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Cannot cancel this transfer.'}, status=400)
         transfer.status = StockTransfer.Status.CANCELLED
         transfer.save(update_fields=['status'])
+        self._notify_transfer(transfer, 'cancelled', request.user)
         return Response(self.get_serializer(transfer).data)
 
     @action(detail=True, methods=['get'], url_path='pdf')
@@ -3065,6 +3838,11 @@ class StockMovementReportView(APIView):
         reason_filter = request.query_params.get('reason')
         direction_filter = request.query_params.get('direction')
         branch_id = request.query_params.get('branch_id')
+        # Force non-admin users to their own branch
+        from config.branch_scope import BRANCH_ADMIN_BYPASS_ROLES, get_user_branch
+        role = getattr(request.user, 'role', '')
+        if role not in BRANCH_ADMIN_BYPASS_ROLES and not getattr(request.user, 'is_superuser', False):
+            branch_id = get_user_branch(request.user)
         # Optional per-item scoping: every section (POS, dispensing, returns,
         # adjustments, transfer lines) is filtered down to this stock item.
         try:
@@ -3278,6 +4056,94 @@ class StockMovementReportView(APIView):
                     'notes': tx.notes or '',
                 })
 
+        # ── Gather Purchase Orders (received → inflow) ────────────────
+        try:
+            from purchase_orders.models import PurchaseOrder
+            po_qs = PurchaseOrder.objects.filter(
+                created_at__gte=start_dt,
+                created_at__lt=end_dt,
+                status=PurchaseOrder.Status.RECEIVED,
+            )
+            if branch_id:
+                po_qs = po_qs.filter(branch_id=branch_id)
+            for po in po_qs:
+                for idx, it in enumerate((po.items or [])):
+                    if reason_filter and reason_filter != 'purchase_order':
+                        continue
+                    if direction_filter and 'inflow' != direction_filter:
+                        continue
+                    sid = it.get('medication_stock_id') or it.get('stock_id')
+                    if stock_id and sid != stock_id:
+                        continue
+                    qty = int(it.get('qty', 0) or 0)
+                    unit_cost = float(it.get('unit_cost', 0) or 0)
+                    med_name = it.get('name', 'Unknown')
+                    movements.append({
+                        'id': f'PO-{po.id}-{idx}',
+                        'date': po.created_at.date().isoformat() if po.created_at else '',
+                        'timestamp': po.created_at.isoformat() if po.created_at else '',
+                        'direction': 'inflow',
+                        'type': 'purchase_order',
+                        'reason': 'purchase_order',
+                        'source': 'Purchase Order',
+                        'reference': po.po_number or f'PO-{po.id}',
+                        'stock_name': med_name,
+                        'stock_id': sid,
+                        'batch_number': '',
+                        'quantity': qty,
+                        'quantity_change': qty,
+                        'unit_value': unit_cost,
+                        'value_change': qty * unit_cost,
+                        'user': str(po.ordered_by) if po.ordered_by else 'System',
+                        'notes': f'Supplier: {po.supplier}' if po.supplier_id else '',
+                    })
+        except Exception:
+            pass
+
+        # ── Gather Sales Orders (fulfilled → outflow) ──────────────────
+        try:
+            from sales_orders.models import SalesOrder
+            so_qs = SalesOrder.objects.filter(
+                created_at__gte=start_dt,
+                created_at__lt=end_dt,
+                status=SalesOrder.Status.FULFILLED,
+            )
+            if branch_id:
+                so_qs = so_qs.filter(branch_id=branch_id)
+            for so in so_qs:
+                for idx, it in enumerate((so.items or [])):
+                    if reason_filter and reason_filter != 'sales_order':
+                        continue
+                    if direction_filter and 'outflow' != direction_filter:
+                        continue
+                    sid = it.get('stock_id')
+                    if stock_id and sid != stock_id:
+                        continue
+                    qty = int(it.get('qty', 0) or 0)
+                    unit_price = float(it.get('unit_price', 0) or 0)
+                    med_name = it.get('name', 'Unknown')
+                    movements.append({
+                        'id': f'SO-{so.id}-{idx}',
+                        'date': so.created_at.date().isoformat() if so.created_at else '',
+                        'timestamp': so.created_at.isoformat() if so.created_at else '',
+                        'direction': 'outflow',
+                        'type': 'sales_order',
+                        'reason': 'sales_order',
+                        'source': 'Sales Order',
+                        'reference': so.so_number or f'SO-{so.id}',
+                        'stock_name': med_name,
+                        'stock_id': sid,
+                        'batch_number': '',
+                        'quantity': qty,
+                        'quantity_change': -qty,
+                        'unit_value': unit_price,
+                        'value_change': qty * unit_price,
+                        'user': str(so.created_by) if so.created_by else 'System',
+                        'notes': f'Customer: {so.customer_name}' if so.customer_name else '',
+                    })
+        except Exception:
+            pass
+
         # Sort by timestamp descending
         movements.sort(key=lambda x: x.get('timestamp') or x.get('date') or '', reverse=True)
 
@@ -3332,12 +4198,14 @@ class StockMovementReportView(APIView):
             'count_correction': '#3b82f6', 'return_to_supplier': '#8b5cf6',
             'other': '#64748b', 'branch_transfer': '#0ea5e9',
             'pos_sale': '#10b981', 'dispensing': '#14b8a6', 'return': '#f97316',
+            'purchase_order': '#6366f1', 'sales_order': '#ec4899',
         }
         reason_labels = {
             'damage': 'Damage', 'theft': 'Theft', 'expiry': 'Expiry',
             'count_correction': 'Count Correction', 'return_to_supplier': 'Return to Supplier',
             'other': 'Other', 'branch_transfer': 'Branch Transfer',
             'pos_sale': 'POS Sale', 'dispensing': 'Dispensing', 'return': 'Dispense Return',
+            'purchase_order': 'Purchase Order', 'sales_order': 'Sales Order',
         }
         reason_segments = [
             {'label': reason_labels.get(r, r.title()),

@@ -82,14 +82,6 @@
     <!-- Toolbar -->
     <v-card rounded="lg" elevation="0" class="pa-3 mb-3" style="border:1px solid rgba(0,0,0,0.06)">
       <div class="d-flex flex-wrap align-center" style="gap:10px">
-        <v-text-field
-          v-model="search"
-          :placeholder="$t('common.searchEllipsis')"
-          prepend-inner-icon="mdi-magnify"
-          density="compact" variant="outlined" rounded="lg" hide-details
-          clearable
-          style="min-width: 240px; max-width: 360px; flex:1"
-        />
         <v-select
           v-if="tab === 'stocks'"
           v-model="categoryFilter"
@@ -98,6 +90,22 @@
           density="compact" variant="outlined" rounded="lg" hide-details
           prepend-inner-icon="mdi-shape" style="min-width: 180px"
         />
+        <v-select
+          v-if="tab === 'stocks'"
+          v-model="classificationFilter"
+          :items="classificationOptions"
+          item-title="label" item-value="value"
+          density="compact" variant="outlined" rounded="lg" hide-details
+          prepend-inner-icon="mdi-label-multiple-outline" style="min-width: 220px"
+        >
+          <template #item="{ props: ip, item }">
+            <v-list-item v-bind="ip" :title="item.raw?.label" :subtitle="item.raw?.description">
+              <template #prepend>
+                <v-icon size="18" color="primary">mdi-label-multiple-outline</v-icon>
+              </template>
+            </v-list-item>
+          </template>
+        </v-select>
         <v-text-field
           v-if="tab === 'stocks'"
           v-model="batchFilter"
@@ -128,7 +136,7 @@
         <span class="text-caption text-medium-emphasis">{{ filteredItems.length }} of {{ currentItems.length }}</span>
       </div>
 
-      <!-- Date filter chips -->
+      <!-- Date filter chips + search bar -->
       <div class="d-flex flex-wrap align-center mt-2" style="gap:6px">
         <v-icon size="18" class="text-medium-emphasis mr-1">mdi-calendar-filter</v-icon>
         <v-chip
@@ -151,6 +159,14 @@
         >
           Clear
         </v-chip>
+        <v-text-field
+          v-model="search"
+          placeholder="Search by name, brand, generic, strength, barcode…"
+          prepend-inner-icon="mdi-magnify"
+          density="compact" variant="outlined" rounded="lg" hide-details
+          clearable
+          style="flex: 1; min-width: 200px"
+        />
       </div>
 
       <!-- Custom date range dialog -->
@@ -201,14 +217,23 @@
           <thead>
             <tr>
               <th class="row-num">#</th>
-              <th>Item</th>
+              <th class="sortable-th" @click="toggleStockSort('medication_name')">
+                Item
+                <v-icon size="14" class="sort-icon" :class="{ 'sort-active': stockSortKey === 'medication_name' }">{{ stockSortKey === 'medication_name' ? (stockSortDir === 'asc' ? 'mdi-arrow-up' : 'mdi-arrow-down') : 'mdi-arrow-up-down' }}</v-icon>
+              </th>
+              <th>Generic Name</th>
               <th>Batches</th>
               <th>Category</th>
+              <th>Classification</th>
               <th class="text-right">On hand</th>
               <th class="text-right">Reorder</th>
               <th class="text-right">Cost</th>
               <th class="text-right">Price</th>
               <th class="text-right">Retail value</th>
+              <th class="sortable-th" @click="toggleStockSort('created_at')">
+                Added
+                <v-icon size="14" class="sort-icon" :class="{ 'sort-active': stockSortKey === 'created_at' }">{{ stockSortKey === 'created_at' ? (stockSortDir === 'asc' ? 'mdi-arrow-up' : 'mdi-arrow-down') : 'mdi-arrow-up-down' }}</v-icon>
+              </th>
               <th>{{ $t('common.status') }}</th>
               <th class="text-right">{{ $t('common.actions') }}</th>
             </tr>
@@ -231,6 +256,7 @@
                   </div>
                 </div>
               </td>
+              <td class="text-medium-emphasis">{{ row.generic_name || '—' }}</td>
               <td>
                 <div v-if="row.batches &amp;&amp; row.batches.length" class="d-flex flex-wrap" style="gap:4px">
                   <v-chip
@@ -245,11 +271,21 @@
                 <span v-else class="text-medium-emphasis text-caption">—</span>
               </td>
               <td>{{ row.category_name || '—' }}</td>
-              <td class="text-right font-weight-medium">{{ Number(row.total_quantity ?? 0).toLocaleString() }} <span class="text-caption text-medium-emphasis">{{ row.unit_abbreviation || '' }}</span></td>
+              <td>
+                <v-chip
+                  v-if="row.classification_name"
+                  size="x-small" variant="tonal"
+                  :color="classificationColor(row.classification_name)"
+                  prepend-icon="mdi-label-multiple-outline"
+                >{{ row.classification_name }}</v-chip>
+                <span v-else class="text-medium-emphasis text-caption">—</span>
+              </td>
+              <td class="text-right font-weight-medium">{{ Number(row.total_quantity ?? 0).toLocaleString() }} <span class="text-caption text-medium-emphasis">{{ row.unit_abbreviation || '' }}</span><span v-if="row.items_per_unit > 0" class="text-caption text-info d-block">{{ row.items_per_unit }} items/{{ row.unit_abbreviation || row.unit_name || 'unit' }}</span></td>
               <td class="text-right">{{ Number(row.reorder_level ?? 0).toLocaleString() }}</td>
               <td class="text-right">{{ formatMoney(row.cost_price) }}</td>
               <td class="text-right font-weight-medium">{{ formatMoney(row.selling_price) }}</td>
               <td class="text-right">{{ formatMoney(Number(row.total_quantity || 0) * Number(row.selling_price || 0)) }}</td>
+              <td class="text-caption text-medium-emphasis">{{ row.created_at ? new Date(row.created_at).toLocaleDateString() : '—' }}</td>
               <td>
                 <span class="status-pill" :class="`status-${stockStatus(row).key}`">
                   <v-icon size="14">{{ stockStatus(row).icon }}</v-icon>
@@ -257,8 +293,15 @@
                 </span>
               </td>
               <td class="text-right">
-                <v-btn icon="mdi-eye-outline" variant="text" size="small" :to="`/inventory/stocks/${row.id}`" @click.stop title="Item details" />
-                <v-btn v-if="canEdit" icon="mdi-pencil" variant="text" size="small" :to="`/inventory/stocks/${row.id}/edit`" @click.stop />
+                <v-menu offset="4">
+                  <template #activator="{ props }">
+                    <v-btn v-bind="props" icon="mdi-dots-vertical" variant="text" size="small" />
+                  </template>
+                  <v-list density="compact" min-width="180">
+                    <v-list-item prepend-icon="mdi-eye-outline" title="View details" :to="`/inventory/stocks/${row.id}`" />
+                    <v-list-item v-if="canEdit" prepend-icon="mdi-pencil" title="Edit" :to="`/inventory/stocks/${row.id}/edit`" />
+                  </v-list>
+                </v-menu>
               </td>
             </tr>
           </tbody>
@@ -294,7 +337,14 @@
                 <div class="text-caption text-medium-emphasis mt-1">{{ sharePctByCategory(row.id) }}%</div>
               </td>
               <td class="text-right">
-                <v-btn v-if="canEdit" icon="mdi-pencil" variant="text" size="small" :to="`/inventory/categories/${row.id}/edit`" />
+                <v-menu offset="4">
+                  <template #activator="{ props }">
+                    <v-btn v-bind="props" icon="mdi-dots-vertical" variant="text" size="small" />
+                  </template>
+                  <v-list density="compact" min-width="160">
+                    <v-list-item v-if="canEdit" prepend-icon="mdi-pencil" title="Edit" :to="`/inventory/categories/${row.id}/edit`" />
+                  </v-list>
+                </v-menu>
               </td>
             </tr>
           </tbody>
@@ -321,8 +371,74 @@
               <td class="text-right font-weight-medium">{{ countByUnit(row.id).toLocaleString() }}</td>
               <td class="text-right">{{ unitsByUnit(row.id).toLocaleString() }} <span class="text-caption text-medium-emphasis">{{ row.abbreviation || '' }}</span></td>
               <td class="text-right">
-                <v-btn v-if="canEdit" icon="mdi-pencil" variant="text" size="small" :to="`/inventory/units/${row.id}/edit`" />
+                <v-menu offset="4">
+                  <template #activator="{ props }">
+                    <v-btn v-bind="props" icon="mdi-dots-vertical" variant="text" size="small" />
+                  </template>
+                  <v-list density="compact" min-width="160">
+                    <v-list-item v-if="canEdit" prepend-icon="mdi-pencil" title="Edit" :to="`/inventory/units/${row.id}/edit`" />
+                  </v-list>
+                </v-menu>
               </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- CLASSIFICATIONS -->
+        <table v-else-if="tab === 'classifications'" class="inv-table">
+          <thead>
+            <tr>
+              <th class="row-num">#</th>
+              <th>Classification</th>
+              <th>Description</th>
+              <th>Status</th>
+              <th class="text-right">SKUs</th>
+              <th class="text-right">Units on hand</th>
+              <th class="text-right">Retail value</th>
+              <th class="text-right">{{ $t('common.actions') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(row, i) in pagedItems" :key="row.id">
+              <td class="row-num text-medium-emphasis">{{ rowNumber(i) }}</td>
+              <td>
+                <div class="d-flex align-center" style="gap:10px">
+                  <v-avatar :color="classificationColor(row.name)" variant="tonal" rounded="lg" size="34">
+                    <v-icon size="18">mdi-label-multiple-outline</v-icon>
+                  </v-avatar>
+                  <div>
+                    <div class="font-weight-medium">{{ row.name || '—' }}</div>
+                    <div class="text-caption text-medium-emphasis">
+                      ID #{{ row.id }}
+                      <v-chip v-if="row.name === 'Routine'" size="x-small" variant="tonal" color="primary" class="ml-1">Default</v-chip>
+                    </div>
+                  </div>
+                </div>
+              </td>
+              <td class="text-medium-emphasis" style="max-width:280px">
+                <div class="text-truncate">{{ row.description || '—' }}</div>
+              </td>
+              <td>
+                <v-chip :color="row.is_active === false ? 'default' : 'success'" size="x-small" variant="tonal">
+                  {{ row.is_active === false ? 'Inactive' : 'Active' }}
+                </v-chip>
+              </td>
+              <td class="text-right font-weight-medium">{{ (row.stock_count ?? countByClassification(row.id)).toLocaleString() }}</td>
+              <td class="text-right">{{ unitsByClassification(row.id).toLocaleString() }}</td>
+              <td class="text-right font-weight-medium">{{ formatMoney(retailByClassification(row.id)) }}</td>
+              <td class="text-right">
+                <v-menu offset="4">
+                  <template #activator="{ props }">
+                    <v-btn v-bind="props" icon="mdi-dots-vertical" variant="text" size="small" />
+                  </template>
+                  <v-list density="compact" min-width="160">
+                    <v-list-item v-if="canEdit" prepend-icon="mdi-pencil" title="Edit" :to="`/inventory/classifications/${row.id}/edit`" />
+                  </v-list>
+                </v-menu>
+              </td>
+            </tr>
+            <tr v-if="!pagedItems.length">
+              <td colspan="8" class="text-center text-medium-emphasis py-6">No classifications yet. "Routine" is created automatically.</td>
             </tr>
           </tbody>
         </table>
@@ -369,7 +485,14 @@
               <td class="text-medium-emphasis">{{ row.adjusted_by_name || 'System' }}</td>
               <td class="text-medium-emphasis">{{ formatDateTime(row.created_at) }}</td>
               <td class="text-right">
-                <v-btn icon="mdi-pencil" variant="text" size="small" :to="`/inventory/adjustments/${row.id}/edit`" />
+                <v-menu offset="4">
+                  <template #activator="{ props }">
+                    <v-btn v-bind="props" icon="mdi-dots-vertical" variant="text" size="small" />
+                  </template>
+                  <v-list density="compact" min-width="160">
+                    <v-list-item prepend-icon="mdi-pencil" title="Edit" :to="`/inventory/adjustments/${row.id}/edit`" />
+                  </v-list>
+                </v-menu>
               </td>
             </tr>
           </tbody>
@@ -429,6 +552,7 @@ const tab = ref('stocks')
 const search = ref('')
 const batchFilter = ref('')
 const categoryFilter = ref('all')
+const classificationFilter = ref('all')
 const statusFilter = ref('all')
 const branchFilter = ref('all')
 const dateFilter = ref('all')
@@ -501,22 +625,25 @@ function getDateRange() {
 
 const stocks = useResource('/inventory/stocks/')
 const categoriesRes = useResource('/inventory/categories/')
+const classificationsRes = useResource('/inventory/classifications/')
 const units = useResource('/inventory/units/')
 const adjustments = useResource('/inventory/adjustments/')
 
-const resourceMap = { stocks, categories: categoriesRes, units, adjustments }
+const resourceMap = { stocks, categories: categoriesRes, classifications: classificationsRes, units, adjustments }
 const currentResource = computed(() => resourceMap[tab.value])
 const currentItems = computed(() => currentResource.value.items.value || [])
 
 const createPaths = {
   stocks: '/inventory/stocks/new',
   categories: '/inventory/categories/new',
+  classifications: '/inventory/classifications/new',
   units: '/inventory/units/new',
   adjustments: '/inventory/adjustments/new'
 }
 const createLabels = {
   stocks: 'Add Stock',
   categories: 'Add Category',
+  classifications: 'Add Classification',
   units: 'Add Unit',
   adjustments: 'New Adjustment'
 }
@@ -524,6 +651,7 @@ const createLabels = {
 const tabs = computed(() => [
   { value: 'stocks', label: 'Stocks', icon: 'mdi-pill', count: stocks.items.value?.length },
   { value: 'categories', label: 'Categories', icon: 'mdi-shape', count: categoriesRes.items.value?.length },
+  { value: 'classifications', label: 'Classifications', icon: 'mdi-label-multiple-outline', count: classificationsRes.items.value?.length },
   { value: 'units', label: 'Units', icon: 'mdi-ruler', count: units.items.value?.length },
   { value: 'adjustments', label: 'Adjustments', icon: 'mdi-tune-vertical', count: adjustments.items.value?.length }
 ])
@@ -558,6 +686,11 @@ const categoryOptions = computed(() => {
   for (const c of categoriesRes.items.value || []) opts.push({ label: c.name, value: c.id })
   return opts
 })
+const classificationOptions = computed(() => {
+  const opts = [{ label: 'All classifications', value: 'all' }]
+  for (const c of classificationsRes.items.value || []) opts.push({ label: c.name, value: c.id, description: c.description })
+  return opts
+})
 const statusOptions = [
   { label: 'All status', value: 'all' },
   { label: 'In stock', value: 'ok' },
@@ -584,6 +717,7 @@ const filteredItems = computed(() => {
   let arr = currentItems.value.slice()
   if (tab.value === 'stocks') {
     if (categoryFilter.value !== 'all') arr = arr.filter(s => s.category === categoryFilter.value)
+    if (classificationFilter.value !== 'all') arr = arr.filter(s => s.classification === classificationFilter.value)
     if (statusFilter.value !== 'all') arr = arr.filter(s => stockStatus(s).key === statusFilter.value)
     if (branchFilter.value !== 'all') arr = arr.filter(s => s.branch === branchFilter.value)
     const bn = (batchFilter.value || '').toLowerCase().trim()
@@ -607,23 +741,60 @@ const filteredItems = computed(() => {
     }
   }
   if (!q) return arr
-  return arr.filter(row => Object.values(row).some(v => {
-    if (v == null) return false
-    if (typeof v === 'object') return false
-    return String(v).toLowerCase().includes(q)
-  }))
+  return arr.filter(row => {
+    const fields = ['medication_name', 'brand_name', 'generic_name', 'strength', 'dosage_form',
+      'barcode', 'abbreviation', 'category_name', 'classification_name', 'unit_name',
+      'unit_abbreviation', 'branch_name', 'location_in_store', 'batch_number']
+    return fields.some(f => {
+      const v = row[f]
+      return v != null && String(v).toLowerCase().includes(q)
+    })
+  })
+})
+
+// --- Stock sorting ---
+const stockSortKey = ref('created_at')
+const stockSortDir = ref('desc')
+function toggleStockSort(key) {
+  if (stockSortKey.value === key) {
+    stockSortDir.value = stockSortDir.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    stockSortKey.value = key
+    stockSortDir.value = 'asc'
+  }
+}
+const sortedStocks = computed(() => {
+  if (tab.value !== 'stocks') return filteredItems.value
+  const arr = filteredItems.value.slice()
+  const key = stockSortKey.value
+  const dir = stockSortDir.value === 'asc' ? 1 : -1
+  arr.sort((a, b) => {
+    let va = a[key], vb = b[key]
+    if (key === 'created_at') {
+      va = va ? new Date(va).getTime() : 0
+      vb = vb ? new Date(vb).getTime() : 0
+    } else {
+      va = (va || '').toString().toLowerCase()
+      vb = (vb || '').toString().toLowerCase()
+    }
+    if (va < vb) return -1 * dir
+    if (va > vb) return 1 * dir
+    return 0
+  })
+  return arr
 })
 
 const totalPages = computed(() => Math.max(1, Math.ceil(filteredItems.value.length / pageSize.value)))
 const pagedItems = computed(() => {
+  const items = tab.value === 'stocks' ? sortedStocks.value : filteredItems.value
   const s = (page.value - 1) * pageSize.value
-  return filteredItems.value.slice(s, s + pageSize.value)
+  return items.slice(s, s + pageSize.value)
 })
 const rangeStart = computed(() => filteredItems.value.length === 0 ? 0 : (page.value - 1) * pageSize.value + 1)
 const rangeEnd = computed(() => Math.min(page.value * pageSize.value, filteredItems.value.length))
 function rowNumber(i) { return (page.value - 1) * pageSize.value + i + 1 }
 
-watch([tab, search, batchFilter, categoryFilter, statusFilter, branchFilter, dateFilter, customDateFrom, customDateTo, pageSize], () => { page.value = 1 })
+watch([tab, search, batchFilter, categoryFilter, classificationFilter, statusFilter, branchFilter, dateFilter, customDateFrom, customDateTo, pageSize], () => { page.value = 1 })
 
 function countByCategory(id) {
   return (stocks.items.value || []).filter(s => s.category === id).length
@@ -660,6 +831,30 @@ function unitsByUnit(id) {
     .reduce((sum, s) => sum + Number(s.total_quantity || 0), 0)
 }
 
+function countByClassification(id) {
+  return (stocks.items.value || []).filter(s => s.classification === id).length
+}
+function unitsByClassification(id) {
+  return (stocks.items.value || [])
+    .filter(s => s.classification === id)
+    .reduce((sum, s) => sum + Number(s.total_quantity || 0), 0)
+}
+function retailByClassification(id) {
+  return (stocks.items.value || [])
+    .filter(s => s.classification === id)
+    .reduce((sum, s) => sum + Number(s.total_quantity || 0) * Number(s.selling_price || 0), 0)
+}
+const _classColors = {
+  routine: 'primary', emergency: 'error', 'cold chain': 'info',
+  controlled: 'purple', 'high value': 'warning', other: 'grey',
+}
+function classificationColor(name) {
+  if (!name) return 'grey'
+  const key = String(name).toLowerCase()
+  if (_classColors[key]) return _classColors[key]
+  return _catColors[(name.charCodeAt(0) || 0) % _catColors.length]
+}
+
 const _reasonMeta = {
   damage:             { label: 'Damage',             color: 'error',   icon: 'mdi-alert-octagon' },
   theft:              { label: 'Theft',              color: 'error',   icon: 'mdi-shield-alert' },
@@ -689,6 +884,7 @@ onMounted(() => {
   // Always load stocks + categories so KPIs and category filter populate even on other tabs
   if (!stocks.items.value?.length) loadWithBranch(stocks)
   if (!categoriesRes.items.value?.length) loadWithBranch(categoriesRes)
+  if (!classificationsRes.items.value?.length) loadWithBranch(classificationsRes)
   branchStore.load()
   // Default branch filter to user's branch when locked
   if (branchStore.branchLocked && branchStore.currentBranchId) {
@@ -700,6 +896,7 @@ onMounted(() => {
 watch(() => branchStore.currentBranchId, () => {
   loadWithBranch(stocks)
   loadWithBranch(categoriesRes)
+  loadWithBranch(classificationsRes)
   loadWithBranch(units)
   loadWithBranch(adjustments)
 })
@@ -778,4 +975,9 @@ watch(() => branchStore.currentBranchId, () => {
 }
 .qty-pos { background: rgb(220, 252, 231); color: rgb(22, 101, 52); }
 .qty-neg { background: rgb(254, 226, 226); color: rgb(153, 27, 27); }
+
+.sortable-th { cursor: pointer; user-select: none; }
+.sortable-th:hover { background: rgba(var(--v-theme-primary), 0.14); }
+.sort-icon { opacity: 0.35; vertical-align: middle; margin-left: 4px; }
+.sort-icon.sort-active { opacity: 1; color: rgb(var(--v-theme-primary)); }
 </style>

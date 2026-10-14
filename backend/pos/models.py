@@ -12,6 +12,12 @@ class Customer(models.Model):
     name = models.CharField(max_length=255)
     phone = models.CharField(max_length=20, unique=True)
     email = models.EmailField(blank=True)
+    branch = models.ForeignKey(
+        'pharmacy_profile.Branch',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='customers',
+    )
     address = models.TextField(blank=True)
     notes = models.TextField(blank=True)
     total_purchases = models.DecimalField(max_digits=12, decimal_places=2, default=0)

@@ -12,12 +12,8 @@
       <header class="gs-nav">
         <div class="gs-nav-inner d-flex align-center px-4 px-md-10 py-3">
           <div class="brand-lockup d-flex align-center" role="button" @click="$router.push('/welcome')">
-            <div class="brand-badge d-flex align-center justify-center mr-3">
-              <v-icon size="18" color="white">mdi-heart-pulse</v-icon>
-            </div>
-            <span class="brand-word">
-              <span class="bold">Adhere</span><span class="light">Med</span>
-            </span>
+            <BrandLogo :size="38" class="mr-3" />
+            <BrandMark :size="22" />
           </div>
           <v-spacer />
           <v-btn variant="text" class="text-none gs-link mr-1" rounded="lg"

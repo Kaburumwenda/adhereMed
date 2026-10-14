@@ -11,11 +11,10 @@ Usage:
 """
 
 # Roles that bypass branch scoping and see all branches' data.
-BRANCH_ADMIN_BYPASS_ROLES = {'super_admin', 'tenant_admin'}
+BRANCH_ADMIN_BYPASS_ROLES = {'super_admin', 'tenant_admin', 'inventory_admin'}
 
-# Roles that are soft-assigned to a branch but allowed to view other branches
-# when they explicitly pass a ?branch= filter.
-SOFT_ASSIGN_ROLES = {'cashier', 'pharmacist', 'pharmacy_tech', 'storekeeper'}
+# All other roles are strictly locked to their assigned branch and cannot
+# access other branches' records, even with an explicit ?branch= parameter.
 
 
 def get_user_branch(user):
@@ -69,18 +68,9 @@ class BranchScopedMixin:
             return qs
 
         branch_id = get_user_branch(user)
-        explicit_branch = self.request.query_params.get(self.branch_field)
 
-        # Soft-assign roles: use explicit branch param if provided, else fall back to assigned branch
-        if role in SOFT_ASSIGN_ROLES:
-            filter_branch = explicit_branch or (str(branch_id) if branch_id else None)
-            if filter_branch:
-                from django.db.models import Q
-                lookup = {self.branch_field: filter_branch}
-                qs = qs.filter(Q(**lookup) | Q(**{f'{self.branch_field}__isnull': True}))
-            return qs
-
-        # Other roles (branch_admin, etc.): strictly scoped to their assigned branch
+        # All non-admin roles are strictly scoped to their assigned branch.
+        # Ignore any ?branch= query param — they cannot access other branches.
         if branch_id:
             from django.db.models import Q
             lookup = {self.branch_field: branch_id}

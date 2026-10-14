@@ -73,7 +73,15 @@
                   density="comfortable"
                   prepend-inner-icon="mdi-progress-check"
                   hide-details="auto"
-                />
+                >
+                  <template #item="{ item, props }">
+                    <v-list-item v-bind="props">
+                      <v-list-item-subtitle class="text-caption text-wrap" style="white-space: normal; opacity: 0.65; line-height: 1.3">
+                        {{ item.raw.description }}
+                      </v-list-item-subtitle>
+                    </v-list-item>
+                  </template>
+                </v-select>
               </v-col>
               <v-col cols="6" md="3">
                 <v-text-field
@@ -704,11 +712,11 @@ const branchOptions = computed(() => {
 })
 
 const statusOptions = [
-  { label: 'Draft', value: 'draft' },
-  { label: 'Sent', value: 'sent' },
-  { label: 'Received', value: 'received' },
-  { label: 'Partially Received', value: 'partial' },
-  { label: 'Cancelled', value: 'cancelled' },
+  { label: 'Draft', value: 'draft', description: 'Order being prepared — not yet sent to supplier' },
+  { label: 'Sent', value: 'sent', description: 'Order sent to supplier — awaiting delivery' },
+  { label: 'Received', value: 'received', description: 'All items delivered — stock batches created automatically' },
+  { label: 'Partially Received', value: 'partial', description: 'Some items delivered — remaining items still pending' },
+  { label: 'Cancelled', value: 'cancelled', description: 'Order cancelled — no stock movements recorded' },
 ]
 
 const form = reactive({

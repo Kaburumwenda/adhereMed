@@ -3,7 +3,7 @@
     <!-- Header -->
     <div class="d-flex flex-wrap align-center justify-space-between mb-4">
       <div>
-        <h1 class="text-h5 text-md-h4 font-weight-bold mb-1">{{ $t('analytics.title') }}</h1>
+        <h1 class="text-h5 text-md-h4 font-weight-bold mb-1">{{ pageTitle }}</h1>
         <div class="text-body-2 text-medium-emphasis">
           Performance insights · {{ rangeLabel }}
         </div>
@@ -395,6 +395,9 @@ const branchStore = useBranchStore()
 const auth = useAuthStore()
 
 const isBranchLocked = computed(() => auth.role === 'branch_admin')
+const pageTitle = computed(() =>
+  auth.tenantType === 'inventory' ? 'Inventory Analytics' : (auth.tenantType === 'hospital' || auth.tenantType === 'clinic' ? 'Healthcare Analytics' : t('analytics.title'))
+)
 
 const rangeKey = ref('30d')
 const branchFilter = ref(null) // null = All Branches

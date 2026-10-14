@@ -29,15 +29,17 @@
           </div>
         </div>
         <v-row>
-          <v-col cols="12" md="6">
+          <v-col cols="12">
             <v-combobox
-              v-model="nameSelection"
+              v-model="brandSelection"
               :items="catalogResults"
-              :item-title="item => typeof item === 'string' ? item : item.generic_name"
-              :item-value="item => typeof item === 'string' ? item : item.generic_name"
-              :search="nameQuery"
+              :item-title="item => typeof item === 'string' ? item : (Array.isArray(item.brand_names) ? (item.brand_names[0] || item.generic_name) : (item.brand_names || item.generic_name))"
+              :item-value="item => typeof item === 'string' ? item : (Array.isArray(item.brand_names) ? (item.brand_names[0] || '') : (item.brand_names || ''))"
+              :search="brandQuery"
               :loading="catalogLoading"
-              label="Item Name *"
+              label="Brand / Trade Name *"
+              hint="Search by brand or generic name (e.g. Panadol, paracetamol)"
+              persistent-hint
               :rules="req"
               variant="outlined"
               density="comfortable"
@@ -45,18 +47,20 @@
               no-filter
               clearable
               return-object
-              placeholder="Search medication catalog or type a name..."
-              @update:search="onNameSearch"
-              @update:model-value="onNameSelected($event, form)"
+              placeholder="Search brand or generic name from catalog..."
+              :disabled="formDisabled"
+              prepend-inner-icon="mdi-tag-text-outline"
+              @update:search="onBrandSearch"
+              @update:model-value="onBrandSelected($event, form)"
             >
               <template #no-data><div /></template>
               <template #item="{ item, props: ip }">
                 <v-list-item v-bind="ip" :title="undefined" :subtitle="undefined">
                   <template #prepend>
-                    <v-icon size="18" color="primary">mdi-book-outline</v-icon>
+                    <v-icon size="18" color="primary">mdi-tag-text-outline</v-icon>
                   </template>
-                  <template #title>{{ item.raw?.generic_name || item.title }}</template>
-                  <template #subtitle>{{ [item.raw?.dosage_form, item.raw?.strength].filter(Boolean).join(' · ') || 'Catalog item' }}</template>
+                  <template #title>{{ Array.isArray(item.raw?.brand_names) ? (item.raw.brand_names.join(', ') || item.raw?.generic_name) : (item.raw?.brand_names || item.raw?.generic_name || item.title) }}</template>
+                  <template #subtitle>{{ [item.raw?.generic_name, item.raw?.strength, item.raw?.dosage_form].filter(Boolean).join(' · ') || 'Catalog item' }}</template>
                 </v-list-item>
               </template>
             </v-combobox>
@@ -64,24 +68,42 @@
             <!-- Not in catalog warning -->
             <v-alert v-if="showNotInCatalog && !loadId" type="warning" variant="tonal" rounded="lg" class="mt-n2 mb-2">
               <template #prepend><v-icon size="18">mdi-alert-outline</v-icon></template>
-              <div class="text-body-2">"<strong>{{ nameQuery }}</strong>" is not in the medication catalog. Please add it to the catalog first.</div>
+              <div class="text-body-2">"<strong>{{ brandQuery }}</strong>" is not in the medication catalog. Please add it to the catalog first.</div>
               <div class="d-flex ga-2 mt-3">
                 <v-btn size="small" variant="flat" color="warning" rounded="lg" class="text-none" prepend-icon="mdi-book-plus-outline" @click="router.push(catalogPath)">
                   Go to Catalog
                 </v-btn>
               </div>
             </v-alert>
+          </v-col>
+        </v-row>
+        <v-row>
+          <v-col cols="12" md="6">
+            <v-text-field
+              v-model="form.medication_name"
+              label="Medication Name *"
+              hint="Auto-generated: Brand + Strength + Dosage Form"
+              persistent-hint
+              :rules="req"
+              variant="outlined"
+              density="comfortable"
+              rounded="lg"
+              readonly
+              placeholder="Select a brand to auto-fill"
+              :disabled="formDisabled"
+              prepend-inner-icon="mdi-pill"
+            />
 
-            <!-- Duplicate warning -->
-            <v-alert v-if="existingStock && !loadId" type="error" variant="tonal" rounded="lg" class="mt-n2 mb-2">
+            <!-- Duplicate warning (branch-specific) -->
+            <v-alert v-if="existingStock && !loadId" type="warning" variant="tonal" rounded="lg" class="mt-n2 mb-2">
               <template #prepend><v-icon size="18">mdi-alert-circle-outline</v-icon></template>
               <div class="text-body-2">
-                <strong>{{ existingStock.medication_name }}</strong> already exists in your inventory
+                <strong>{{ existingStock.medication_name }}</strong> already exists in this warehouse
                 <span v-if="existingStock.total_quantity != null" class="text-medium-emphasis">
                   · {{ existingStock.total_quantity }} in stock
                 </span>
               </div>
-              <div class="text-body-2 text-medium-emphasis mt-1">To avoid duplicate entries, edit the existing item instead.</div>
+              <div class="text-body-2 text-medium-emphasis mt-1">Choose a different warehouse, or edit the existing item.</div>
               <div class="d-flex ga-2 mt-3">
                 <v-btn size="small" variant="flat" color="primary" rounded="lg" class="text-none" prepend-icon="mdi-pencil-outline" @click="goEditExisting">
                   Edit Existing Item
@@ -93,7 +115,7 @@
             </v-alert>
           </v-col>
           <v-col cols="12" md="6">
-            <v-text-field v-model="form.barcode" :label="loadId ? 'Barcode / SKU' : 'SKU / Code'" :placeholder="loadId ? 'Enter barcode (optional)' : 'Auto-generated'" :persistent-hint="!loadId" :hint="loadId ? '' : 'Generated automatically'" variant="outlined" density="comfortable" rounded="lg" :disabled="formDisabled">
+            <v-text-field v-model="form.barcode" :label="loadId ? 'Barcode / SKU *' : 'SKU / Code *'" :placeholder="loadId ? 'Enter barcode' : 'Auto-generated'" :persistent-hint="!loadId" :hint="loadId ? '' : 'Generated automatically'" :rules="req" variant="outlined" density="comfortable" rounded="lg" :disabled="formDisabled">
               <template #append-inner>
                 <v-tooltip v-if="!loadId" text="Regenerate SKU" location="top">
                   <template #activator="{ props: tp }">
@@ -104,13 +126,85 @@
             </v-text-field>
           </v-col>
           <v-col cols="12" md="6">
-            <v-autocomplete v-model="form.category" :items="categories" item-title="name" item-value="id" label="Category" variant="outlined" density="comfortable" rounded="lg" clearable :disabled="formDisabled" />
+            <v-text-field v-model="form.generic_name" label="Generic Name *" placeholder="e.g. paracetamol" hint="Generic / INN name" persistent-hint :rules="req" variant="outlined" density="comfortable" rounded="lg" clearable :disabled="formDisabled" prepend-inner-icon="mdi-pill" />
           </v-col>
           <v-col cols="12" md="6">
-            <v-autocomplete v-model="form.unit" :items="units" item-title="name" item-value="id" label="Unit of Measure *" :rules="req" variant="outlined" density="comfortable" rounded="lg" clearable :disabled="formDisabled" />
+            <v-text-field v-model="form.strength" label="Strength *" placeholder="e.g. 500mg, 5mg/5ml" hint="Concentration or strength" persistent-hint :rules="req" variant="outlined" density="comfortable" rounded="lg" clearable :disabled="formDisabled" prepend-inner-icon="mdi-scale-balance" />
           </v-col>
           <v-col cols="12" md="6">
-            <v-autocomplete v-model="form.branch" :items="branches" item-title="name" item-value="id" label="Branch *" variant="outlined" density="comfortable" rounded="lg" :rules="[v => !!v || 'Warehouse is required']" :disabled="formDisabled || branchLocked" :readonly="branchLocked" prepend-inner-icon="mdi-store-outline" :hint="branchLocked ? 'Assigned to your branch' : 'Warehouse this stock item belongs to (required)'" persistent-hint />
+            <v-select v-model="form.dosage_form" :items="dosageFormChoices" item-title="label" item-value="value" label="Dosage Form *" hint="Form of the medication" persistent-hint :rules="req" variant="outlined" density="comfortable" rounded="lg" clearable :disabled="formDisabled" prepend-inner-icon="mdi-format-list-bulleted-type" />
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-autocomplete v-model="form.category" :items="categories" item-title="name" item-value="id" label="Category *" :rules="req" variant="outlined" density="comfortable" rounded="lg" clearable :disabled="formDisabled" />
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-autocomplete
+              v-model="form.classification"
+              :items="classifications"
+              item-title="name" item-value="id"
+              label="Classification *"
+              hint="Operational group (Routine, Emergency, Cold Chain, …) — defaults to Routine"
+              persistent-hint
+              :rules="req"
+              variant="outlined" density="comfortable" rounded="lg"
+              clearable :disabled="formDisabled"
+              prepend-inner-icon="mdi-label-multiple-outline"
+            >
+              <template #item="{ props: ip, item }">
+                <v-list-item v-bind="ip" :title="item.raw?.name" :subtitle="item.raw?.description">
+                  <template #prepend>
+                    <v-icon size="18" color="primary">mdi-label-multiple-outline</v-icon>
+                  </template>
+                </v-list-item>
+              </template>
+            </v-autocomplete>
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-autocomplete
+              v-model="form.unit"
+              :items="units"
+              item-title="name"
+              item-value="id"
+              label="Unit of Measure *"
+              :rules="req"
+              variant="outlined"
+              density="comfortable"
+              rounded="lg"
+              clearable
+              :disabled="formDisabled"
+              prepend-inner-icon="mdi-ruler-square-compass"
+            >
+              <template #append-item>
+                <v-divider />
+                <v-list-item @click="unitDialog = true" class="bg-blue-lighten-5" base-color="primary">
+                  <template #prepend>
+                    <v-icon size="18" color="primary">mdi-plus-circle-outline</v-icon>
+                  </template>
+                  <v-list-item-title class="font-weight-medium text-primary">Manage Units</v-list-item-title>
+                </v-list-item>
+              </template>
+            </v-autocomplete>
+          </v-col>
+          <v-col v-if="isContainerUnit" cols="12" md="6">
+            <v-text-field
+              v-model.number="form.items_per_unit"
+              type="number" min="1" step="1"
+              :label="`Items per ${selectedUnitName} *`"
+              :hint="`How many individual items are inside one ${selectedUnitName} of this stock item`"
+              persistent-hint
+              variant="outlined" density="comfortable" rounded="lg"
+              :rules="[v => (v !== null && v !== '' && v !== undefined && Number(v) > 0) || 'Required']"
+              :disabled="formDisabled"
+              prepend-inner-icon="mdi-package-variant"
+            />
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-autocomplete v-model="form.branch" :items="branches" item-title="name" item-value="id" label="Branch *" variant="outlined" density="comfortable" rounded="lg" :rules="[v => !!v || 'Warehouse is required']" :disabled="branchLocked || (loadId ? formDisabled : false)" :readonly="branchLocked" prepend-inner-icon="mdi-store-outline" :hint="branchLocked ? 'Assigned to your branch' : 'Warehouse this stock item belongs to (required)'" persistent-hint />
+            <!-- Reminder when duplicate exists in this branch -->
+            <div v-if="existingStock && !loadId" class="text-caption text-error mt-1 d-flex align-center">
+              <v-icon size="14" class="mr-1">mdi-information-outline</v-icon>
+              Already exists in this warehouse — switch warehouse or edit existing.
+            </div>
           </v-col>
           <v-col cols="12" md="6" class="d-flex align-center">
             <v-switch
@@ -304,6 +398,84 @@
         </v-row>
       </div>
     </template>
+
+    <!-- ── Manage Units Dialog ─────────────────────────── -->
+    <template #below>
+      <v-dialog v-model="unitDialog" max-width="500">
+        <v-card rounded="xl">
+          <v-card-title class="d-flex align-center">
+            <v-icon class="mr-2" color="primary">mdi-ruler-square-compass</v-icon>
+            Manage Units of Measure
+          </v-card-title>
+          <v-card-subtitle>Create a new unit (e.g. tablets, capsules, ml, mg)</v-card-subtitle>
+          <v-card-text>
+            <v-text-field
+              v-model="unitForm.name"
+              label="Unit Name *"
+              placeholder="e.g. tablets, capsules, ml"
+              variant="outlined"
+              density="comfortable"
+              rounded="lg"
+              :rules="unitNameRules"
+              class="mb-1"
+            />
+            <!-- Quick-pick suggestion chips -->
+            <div class="d-flex flex-wrap ga-1 mb-3">
+              <v-chip
+                v-for="s in unitSuggestions"
+                :key="s"
+                size="x-small"
+                variant="outlined"
+                color="primary"
+                label
+                @click="pickUnitSuggestion(s)"
+              >
+                {{ s }}
+              </v-chip>
+            </div>
+            <v-text-field
+              v-model="unitForm.abbreviation"
+              label="Abbreviation"
+              placeholder="e.g. tab, cap, ml"
+              variant="outlined"
+              density="comfortable"
+              rounded="lg"
+            />
+            <!-- List existing units -->
+            <div class="text-caption text-medium-emphasis mb-1 mt-3">Existing Units</div>
+            <v-chip-group column>
+              <v-chip v-for="u in units" :key="u.id" size="small" variant="tonal" label>
+                {{ u.name }}<span v-if="u.abbreviation" class="text-medium-emphasis ms-1">({{ u.abbreviation }})</span>
+              </v-chip>
+            </v-chip-group>
+          </v-card-text>
+          <v-card-actions class="pb-4 px-4">
+            <v-spacer />
+            <v-btn variant="text" rounded="lg" class="text-none" @click="closeUnitDialog">Cancel</v-btn>
+            <v-btn
+              color="primary"
+              variant="flat"
+              rounded="lg"
+              class="text-none"
+              prepend-icon="mdi-check"
+              :loading="unitSaving"
+              :disabled="!unitForm.name.trim()"
+              @click="saveUnit"
+            >
+              Create Unit
+            </v-btn>
+          </v-card-actions>
+          <v-snackbar
+            v-model="unitSnackbar.show"
+            :color="unitSnackbar.color"
+            location="top right"
+            timeout="3000"
+          >
+            {{ unitSnackbar.text }}
+          </v-snackbar>
+        </v-card>
+      </v-dialog>
+    </template>
   </ResourceFormPage>
 </template>
 
@@ -326,46 +498,16 @@ const reqNum = [v => (v !== null && v !== '' && v !== undefined) || 'Required']
 // ── Catalog search + duplicate detection ─────────────
 const nameQuery = ref('')
 const nameSelection = ref(null)
+const brandQuery = ref('')
+const brandSelection = ref(null)
 const catalogResults = ref([])
 const catalogLoading = ref(false)
 const existingStock = ref(null)
 const showNotInCatalog = ref(false)
 let searchTimer = null
 
-// Disable all fields except item name when item not in catalog or already exists in inventory
-const formDisabled = computed(() => !loadId.value && (showNotInCatalog.value || !!existingStock.value))
-
-function onNameSearch(val) {
-  nameQuery.value = val
-  clearTimeout(searchTimer)
-  if (!val || val.length < 2) {
-    catalogResults.value = []
-    existingStock.value = null
-    showNotInCatalog.value = false
-    return
-  }
-  catalogLoading.value = true
-  searchTimer = setTimeout(() => searchCatalogAndInventory(val), 300)
-}
-
-async function searchCatalogAndInventory(q) {
-  try {
-    const [catRes, invRes] = await Promise.all([
-      $api.get('/medications/search/', { params: { q } }).catch(() => ({ data: [] })),
-      $api.get('/inventory/stocks/', { params: { search: q, page_size: 10 } }).catch(() => ({ data: { results: [] } })),
-    ])
-    const catalogItems = (Array.isArray(catRes.data) ? catRes.data : catRes.data?.results || []).map(m => ({ ...m, _source: 'catalog' }))
-    catalogResults.value = catalogItems
-    // Show "not in catalog" alert when search returns no results
-    showNotInCatalog.value = q.length >= 2 && catalogItems.length === 0
-    // Check for existing inventory match (exact or close)
-    const invItems = invRes.data?.results || invRes.data || []
-    const exact = invItems.find(s => s.medication_name?.toLowerCase() === q.toLowerCase())
-    existingStock.value = exact || null
-  } catch { /* swallow */ } finally {
-    catalogLoading.value = false
-  }
-}
+// Disable all fields when brand is not in catalog
+const formDisabled = computed(() => !loadId.value && showNotInCatalog.value)
 
 // ── Category / Unit mapping from Medication catalog ──
 const MEDICATION_CATEGORY_LABELS = {
@@ -398,41 +540,85 @@ function matchUnit(catalogUnit) {
   })?.id || null
 }
 
-function onNameSelected(val, form) {
-  if (!val) {
-    form.medication_name = ''
-    existingStock.value = null
+function onBrandSearch(val) {
+  brandQuery.value = val
+  clearTimeout(searchTimer)
+  if (!val || val.length < 2) {
+    catalogResults.value = []
     showNotInCatalog.value = false
+    return
+  }
+  catalogLoading.value = true
+  searchTimer = setTimeout(() => searchCatalog(val), 300)
+}
+
+async function searchCatalog(q) {
+  try {
+    const catRes = await $api.get('/medications/search/', { params: { q } }).catch(() => ({ data: [] }))
+    catalogResults.value = (Array.isArray(catRes.data) ? catRes.data : catRes.data?.results || []).map(m => ({ ...m, _source: 'catalog' }))
+    // Show "not in catalog" alert when search returns no results
+    showNotInCatalog.value = q.length >= 2 && catalogResults.value.length === 0
+  } catch { /* swallow */ } finally {
+    catalogLoading.value = false
+  }
+}
+
+const DOSAGE_FORM_LABELS = {
+  tablet: 'Tablet', capsule: 'Capsule', syrup: 'Syrup', injection: 'Injection',
+  cream: 'Cream', ointment: 'Ointment', drops: 'Drops', inhaler: 'Inhaler',
+  suppository: 'Suppository', suspension: 'Suspension', powder: 'Powder',
+  gel: 'Gel', patch: 'Patch', lozenge: 'Lozenge', spray: 'Spray',
+}
+
+function buildMedicationName(form) {
+  const parts = [form.brand_name, form.strength, form.dosage_form ? (DOSAGE_FORM_LABELS[form.dosage_form] || form.dosage_form) : '']
+  return parts.filter(Boolean).join(' ')
+}
+
+function onBrandSelected(val, form) {
+  if (!val) {
+    form.brand_name = ''
     return
   }
   if (typeof val === 'object' && val.generic_name) {
     // Selected from catalog
-    form.medication_name = val.generic_name
-    showNotInCatalog.value = false
-    // Auto-fill description from catalog if empty
+    const bn = val.brand_names
+    form.brand_name = Array.isArray(bn) ? (bn[0] || '') : (typeof bn === 'string' ? bn : '')
+    if (!form.generic_name) form.generic_name = val.generic_name
+    if (!form.strength && val.strength) form.strength = val.strength
+    if (!form.dosage_form && val.dosage_form) form.dosage_form = val.dosage_form
     if (!form.description && val.description) form.description = val.description
-    // Auto-populate category and unit of measure from catalog
+    // Sync medication name combobox selection
+    if (!nameSelection.value) nameSelection.value = val
+    // Auto-generate medication name: Brand + Strength + Dosage Form
+    form.medication_name = buildMedicationName(form)
     const cat = matchCategory(val.category)
     if (cat) form.category = cat
     const unit = matchUnit(val.unit || val.dosage_form)
     if (unit) form.unit = unit
-    // Re-check inventory for this exact name
-    checkInventoryDuplicate(val.generic_name)
+    showNotInCatalog.value = false
+    checkInventoryDuplicate(form.medication_name)
   } else {
-    // Typed text not from catalog
-    const text = typeof val === 'string' ? val : val?.generic_name || String(val)
-    form.medication_name = text
-    showNotInCatalog.value = text.length >= 2 && !catalogResults.value.some(c => c.generic_name?.toLowerCase() === text.toLowerCase())
-    checkInventoryDuplicate(text)
+    const text = typeof val === 'string' ? val : String(val)
+    form.brand_name = text
+    if (activeForm.value) {
+      form.medication_name = buildMedicationName(form)
+    }
   }
 }
 
 async function checkInventoryDuplicate(name) {
   if (!name || name.length < 2) { existingStock.value = null; return }
   try {
-    const res = await $api.get('/inventory/stocks/', { params: { search: name, page_size: 5 } })
+    const branchId = activeForm.value?.branch
+    const params = { search: name, page_size: 10 }
+    if (branchId) params.branch = branchId
+    const res = await $api.get('/inventory/stocks/', { params })
     const items = res.data?.results || res.data || []
-    const exact = items.find(s => s.medication_name?.toLowerCase() === name.toLowerCase())
+    const exact = items.find(s =>
+      s.medication_name?.toLowerCase() === name.toLowerCase() &&
+      (!branchId || s.branch === branchId || s.branch_id === branchId)
+    )
     existingStock.value = exact || null
   } catch { existingStock.value = null }
 }
@@ -510,6 +696,8 @@ function autofill(form) {
   if (filled.value || loadId.value) return false
   if (!form.barcode) form.barcode = generateSku()
   if (!form.batch_number) form.batch_number = generateBatch()
+  // Default classification to this tenant's "Routine" lookup
+  if (!form.classification) form.classification = routineClassificationId.value
   // Branch is compulsory — default to the locked branch, else main warehouse
   if (!form.branch) {
     if (branchStore.branchLocked && branchStore.currentBranchId) {
@@ -523,6 +711,33 @@ function autofill(form) {
   return false
 }
 
+const categories = ref([]); const units = ref([]); const branches = ref([]); const classifications = ref([])
+const routineClassificationId = computed(() =>
+  (classifications.value.find(c => c.name?.toLowerCase() === 'routine') || {}).id || null
+)
+
+// ── Container-type units (box, pack, strip, …) ──
+// When the selected unit is one of these, ask the user how many
+// individual items are inside one unit.
+const CONTAINER_UNIT_KEYWORDS = [
+  'box', 'pack', 'strip', 'carton', 'case', 'bottle', 'bag', 'drum',
+  'tin', 'crate', 'tray', 'blister', 'roll', 'tube', 'tub', 'jar',
+  'can', 'sachet', 'bundle', 'dozen', 'ream',
+]
+const selectedUnitName = computed(() => {
+  if (!form_unitId.value) return ''
+  const u = units.value.find(x => x.id === form_unitId.value)
+  return u ? u.name : ''
+})
+// We need to watch the form's unit value, but since form is passed via
+// template slot we access it through activeForm (stashed during render).
+const form_unitId = computed(() => activeForm.value?.unit ?? null)
+const isContainerUnit = computed(() => {
+  const name = (selectedUnitName.value || '').toLowerCase()
+  if (!name) return false
+  return CONTAINER_UNIT_KEYWORDS.some(k => name.includes(k))
+})
+
 // Once branches finish loading, default any new-item form that still has
 // no warehouse selected (autofill may have run before the list resolved).
 watch(branches, (list) => {
@@ -534,6 +749,15 @@ watch(branches, (list) => {
       || (main ? main.id : list[0].id)
   }
 }, { immediate: true })
+
+// Re-run duplicate check when branch changes (same item can exist in other branches)
+watch(() => activeForm.value?.branch, () => {
+  if (loadId.value) return
+  const name = activeForm.value?.medication_name || nameQuery.value
+  if (name && name.length >= 2) {
+    checkInventoryDuplicate(name)
+  }
+})
 
 // On edit: mirror server-computed total_quantity into the displayed quantity field once loaded.
 // total_quantity is NOT in `initial`, so it is undefined until the API response populates it.
@@ -618,8 +842,25 @@ function defaultExpiry() {
   d.setFullYear(d.getFullYear() + 5)
   return d.toISOString().slice(0, 10)
 }
-const initial = { medication_name: '', barcode: '', category: null, unit: null, branch: null, is_active: true, quantity: 0, reorder_level: 0, reorder_quantity: 0, cost_price: 0, tax_percent: 0, selling_price: 0, discount_percent: 0, batch_number: '', expiry_date: defaultExpiry(), description: '' }
-const categories = ref([]); const units = ref([]); const branches = ref([])
+const dosageFormChoices = [
+  { label: 'Tablet', value: 'tablet' },
+  { label: 'Capsule', value: 'capsule' },
+  { label: 'Syrup', value: 'syrup' },
+  { label: 'Injection', value: 'injection' },
+  { label: 'Cream', value: 'cream' },
+  { label: 'Ointment', value: 'ointment' },
+  { label: 'Drops', value: 'drops' },
+  { label: 'Inhaler', value: 'inhaler' },
+  { label: 'Suppository', value: 'suppository' },
+  { label: 'Suspension', value: 'suspension' },
+  { label: 'Powder', value: 'powder' },
+  { label: 'Gel', value: 'gel' },
+  { label: 'Patch', value: 'patch' },
+  { label: 'Lozenge', value: 'lozenge' },
+  { label: 'Spray', value: 'spray' },
+]
+
+const initial = { medication_name: '', barcode: '', brand_name: '', generic_name: '', strength: '', dosage_form: '', category: null, classification: null, unit: null, branch: null, is_active: true, quantity: 0, reorder_level: 0, reorder_quantity: 0, cost_price: 0, tax_percent: 0, selling_price: 0, discount_percent: 0, items_per_unit: 0, batch_number: '', expiry_date: defaultExpiry(), description: '' }
 
 // Sync nameSelection when editing an existing item
 watch(loadId, (id) => { if (id) { showNotInCatalog.value = false } }, { immediate: true })
@@ -629,6 +870,8 @@ function transformPayload(data) {
   const payload = { ...data }
   // total_quantity is server-computed and read-only
   delete payload.total_quantity
+  // description is not a MedicationStock field — strip it
+  delete payload.description
   // Strip empty expiry_date so backend doesn't reject it
   if (!payload.expiry_date) delete payload.expiry_date
   if (loadId.value) {
@@ -645,13 +888,83 @@ function transformPayload(data) {
   }
   return payload
 }
+
+// ── Manage Units dialog ─────────────────────────────
+const unitDialog = ref(false)
+const unitSaving = ref(false)
+const unitForm = reactive({ name: '', abbreviation: '' })
+const unitNameRules = [v => !!v?.trim() || 'Unit name is required']
+const unitSnackbar = reactive({ show: false, text: '', color: 'success' })
+
+// Common unit suggestions users can pick from
+const unitSuggestions = [
+  'tablets', 'capsules', 'ml', 'mg', 'grams', 'liters', 'drops',
+  'puffs', 'units', 'vials', 'ampoules', 'sachets', 'pieces',
+  'boxes', 'packs', 'strips', 'bottles', 'tubes', 'bags',
+  'scoops', 'patches', 'suppositories',
+]
+
+function pickUnitSuggestion(name) {
+  unitForm.name = name
+  // Auto-fill common abbreviations
+  const abbrevs = {
+    tablets: 'tab', capsules: 'cap', millilitres: 'ml', grams: 'g',
+    liters: 'L', drops: 'gtt', pieces: 'pc', boxes: 'box',
+    packs: 'pck', strips: 'str', bottles: 'btl', tubes: 'tub',
+    bags: 'bag', vials: 'vl', ampoules: 'amp', sachets: 'sch',
+    scoops: 'scp', patches: 'ptc', suppositories: 'sup',
+  }
+  unitForm.abbreviation = abbrevs[name] || ''
+}
+
+function closeUnitDialog() {
+  unitDialog.value = false
+  unitForm.name = ''
+  unitForm.abbreviation = ''
+}
+
+async function saveUnit() {
+  const name = unitForm.name.trim()
+  if (!name) return
+  unitSaving.value = true
+  try {
+    const { data } = await $api.post('/inventory/units/', {
+      name,
+      abbreviation: unitForm.abbreviation.trim(),
+    })
+    // Add to units list and auto-select
+    if (!units.value.find(u => u.id === data.id)) {
+      units.value.push(data)
+    }
+    units.value.sort((a, b) => a.name.localeCompare(b.name))
+    if (activeForm.value) activeForm.value.unit = data.id
+    unitSnackbar.show = true
+    unitSnackbar.text = `Unit "${data.name}" created`
+    unitSnackbar.color = 'success'
+    closeUnitDialog()
+  } catch (e) {
+    const msg = e?.response?.data?.name?.[0] || e?.response?.data?.detail || 'Failed to create unit'
+    unitSnackbar.show = true
+    unitSnackbar.text = msg
+    unitSnackbar.color = 'error'
+  } finally {
+    unitSaving.value = false
+  }
+}
+
 onMounted(async () => {
   const safe = (p) => $api.get(p).then(r => r.data?.results || r.data || []).catch(() => [])
   // Inventory tenants use their own /ims API namespace.
   const { branches: branchesApi } = useTenantEndpoints()
   categories.value = await safe('/inventory/categories/')
+  classifications.value = await safe('/inventory/classifications/')
   units.value = await safe('/inventory/units/')
   branches.value = await safe(branchesApi.value)
+  // If a new-item form is open before classifications load fills in, fall
+  // back to the Routine classification once it's available.
+  if (!loadId.value && activeForm.value && !activeForm.value.classification) {
+    activeForm.value.classification = routineClassificationId.value
+  }
 })
 </script>
 

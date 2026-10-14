@@ -6,6 +6,7 @@
       <div class="bg-grid bg-fill" />
       <div class="blob blob-1" />
       <div class="blob blob-2" />
+      <canvas ref="particleCanvas" class="auth-particles" />
 
       <v-container fluid class="fill-height" style="position:relative;z-index:2;">
         <v-row no-gutters class="fill-height" align="center" justify="center">
@@ -21,12 +22,8 @@
 
             <!-- Brand lockup -->
             <div class="d-flex align-center mb-6">
-              <div class="brand-badge d-flex align-center justify-center mr-3">
-                <v-icon size="22" color="white">mdi-heart-pulse</v-icon>
-              </div>
-              <span class="brand-word">
-                <span class="bold">Adhere</span><span class="light">Med</span>
-              </span>
+              <BrandLogo :size="44" class="mr-3" />
+              <BrandMark :size="22" />
             </div>
 
             <h2 class="panel-headline mb-3">
@@ -56,9 +53,7 @@
 
             <div class="form-card pa-7 pa-md-8">
               <div class="text-center mb-7">
-                <div class="brand-badge mx-auto mb-4" style="width:52px;height:52px;border-radius:16px;">
-                  <v-icon size="26" color="white">mdi-heart-pulse</v-icon>
-                </div>
+                <BrandLogo :size="52" class="mx-auto mb-4" />
                 <h2 class="form-title">Welcome back</h2>
                 <p class="form-sub">Sign in to your AdhereMed account</p>
               </div>
@@ -158,6 +153,112 @@ const password = ref('')
 const show = ref(false)
 const errorMsg = ref('')
 
+// ── Particle network background ──
+const particleCanvas = ref(null)
+let cleanupParticles = null
+
+function startParticleNetwork(canvas) {
+  if (!import.meta.client || !canvas) return null
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return null
+  const PARTICLE_COUNT = 140
+  const MAX_DISTANCE = 140
+  const MOUSE_RADIUS = 180
+  let mouse = { x: -9999, y: -9999 }
+  let rafId = null
+  const particles = []
+
+  function resize() {
+    canvas.width = canvas.clientWidth
+    canvas.height = canvas.clientHeight
+  }
+  resize()
+  const ro = new ResizeObserver(resize)
+  ro.observe(canvas)
+  window.addEventListener('resize', resize)
+
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    particles.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      vx: (Math.random() - 0.5) * 0.35,
+      vy: (Math.random() - 0.5) * 0.35,
+      r: Math.random() * 1.8 + 0.8,
+    })
+  }
+
+  function onMouseMove(e) {
+    mouse.x = e.clientX
+    mouse.y = e.clientY
+  }
+  function onMouseLeave() { mouse.x = -9999; mouse.y = -9999 }
+  window.addEventListener('mousemove', onMouseMove)
+  window.addEventListener('mouseout', onMouseLeave)
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    for (const p of particles) {
+      p.x += p.vx; p.y += p.vy
+      if (p.x < 0 || p.x > canvas.width) p.vx *= -1
+      if (p.y < 0 || p.y > canvas.height) p.vy *= -1
+      const dx = p.x - mouse.x, dy = p.y - mouse.y
+      const dist = Math.hypot(dx, dy)
+      if (dist < MOUSE_RADIUS && dist > 0) {
+ const force = (MOUSE_RADIUS - dist) / MOUSE_RADIUS * 0.6
+ p.x += (dx / dist) * force
+ p.y += (dy / dist) * force
+      }
+    }
+    // Connection lines
+    for (let i = 0; i < particles.length; i++) {
+      for (let j = i + 1; j < particles.length; j++) {
+ const dx = particles[i].x - particles[j].x
+ const dy = particles[i].y - particles[j].y
+ const dist = Math.hypot(dx, dy)
+ if (dist < MAX_DISTANCE) {
+   const alpha = (1 - dist / MAX_DISTANCE) * 0.22
+   ctx.strokeStyle = `rgba(47,109,255,${alpha})`
+   ctx.lineWidth = 0.7
+   ctx.beginPath()
+   ctx.moveTo(particles[i].x, particles[i].y)
+   ctx.lineTo(particles[j].x, particles[j].y)
+   ctx.stroke()
+ }
+      }
+      // Mouse connections
+      const mdx = particles[i].x - mouse.x
+      const mdy = particles[i].y - mouse.y
+      const mdist = Math.hypot(mdx, mdy)
+      if (mdist < MOUSE_RADIUS) {
+ const alpha = (1 - mdist / MOUSE_RADIUS) * 0.35
+ ctx.strokeStyle = `rgba(55,214,255,${alpha})`
+ ctx.lineWidth = 0.8
+ ctx.beginPath()
+ ctx.moveTo(particles[i].x, particles[i].y)
+ ctx.lineTo(mouse.x, mouse.y)
+ ctx.stroke()
+      }
+    }
+    // Particle dots
+    for (const p of particles) {
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2)
+      ctx.fillStyle = 'rgba(47,109,255,0.45)'
+      ctx.fill()
+    }
+    rafId = requestAnimationFrame(draw)
+  }
+  draw()
+
+  return () => {
+    if (rafId) cancelAnimationFrame(rafId)
+    ro.disconnect()
+    window.removeEventListener('resize', resize)
+    window.removeEventListener('mousemove', onMouseMove)
+    window.removeEventListener('mouseout', onMouseLeave)
+  }
+}
+
 const bullets = [
   'Multi-tenant hospital, pharmacy & lab',
   'Real-time prescriptions & dispensing',
@@ -171,6 +272,11 @@ async function onSubmit() {
   if (!valid) return
   const ok = await auth.login(email.value.trim(), password.value)
   if (ok) {
+    // Org admins (who are not super_admin) go to command center
+    if (auth.isOrgAdmin && auth.role !== 'super_admin') {
+      router.push('/command-center')
+      return
+    }
     const home = auth.tenantType === 'pharmacy' ? '/pharmacy'
       : auth.tenantType === 'lab' ? '/lab'
       : auth.tenantType === 'radiology_center' ? '/radiology'
@@ -182,6 +288,15 @@ async function onSubmit() {
   }
   else errorMsg.value = auth.error || 'Login failed.'
 }
+
+onMounted(() => {
+  if (particleCanvas.value) {
+    cleanupParticles = startParticleNetwork(particleCanvas.value)
+  }
+})
+onBeforeUnmount(() => {
+  if (cleanupParticles) cleanupParticles()
+})
 </script>
 
 <style scoped>
@@ -193,6 +308,7 @@ async function onSubmit() {
   color: #0a0f1f;
 }
 .bg-fill { position: absolute; inset: 0; }
+.auth-particles { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
 .bg-base {
   z-index: 0;
   background:

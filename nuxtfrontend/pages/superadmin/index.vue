@@ -16,6 +16,7 @@
 
 <script setup>
 const cards = [
+  { label: 'Organizations', icon: 'mdi-sitemap', color: 'deep-purple', desc: 'Create orgs & link tenants', to: '/superadmin/organizations' },
   { label: 'Tenants', icon: 'mdi-domain', color: 'primary', desc: 'Manage hospitals, pharmacies, labs', to: '/superadmin/tenants' },
   { label: 'Users', icon: 'mdi-account-multiple', color: 'info', desc: 'Manage platform users', to: '/superadmin/users' },
   { label: 'Usage Billing', icon: 'mdi-cash-multiple', color: 'success', desc: 'Per-request billing & rate control', to: '/superadmin/billing' },

@@ -8,7 +8,10 @@
         </v-avatar>
         <div>
           <h1 class="text-h5 font-weight-bold mb-1">Stock Transfers</h1>
-          <div class="text-body-2 text-medium-emphasis">Move stock between warehouses with approval, receipt verification &amp; full audit trail</div>
+          <div class="text-body-2 text-medium-emphasis">
+            Move stock between warehouses with approval, receipt verification &amp; full audit trail
+            <span v-if="branchStore.currentBranch"> · {{ branchStore.currentBranch.name }}</span>
+          </div>
         </div>
       </div>
       <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
@@ -86,8 +89,11 @@
 
     <!-- Table -->
     <v-card flat rounded="xl" border>
-      <v-data-table :headers="headers" :items="filtered" :loading="loading" items-per-page="15"
+      <v-data-table v-model:page="page" :headers="headers" :items="filtered" :loading="loading" items-per-page="15"
                     :sort-by="[{ key: 'requested_at', order: 'desc' }]">
+        <template #item.rownum="{ index }">
+          <span class="text-body-2 text-medium-emphasis">{{ (page - 1) * 15 + index + 1 }}</span>
+        </template>
         <template #item.reference="{ item }">
           <div class="font-weight-bold">{{ item.reference }}</div>
           <div class="text-caption text-medium-emphasis">{{ formatDateTime(item.requested_at) }}</div>
@@ -236,8 +242,17 @@
             No items added — search above to add stock to this transfer.
           </div>
 
-          <v-textarea v-model="form.notes" label="Notes / reason for transfer" rows="2" auto-grow
-                      variant="outlined" density="comfortable" hide-details class="mt-3" />
+          <v-textarea v-model="form.notes" label="Notes / reason for transfer *" rows="2" auto-grow
+                      variant="outlined" density="comfortable"
+                      :rules="[v => !!v?.trim() || 'Reason for transfer is required']"
+                      class="mt-3" />
+          <!-- Quick-pick reason chips -->
+          <div class="d-flex flex-wrap ga-1 mt-1 mb-1">
+            <v-chip v-for="r in transferReasons" :key="r" size="small" variant="outlined"
+                    color="cyan-darken-2" label class="text-body-2" @click="form.notes = r">
+              {{ r }}
+            </v-chip>
+          </div>
         </v-card-text>
         <v-divider />
         <v-card-actions class="pa-3">
@@ -493,14 +508,16 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { formatMoney } from '~/utils/format'
 import { useAuthStore } from '~/stores/auth'
+import { useBranchStore } from '~/stores/branch'
 import { ADMIN_ROLES } from '~/utils/permissions'
 
 const { $api } = useNuxtApp()
 const { branches: branchesApi } = useTenantEndpoints()
 const auth = useAuthStore()
+const branchStore = useBranchStore()
 
 // RBAC: only supervisors (tenant/branch admins) approve & ship transfers;
 // storekeepers can create, submit and receive them.
@@ -528,6 +545,7 @@ const active = ref(null)
 const receiveLines = ref([])
 const snack = reactive({ show: false, color: 'success', text: '' })
 const req = [v => !!v || 'Required']
+const page = ref(1)
 
 const form = ref({ source_branch: null, dest_branch: null, notes: '', lines: [] })
 
@@ -541,6 +559,7 @@ const statusOptions = [
 ]
 
 const headers = [
+  { title: '#', key: 'rownum', width: 50, sortable: false },
   { title: 'Reference', key: 'reference', width: 170 },
   { title: 'Route', key: 'route', sortable: false },
   { title: 'Items', key: 'totals', width: 140, sortable: false },
@@ -646,10 +665,23 @@ const shortageWarnings = computed(() =>
   form.value.lines
     .filter(l => Number(l.quantity) > l.available)
     .map(l => `${l._name}: only ${l.available} on hand — requested ${l.quantity}.`))
+const transferReasons = [
+  'Stock replenishment — branch running low',
+  'New branch opening — initial stock allocation',
+  'Emergency supply — urgent need at destination',
+  'Seasonal demand adjustment',
+  'Expired stock recalled for disposal',
+  'Return of unused stock to source warehouse',
+  'Rebalance inventory across branches',
+  'Customer order fulfilment from another branch',
+  'Damaged stock replacement',
+  'Promotional event stock transfer',
+]
 const canSave = computed(() => form.value.source_branch && form.value.dest_branch &&
   form.value.source_branch !== form.value.dest_branch &&
   form.value.lines.length > 0 &&
-  form.value.lines.every(l => Number(l.quantity) >= 1 && Number(l.quantity) <= l.available))
+  form.value.lines.every(l => Number(l.quantity) >= 1 && Number(l.quantity) <= l.available) &&
+  !!form.value.notes?.trim())
 
 const picker = ref(null)
 const stockOptions = ref([])
@@ -663,8 +695,10 @@ function onStockSearch(q) {
     if (!q || q.length < 1) { stockOptions.value = []; return }
     stockLoading.value = true
     try {
+      const stockSearchParams = { search: q, is_active: true, page_size: 20 }
+      if (form.value.source_branch) stockSearchParams.branch = form.value.source_branch
       stockOptions.value = await $api.get('/inventory/stocks/', {
-        params: { search: q, is_active: true, page_size: 20 },
+        params: stockSearchParams,
       }).then(r => r.data?.results || r.data || [])
     } catch { stockOptions.value = [] }
     finally { stockLoading.value = false }
@@ -689,11 +723,15 @@ function onAddStock(s) {
 async function load() {
   loading.value = true
   try {
+    const transferParams = { page_size: 500 }
+    if (branchStore.currentBranchId) transferParams.branch = branchStore.currentBranchId
+    const statsParams = {}
+    if (branchStore.currentBranchId) statsParams.branch = branchStore.currentBranchId
     const [t, b, s] = await Promise.all([
-      $api.get('/inventory/transfers/', { params: { page_size: 500 } })
+      $api.get('/inventory/transfers/', { params: transferParams })
         .then(r => r.data?.results || r.data || []),
       $api.get(branchesApi.value).then(r => r.data?.results || r.data || []).catch(() => []),
-      $api.get('/inventory/transfers/stats/').then(r => r.data).catch(() => null),
+      $api.get('/inventory/transfers/stats/', { params: statsParams }).then(r => r.data).catch(() => null),
     ])
     transfers.value = t
     branches.value = b
@@ -936,6 +974,10 @@ function formatDateTime(d) {
 function showSnack(text, color = 'success') { Object.assign(snack, { show: true, color, text }) }
 
 onMounted(load)
+
+watch(() => branchStore.currentBranchId, () => {
+  load()
+})
 </script>
 
 <style scoped>

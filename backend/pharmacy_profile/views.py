@@ -940,6 +940,12 @@ PHARMACY_SEED_COMMANDS = {
         "label": "Categories & Units",
         "description": "34 stock categories and 24 measurement units (subset of full stock seed)",
         "command": "seed_pharmacy_stock",
+        "args": {"skip_existing": True, "categories_only": True},
+    },
+    "pharmacy_stock": {
+        "label": "Stock Catalog",
+        "description": "~120 common stock items with categories, units & zero prices (requires a branch/warehouse)",
+        "command": "seed_pharmacy_stock",
         "args": {"skip_existing": True},
     },
     "medications": {

@@ -18,6 +18,7 @@ class TenantSerializer(serializers.ModelSerializer):
             'logo', 'address', 'city', 'country',
             'latitude', 'longitude', 'place_name',
             'phone', 'email', 'website',
+            'brand_primary', 'brand_secondary', 'brand_accent',
             'is_active', 'created_at', 'domains',
         ]
         read_only_fields = ['schema_name', 'created_at']
@@ -75,8 +76,12 @@ class TenantProfileSerializer(serializers.ModelSerializer):
             'name', 'address', 'city', 'country',
             'latitude', 'longitude', 'place_name',
             'phone', 'email', 'website',
+            'brand_primary', 'brand_secondary', 'brand_accent',
         ]
         extra_kwargs = {
             'name': {'required': True, 'allow_blank': False},
             'country': {'required': False, 'allow_blank': True},
+            'brand_primary': {'required': False, 'allow_blank': True},
+            'brand_secondary': {'required': False, 'allow_blank': True},
+            'brand_accent': {'required': False, 'allow_blank': True},
         }

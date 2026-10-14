@@ -71,6 +71,11 @@
             <div class="d-flex align-center mb-2">
               <v-icon size="16" color="grey" class="mr-2">mdi-clock-outline</v-icon>
               <span class="text-body-2 text-medium-emphasis">{{ formatTime(p.created_at) }}</span>
+              <v-spacer />
+              <v-chip :color="expiryColor(p)" size="x-small" variant="tonal" class="ml-2">
+                <v-icon start size="12">mdi-timer-sand</v-icon>
+                {{ expiryLabel(p) }}
+              </v-chip>
             </div>
 
             <v-divider class="my-2" />
@@ -194,6 +199,24 @@ function formatTime(t) {
   if (!t) return ''
   const d = new Date(t)
   return d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+
+function expiryColor(p) {
+  if (!p.expires_at) return 'grey'
+  const ms = new Date(p.expires_at).getTime() - Date.now()
+  if (ms <= 0) return 'error'
+  if (ms < 6 * 3600_000) return 'error'      // < 6h left → red
+  if (ms < 12 * 3600_000) return 'warning'   // < 12h left → amber
+  return 'success'                            // > 12h left → green
+}
+function expiryLabel(p) {
+  if (!p.expires_at) return ''
+  const ms = new Date(p.expires_at).getTime() - Date.now()
+  if (ms <= 0) return 'Expired'
+  const h = Math.floor(ms / 3600_000)
+  const m = Math.floor((ms % 3600_000) / 60_000)
+  if (h >= 1) return `${h}h ${m}m left`
+  return `${m}m left`
 }
 
 function resume(p) {

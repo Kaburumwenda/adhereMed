@@ -1083,10 +1083,17 @@ class Command(BaseCommand):
             default=False,
             help="Delete ALL existing stock entries (and batches) before seeding.",
         )
+        parser.add_argument(
+            "--categories-only",
+            action="store_true",
+            default=False,
+            help="Only seed categories and units — skip MedicationStock creation.",
+        )
 
     def handle(self, *args, **options):
         skip_existing = options["skip_existing"]
         reset = options["reset"]
+        categories_only = options["categories_only"]
 
         if reset:
             batch_del, _ = StockBatch.objects.all().delete()
@@ -1109,6 +1116,30 @@ class Command(BaseCommand):
                 defaults={"abbreviation": abbr},
             )
             unit_map[name] = unit
+
+        # If only categories & units were requested, we're done.
+        if categories_only:
+            self.stdout.write(self.style.SUCCESS(
+                f"\nCategories & Units Seed Complete\n"
+                f"  Categories: {len(category_map)}\n"
+                f"  Units     : {len(unit_map)}\n"
+            ))
+            return
+
+        # ── Resolve the branch to assign stock items to ──────────────────
+        from pharmacy_profile.models import Branch
+        branch = Branch.objects.filter(is_main=True, is_active=True).first()
+        if not branch:
+            branch = Branch.objects.filter(is_active=True).first()
+        if not branch:
+            branch = Branch.objects.create(
+                name='Main Warehouse',
+                is_main=True,
+                is_active=True,
+            )
+            self.stdout.write(self.style.WARNING(
+                "No branch found — created 'Main Warehouse' for stock."
+            ))
 
         # ── Seed stock (zero prices, zero quantities) ────────────────────
         ZERO = Decimal("0")
@@ -1161,6 +1192,7 @@ class Command(BaseCommand):
                     medication_name=med_name,
                     category=category,
                     unit=unit,
+                    branch=branch,
                     selling_price=ZERO,
                     cost_price=ZERO,
                     reorder_level=0,

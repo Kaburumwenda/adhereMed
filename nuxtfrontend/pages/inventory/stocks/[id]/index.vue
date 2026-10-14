@@ -14,7 +14,9 @@
           </div>
           <div class="d-flex align-center flex-wrap ga-2 mt-1">
             <v-chip v-if="stock.category_name" size="x-small" variant="tonal" prepend-icon="mdi-shape">{{ stock.category_name }}</v-chip>
+            <v-chip v-if="stock.classification_name" size="x-small" variant="tonal" color="primary" prepend-icon="mdi-label-multiple-outline">{{ stock.classification_name }}</v-chip>
             <v-chip v-if="stock.unit_name" size="x-small" variant="tonal" prepend-icon="mdi-ruler">{{ stock.unit_name }}</v-chip>
+            <v-chip v-if="stock.items_per_unit > 0" size="x-small" variant="tonal" color="info" prepend-icon="mdi-package-variant">{{ stock.items_per_unit }} per {{ stock.unit_name || 'unit' }}</v-chip>
             <v-chip v-if="stock.branch_name" size="x-small" variant="tonal" prepend-icon="mdi-store">{{ stock.branch_name }}</v-chip>
             <v-chip v-if="stock.barcode" size="x-small" variant="tonal" prepend-icon="mdi-barcode">{{ stock.barcode }}</v-chip>
             <v-chip v-if="stock.prescription_required && stock.prescription_required !== 'none'" size="x-small" variant="tonal" color="purple" prepend-icon="mdi-script-text">Rx {{ stock.prescription_required }}</v-chip>
@@ -24,6 +26,7 @@
       <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
         <v-btn variant="text" prepend-icon="mdi-arrow-left" rounded="lg" class="text-none" to="/inventory">Back</v-btn>
         <v-btn variant="tonal" prepend-icon="mdi-refresh" rounded="lg" class="text-none" :loading="loading" @click="load">Refresh</v-btn>
+        <v-btn variant="tonal" prepend-icon="mdi-file-pdf-box" rounded="lg" class="text-none" :loading="pdfLoading" @click="downloadPdf">Report (PDF)</v-btn>
         <v-btn color="primary" variant="flat" prepend-icon="mdi-pencil" rounded="lg" class="text-none" :to="`/inventory/stocks/${id}/edit`">Edit</v-btn>
       </div>
     </div>
@@ -89,6 +92,7 @@
       <v-card flat rounded="xl" border>
         <v-tabs v-model="tab" color="primary" density="comfortable">
           <v-tab value="overview" class="text-none"><v-icon start size="18">mdi-view-dashboard-outline</v-icon>Overview</v-tab>
+          <v-tab value="batches" class="text-none"><v-icon start size="18">mdi-package-variant-closed</v-icon>Batches</v-tab>
           <v-tab value="transactions" class="text-none"><v-icon start size="18">mdi-swap-vertical</v-icon>Transactions</v-tab>
           <v-tab value="history" class="text-none"><v-icon start size="18">mdi-history</v-icon>History</v-tab>
           <v-tab value="analytics" class="text-none"><v-icon start size="18">mdi-chart-line</v-icon>Analytics</v-tab>
@@ -98,6 +102,84 @@
         <v-tabs-window v-model="tab" class="pa-4 pa-md-5">
           <!-- ── OVERVIEW ─────────────────────────────────────────────── -->
           <v-tabs-window-item value="overview">
+            <!-- Item Details -->
+            <v-card flat rounded="lg" border class="pa-4 mb-4">
+              <div class="d-flex align-center mb-3">
+                <v-icon color="primary" class="mr-2">mdi-tag-multiple-outline</v-icon>
+                <div class="text-subtitle-1 font-weight-bold">Item Details</div>
+              </div>
+              <v-row dense>
+                <v-col cols="6" md="3">
+                  <div class="detail-label">Medication Name</div>
+                  <div class="detail-value font-weight-medium">{{ stock.medication_name || '—' }}</div>
+                </v-col>
+                <v-col cols="6" md="3">
+                  <div class="detail-label">Brand / Trade Name</div>
+                  <div class="detail-value">{{ stock.brand_name || '—' }}</div>
+                </v-col>
+                <v-col cols="6" md="3">
+                  <div class="detail-label">Generic Name</div>
+                  <div class="detail-value">{{ stock.generic_name || '—' }}</div>
+                </v-col>
+                <v-col cols="6" md="3">
+                  <div class="detail-label">Strength</div>
+                  <div class="detail-value">{{ stock.strength || '—' }}</div>
+                </v-col>
+                <v-col cols="6" md="3">
+                  <div class="detail-label">Dosage Form</div>
+                  <div class="detail-value text-capitalize">{{ stock.dosage_form || '—' }}</div>
+                </v-col>
+                <v-col cols="6" md="3">
+                  <div class="detail-label">Barcode / SKU</div>
+                  <div class="detail-value">{{ stock.barcode || '—' }}</div>
+                </v-col>
+                <v-col cols="6" md="3">
+                  <div class="detail-label">Category</div>
+                  <div class="detail-value">{{ stock.category_name || '—' }}</div>
+                </v-col>
+                <v-col cols="6" md="3">
+                  <div class="detail-label">Classification</div>
+                  <div class="detail-value">{{ stock.classification_name || '—' }}</div>
+                </v-col>
+                <v-col cols="6" md="3">
+                  <div class="detail-label">Unit of Measure</div>
+                  <div class="detail-value">{{ stock.unit_name || '—' }}</div>
+                </v-col>
+                <v-col cols="6" md="3">
+                  <div class="detail-label">Items per Unit</div>
+                  <div class="detail-value">{{ stock.items_per_unit || 0 }}</div>
+                </v-col>
+                <v-col cols="6" md="3">
+                  <div class="detail-label">Warehouse / Branch</div>
+                  <div class="detail-value">{{ stock.branch_name || '—' }}</div>
+                </v-col>
+                <v-col cols="6" md="3">
+                  <div class="detail-label">Location in Store</div>
+                  <div class="detail-value">{{ stock.location_in_store || '—' }}</div>
+                </v-col>
+                <v-col cols="6" md="3">
+                  <div class="detail-label">Prescription Required</div>
+                  <div class="detail-value text-capitalize">{{ stock.prescription_required || 'none' }}</div>
+                </v-col>
+                <v-col cols="6" md="3">
+                  <div class="detail-label">Status</div>
+                  <div class="detail-value">
+                    <v-chip size="small" :color="stock.is_active ? 'success' : 'grey'" variant="tonal">
+                      <v-icon start size="14">{{ stock.is_active ? 'mdi-check-circle' : 'mdi-pause-circle' }}</v-icon>
+                      {{ stock.is_active ? 'Active' : 'Inactive' }}
+                    </v-chip>
+                  </div>
+                </v-col>
+                <v-col cols="6" md="3">
+                  <div class="detail-label">Added</div>
+                  <div class="detail-value">{{ formatDate(stock.created_at) }}</div>
+                </v-col>
+                <v-col cols="6" md="3">
+                  <div class="detail-label">Last Updated</div>
+                  <div class="detail-value">{{ formatDate(stock.updated_at) }}</div>
+                </v-col>
+              </v-row>
+            </v-card>
             <v-row dense>
               <!-- Purchase info -->
               <v-col cols="12" md="6">
@@ -172,6 +254,68 @@
                 </v-card>
               </v-col>
             </v-row>
+          </v-tabs-window-item>
+
+          <!-- ── BATCHES ─────────────────────────────────────────────────── -->
+          <v-tabs-window-item value="batches">
+            <v-row dense class="mb-3">
+              <v-col cols="6" md="3" v-for="bk in batchKpis" :key="bk.label">
+                <v-card flat rounded="lg" border class="pa-3">
+                  <div class="d-flex align-center" style="gap:10px">
+                    <v-avatar :color="bk.color" variant="tonal" rounded="lg" size="38">
+                      <v-icon size="19">{{ bk.icon }}</v-icon>
+                    </v-avatar>
+                    <div>
+                      <div class="text-caption text-medium-emphasis text-uppercase">{{ bk.label }}</div>
+                      <div class="text-h6 font-weight-bold">{{ bk.value }}</div>
+                    </div>
+                  </div>
+                </v-card>
+              </v-col>
+            </v-row>
+
+            <div class="text-subtitle-2 text-medium-emphasis mb-2">
+              {{ batches.length }} batch{{ batches.length !== 1 ? 'es' : '' }} for this stock item
+            </div>
+            <div class="table-wrap">
+              <table class="inv-table">
+                <thead>
+                  <tr>
+                    <th class="row-num">#</th>
+                    <th>Batch #</th>
+                    <th>Received</th>
+                    <th class="text-right">Received qty</th>
+                    <th class="text-right">Remaining</th>
+                    <th class="text-right">Cost/unit</th>
+                    <th>Expiry</th>
+                    <th>Status</th>
+                    <th>Supplier</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(b, i) in batches" :key="b.id">
+                    <td class="row-num text-medium-emphasis">{{ i + 1 }}</td>
+                    <td class="font-weight-medium">{{ b.batch_number || '—' }}</td>
+                    <td>{{ formatDate(b.received_date) }}</td>
+                    <td class="text-right">{{ b.quantity_received }}</td>
+                    <td class="text-right" :class="b.quantity_remaining > 0 ? '' : 'text-disabled'">{{ b.quantity_remaining }}</td>
+                    <td class="text-right">{{ formatMoney(b.cost_price_per_unit) }}</td>
+                    <td>
+                      <span :class="expiryClass(b)">{{ formatDate(b.expiry_date) }}</span>
+                    </td>
+                    <td>
+                      <v-chip :color="batchStatus(b).color" size="x-small" variant="tonal">
+                        <v-icon start size="12">{{ batchStatus(b).icon }}</v-icon>{{ batchStatus(b).label }}
+                      </v-chip>
+                    </td>
+                    <td>{{ b.supplier_name || '—' }}</td>
+                  </tr>
+                  <tr v-if="!batches.length">
+                    <td colspan="9" class="text-center text-medium-emphasis py-6">No batches recorded for this stock item.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </v-tabs-window-item>
 
           <!-- ── TRANSACTIONS ──────────────────────────────────────────── -->
@@ -324,6 +468,7 @@ const { $api } = useNuxtApp()
 
 const id = computed(() => route.params.id)
 const loading = ref(true)
+const pdfLoading = ref(false)
 const tab = ref('overview')
 const datePreset = ref('30')
 const dateFrom = ref(null)
@@ -434,6 +579,36 @@ function expiryClass(b) {
   return ''
 }
 
+function batchStatus(b) {
+  if (b.is_expired || (b.expiry_date && new Date(b.expiry_date) < new Date()))
+    return { label: 'Expired', color: 'error', icon: 'mdi-alert-octagon' }
+  if (b.quantity_remaining <= 0)
+    return { label: 'Depleted', color: 'grey', icon: 'mdi-package-variant-remove' }
+  if (b.expiry_date) {
+    const days = (new Date(b.expiry_date) - new Date()) / 86400000
+    if (days < 90)
+      return { label: 'Expiring soon', color: 'warning', icon: 'mdi-clock-alert' }
+  }
+  return { label: 'Active', color: 'success', icon: 'mdi-check-circle' }
+}
+
+const batchKpis = computed(() => {
+  const total = batches.value.length
+  const active = batches.value.filter(b => (b.quantity_remaining || 0) > 0 && !b.is_expired).length
+  const expiring = batches.value.filter(b => {
+    if (!b.expiry_date || b.is_expired) return false
+    const days = (new Date(b.expiry_date) - new Date()) / 86400000
+    return days > 0 && days < 90
+  }).length
+  const expired = batches.value.filter(b => b.is_expired || (b.expiry_date && new Date(b.expiry_date) < new Date())).length
+  return [
+    { label: 'Total Batches', value: total, color: 'primary', icon: 'mdi-package-variant-closed' },
+    { label: 'Active', value: active, color: 'success', icon: 'mdi-check-circle' },
+    { label: 'Expiring Soon', value: expiring, color: 'warning', icon: 'mdi-clock-alert' },
+    { label: 'Expired', value: expired, color: 'error', icon: 'mdi-alert-octagon' },
+  ]
+})
+
 async function load() {
   loading.value = true
   try {
@@ -454,7 +629,11 @@ async function load() {
     purchase.value = data.purchase_info || {}
     salesInfo.value = data.sales_info || {}
     movements.value = data.movements || []
-    batches.value = data.batches || []
+    batches.value = (data.batches || []).slice().sort((a, b) => {
+      const da = a.received_date || ''
+      const db = b.received_date || ''
+      return db.localeCompare(da)
+    })
     trend.value = data.trend || []
   } catch (e) {
     snack.text = e?.response?.data?.detail || 'Failed to load item details.'
@@ -486,6 +665,31 @@ function relativeTime(d) {
   const h = Math.floor(mins / 60)
   if (h < 24) return `${h}h ago`
   return `${Math.floor(h / 24)}d ago`
+}
+
+async function downloadPdf() {
+  pdfLoading.value = true
+  try {
+    const res = await $api.get(`/inventory/stocks/${id.value}/report-pdf/`, {
+      responseType: 'blob',
+    })
+    const blob = new Blob([res.data], { type: 'application/pdf' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    const safe = (stock.value.medication_name || 'item').replace(/\s+/g, '_').replace(/\//g, '-')
+    a.download = `stock_report_${safe}.pdf`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    window.URL.revokeObjectURL(url)
+  } catch (e) {
+    snack.text = 'Failed to generate PDF report.'
+    snack.color = 'error'
+    snack.show = true
+  } finally {
+    pdfLoading.value = false
+  }
 }
 
 onMounted(load)
@@ -521,4 +725,17 @@ onMounted(load)
 }
 .sid-mini-table td { padding: 7px 8px; border-bottom: 1px solid rgba(var(--v-border-color), 0.3); }
 .sid-mini-table tbody tr:hover { background: rgba(99, 102, 241, 0.04); }
+
+.detail-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+  margin-bottom: 2px;
+}
+.detail-value {
+  font-size: 14px;
+  line-height: 1.4;
+}
 </style>

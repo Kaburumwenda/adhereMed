@@ -52,6 +52,11 @@ app.conf.beat_schedule = {
         'task': 'homecare.tasks.tick_auto_generate_bills',
         'schedule': crontab(minute=5),
     },
+    # POS — auto-delete parked sales older than 48 hours
+    'pos-cleanup-parked-sales': {
+        'task': 'pos.tasks.cleanup_expired_parked_sales',
+        'schedule': crontab(minute='*/15'),
+    },
 }
 
 

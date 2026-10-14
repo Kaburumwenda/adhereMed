@@ -5,11 +5,11 @@
       <v-row align="center" no-gutters>
         <v-col cols="12" md="8">
           <div class="d-flex align-center">
-            <v-avatar color="white" size="56" class="mr-4 elevation-2">
+            <div class="hero-icon-wrap mr-4">
               <v-icon :color="isInventory ? 'teal-darken-2' : 'indigo-darken-2'" size="32">
                 {{ isInventory ? 'mdi-warehouse' : 'mdi-badge-account-horizontal' }}
               </v-icon>
-            </v-avatar>
+            </div>
             <div>
               <div class="text-h5 text-md-h4 font-weight-bold">{{ pageTitle }}</div>
               <div class="text-body-2" style="opacity:.9">Manage team members, specializations &amp; schedules</div>
@@ -28,37 +28,39 @@
           </div>
         </v-col>
         <v-col cols="12" md="4" class="d-flex justify-md-end align-center mt-4 mt-md-0">
-          <v-btn variant="flat" color="white" prepend-icon="mdi-account-plus" class="text-none mr-2"
-                 :class="{ 'text-indigo-darken-2': true }" @click="openStaffDialog()">
+          <v-btn color="primary" prepend-icon="mdi-account-plus" class="text-none mr-2"
+                 @click="openStaffDialog()">
             {{ $t('staff.addStaff') }}
           </v-btn>
-          <v-btn variant="outlined" color="white" prepend-icon="mdi-refresh" :loading="loading"
+          <v-btn variant="tonal" color="primary" prepend-icon="mdi-refresh" :loading="loading"
                  @click="reloadAll">{{ $t('common.refresh') }}</v-btn>
         </v-col>
       </v-row>
     </v-card>
 
-    <!-- KPIs -->
+    <!-- ─────────────────────── KPI Cards ─────────────────────── -->
     <v-row dense class="mb-4">
-      <v-col v-for="k in statCards" :key="k.key" cols="6" md="3">
-        <v-card rounded="lg" class="pa-4 h-100 kpi-card">
-          <div class="d-flex align-start justify-space-between">
+      <v-col v-for="(k, i) in statCards" :key="k.key" cols="6" md="3">
+        <v-card rounded="xl" class="pa-4 h-100 kpi-gradient-card position-relative overflow-hidden"
+                :class="`kpi-grad-${i}`">
+          <div class="kpi-glow" />
+          <div class="d-flex align-start justify-space-between position-relative">
             <div class="text-truncate">
-              <div class="text-caption text-medium-emphasis text-truncate">{{ k.label }}</div>
-              <div class="text-h5 font-weight-bold mt-1" :class="`text-${k.color}`">{{ k.value }}</div>
-              <div v-if="k.sub" class="text-caption text-medium-emphasis mt-1 text-truncate">{{ k.sub }}</div>
+              <div class="text-caption kpi-label text-truncate">{{ k.label }}</div>
+              <div class="text-h4 font-weight-bold mt-1 kpi-value">{{ k.value }}</div>
+              <div v-if="k.sub" class="text-caption kpi-sub mt-1 text-truncate">{{ k.sub }}</div>
             </div>
-            <v-avatar :color="k.color" variant="tonal" rounded="lg" size="40">
-              <v-icon size="20">{{ k.icon }}</v-icon>
-            </v-avatar>
+            <div class="kpi-icon-wrap">
+              <v-icon size="22">{{ k.icon }}</v-icon>
+            </div>
           </div>
         </v-card>
       </v-col>
     </v-row>
 
     <!-- ───────────────────────── Tabs ───────────────────────── -->
-    <v-card flat rounded="xl" class="mb-4">
-      <v-tabs v-model="tab" color="indigo-darken-2" align-tabs="start" show-arrows>
+    <v-card flat rounded="xl" class="mb-4 tab-bar">
+      <v-tabs v-model="tab" color="primary" align-tabs="start" show-arrows>
         <v-tab value="team" prepend-icon="mdi-account-group">{{ $t('staff.team') }}</v-tab>
         <v-tab value="specializations" prepend-icon="mdi-school">{{ $t('staff.specializations') }}</v-tab>
         <v-tab value="schedule" prepend-icon="mdi-calendar-week">{{ $t('staff.weeklySchedule') }}</v-tab>
@@ -67,7 +69,7 @@
 
     <!-- ───────────────────── Team tab ───────────────────── -->
     <template v-if="tab === 'team'">
-      <v-card flat rounded="xl" class="pa-3 mb-3">
+      <v-card flat rounded="xl" class="pa-3 mb-3 filter-card">
         <v-row dense align="center">
           <v-col cols="12" md="4">
             <v-text-field v-model="staffSearch" prepend-inner-icon="mdi-magnify"
@@ -119,7 +121,7 @@
         </v-row>
       </v-card>
 
-      <v-card flat rounded="xl">
+      <v-card flat rounded="xl" class="mb-1">
         <v-data-table-server v-model="selectedStaff" :headers="staffHeaders" :items="staff"
                              :items-length="staffTotal" :loading="loading" item-value="id" show-select
                              :items-per-page="staffPageSize" :page="staffPage"
@@ -131,8 +133,8 @@
           <template #item.user_name="{ item }">
             <div class="d-flex align-center py-1">
               <div class="position-relative mr-3">
-                <v-avatar :color="avatarColor(item.user_name)" size="38" class="text-white">
-                  <span class="text-caption font-weight-bold">{{ initials(item.user_name) }}</span>
+                <v-avatar :color="avatarColor(item.user_name)" size="40" class="text-white staff-avatar">
+                  <span class="text-body-2 font-weight-bold">{{ initials(item.user_name) }}</span>
                 </v-avatar>
                 <span class="avail-dot" :class="item.is_available ? 'avail-dot--on' : 'avail-dot--off'"
                       :title="item.is_available ? 'Available' : 'Unavailable'" />
@@ -177,25 +179,27 @@
           </template>
 
           <template #item.actions="{ item }">
-            <v-btn icon size="small" variant="text" @click="quickResetPassword(item)">
-              <v-icon size="20">mdi-lock-reset</v-icon>
-              <v-tooltip activator="parent" location="top">Reset password</v-tooltip>
-            </v-btn>
-            <v-btn icon size="small" variant="text" @click="openStaffDialog(item)">
-              <v-icon size="20">mdi-pencil</v-icon>
-              <v-tooltip activator="parent" location="top">{{ $t('common.edit') }}</v-tooltip>
-            </v-btn>
-            <v-btn icon size="small" variant="text" color="error" @click="confirmDelete(item)">
-              <v-icon size="20">mdi-delete</v-icon>
-              <v-tooltip activator="parent" location="top">{{ $t('common.delete') }}</v-tooltip>
-            </v-btn>
+            <v-menu offset="4">
+              <template #activator="{ props }">
+                <v-btn v-bind="props" icon="mdi-dots-vertical" variant="text" size="small" />
+              </template>
+              <v-list density="compact" min-width="180">
+                <v-list-item prepend-icon="mdi-pencil" :title="$t('common.edit')" @click="openStaffDialog(item)" />
+                <v-list-item prepend-icon="mdi-lock-reset" title="Reset password" @click="quickResetPassword(item)" />
+                <v-list-item prepend-icon="mdi-delete" :title="$t('common.delete')" base-color="error"
+                             @click="confirmDelete(item)" />
+              </v-list>
+            </v-menu>
           </template>
 
           <template #no-data>
-            <div class="text-center pa-6 text-medium-emphasis">
-              <v-icon size="48" color="grey-lighten-1">mdi-account-off</v-icon>
-              <div class="mt-2">No staff members yet.</div>
-              <v-btn class="mt-3" color="primary" variant="text" prepend-icon="mdi-account-plus"
+            <div class="text-center pa-8 text-medium-emphasis">
+              <div class="empty-icon-wrap mx-auto mb-3">
+                <v-icon size="48" color="grey-lighten-1">mdi-account-off</v-icon>
+              </div>
+              <div class="text-h6 font-weight-medium mb-1">No staff members yet</div>
+              <div class="text-body-2 mb-4">Add your first team member to get started</div>
+              <v-btn color="primary" variant="flat" prepend-icon="mdi-account-plus" class="text-none"
                      @click="openStaffDialog()">Add your first staff member</v-btn>
             </div>
           </template>
@@ -205,7 +209,7 @@
 
     <!-- ───────────────── Specializations tab ───────────────── -->
     <template v-if="tab === 'specializations'">
-      <v-card flat rounded="xl" class="pa-3 mb-3">
+      <v-card flat rounded="xl" class="pa-3 mb-3 filter-card">
         <v-row dense align="center">
           <v-col cols="12" md="6">
             <v-text-field v-model="specSearch" prepend-inner-icon="mdi-magnify" placeholder="Search specializations…"
@@ -214,7 +218,7 @@
           </v-col>
           <v-spacer />
           <v-col cols="auto">
-            <v-btn color="primary" prepend-icon="mdi-plus" @click="openSpecDialog()">New Specialization</v-btn>
+            <v-btn color="primary" variant="flat" rounded="lg" class="text-none" prepend-icon="mdi-plus" @click="openSpecDialog()">New Specialization</v-btn>
           </v-col>
         </v-row>
       </v-card>
@@ -226,17 +230,25 @@
                       class="mt-0" @update:model-value="(v) => toggleSpecActive(item, v)" />
           </template>
           <template #item.actions="{ item }">
-            <v-btn icon size="small" variant="text" @click="openSpecDialog(item)">
-              <v-icon size="20">mdi-pencil</v-icon>
-            </v-btn>
-            <v-btn icon size="small" variant="text" color="error" @click="deleteSpec(item)">
-              <v-icon size="20">mdi-delete</v-icon>
-            </v-btn>
+            <v-menu offset="4">
+              <template #activator="{ props }">
+                <v-btn v-bind="props" icon="mdi-dots-vertical" variant="text" size="small" />
+              </template>
+              <v-list density="compact" min-width="180">
+                <v-list-item prepend-icon="mdi-pencil" :title="$t('common.edit')" @click="openSpecDialog(item)" />
+                <v-list-item prepend-icon="mdi-delete" :title="$t('common.delete')" base-color="error"
+                             @click="deleteSpec(item)" />
+              </v-list>
+            </v-menu>
           </template>
           <template #no-data>
-            <div class="text-center pa-6 text-medium-emphasis">
-              <v-icon size="48" color="grey-lighten-1">mdi-school-outline</v-icon>
-              <div class="mt-2">No specializations defined.</div>
+            <div class="text-center pa-8 text-medium-emphasis">
+              <div class="empty-icon-wrap mx-auto mb-3">
+                <v-icon size="48" color="grey-lighten-1">mdi-school-outline</v-icon>
+              </div>
+              <div class="text-h6 font-weight-medium mb-1">No specializations defined</div>
+              <div class="text-body-2 mb-4">Create a specialization to categorize your staff</div>
+              <v-btn color="primary" variant="flat" class="text-none" prepend-icon="mdi-plus" @click="openSpecDialog()">Create specialization</v-btn>
             </div>
           </template>
         </v-data-table>
@@ -245,53 +257,54 @@
 
     <!-- ───────────────── Schedule tab ───────────────── -->
     <template v-if="tab === 'schedule'">
-      <v-card flat rounded="xl" class="pa-4">
+      <v-card flat rounded="xl" class="pa-5 schedule-hero">
         <div class="d-flex align-center mb-4">
-          <v-avatar color="indigo-lighten-5" size="40" class="mr-3">
-            <v-icon color="indigo-darken-2">mdi-calendar-week</v-icon>
-          </v-avatar>
+          <div class="header-icon-wrap mr-3">
+            <v-icon size="22" color="white">mdi-calendar-week</v-icon>
+          </div>
           <div>
-            <div class="text-h6 font-weight-bold">Weekly Schedule Overview</div>
-            <div class="text-caption text-medium-emphasis">Who is rostered on each day</div>
+            <div class="text-h6 font-weight-bold text-white">Weekly Schedule Overview</div>
+            <div class="text-caption text-white" style="opacity:.85">Who is rostered on each day</div>
           </div>
           <v-spacer />
-          <v-chip size="small" variant="tonal" color="indigo" prepend-icon="mdi-calendar-check">
+          <v-chip size="small" class="hero-chip" prepend-icon="mdi-calendar-check">
             {{ scheduledCount }} of {{ allStaff.length }} staff scheduled
           </v-chip>
         </div>
 
         <v-row>
           <v-col v-for="d in weekdays" :key="d.key" cols="12" sm="6" md="4" lg="3">
-            <v-card flat rounded="lg" class="schedule-day pa-3 h-100" :border="true"
+            <v-card flat rounded="xl" class="schedule-day pa-3 h-100" :border="true"
                     :class="{ 'schedule-day--today': d.key === todayKey }">
               <div class="d-flex align-center mb-2">
-                <v-avatar :color="d.key === todayKey ? 'indigo' : 'indigo-lighten-5'" size="28" class="mr-2">
-                  <v-icon size="16" :color="d.key === todayKey ? 'white' : 'indigo-darken-2'">mdi-calendar</v-icon>
-                </v-avatar>
-                <div class="font-weight-medium">{{ d.label }}</div>
+                <div class="schedule-day-icon" :class="{ 'schedule-day-icon--today': d.key === todayKey }">
+                  <v-icon size="16">{{ d.key === todayKey ? 'mdi-star' : 'mdi-calendar' }}</v-icon>
+                </div>
+                <div class="font-weight-medium ml-2">{{ d.label }}</div>
                 <v-spacer />
                 <v-chip size="x-small" :variant="d.key === todayKey ? 'flat' : 'tonal'"
-                        :color="d.key === todayKey ? 'indigo' : 'indigo'"
+                        :color="d.key === todayKey ? 'primary' : 'primary'"
                         :class="{ 'text-white': d.key === todayKey }">
                   {{ scheduleByDay[d.key]?.length || 0 }}
                 </v-chip>
               </div>
               <div v-if="(scheduleByDay[d.key] || []).length === 0"
-                   class="text-caption text-disabled pa-3 text-center rounded-lg"
-                   style="background: rgba(var(--v-theme-on-surface), 0.03)">
+                   class="text-caption text-disabled pa-4 text-center rounded-lg border-dashed">
                 No staff scheduled
               </div>
-              <div v-for="entry in (scheduleByDay[d.key] || [])" :key="entry.id"
-                   class="d-flex align-center pa-2 schedule-entry rounded mb-1">
-                <v-avatar :color="avatarColor(entry.user_name)" size="28" class="mr-2 text-white">
-                  <span class="text-caption">{{ initials(entry.user_name) }}</span>
-                </v-avatar>
-                <div class="flex-grow-1 text-body-2">
-                  <div class="font-weight-medium">{{ entry.user_name }}</div>
-                  <div class="text-caption text-medium-emphasis">{{ entry.shift }}</div>
+              <transition-group name="list">
+                <div v-for="entry in (scheduleByDay[d.key] || [])" :key="entry.id"
+                     class="d-flex align-center pa-2 schedule-entry rounded mb-1">
+                  <v-avatar :color="avatarColor(entry.user_name)" size="30" class="mr-2 text-white">
+                    <span class="text-caption font-weight-bold">{{ initials(entry.user_name) }}</span>
+                  </v-avatar>
+                  <div class="flex-grow-1 text-body-2">
+                    <div class="font-weight-medium">{{ entry.user_name }}</div>
+                    <div class="text-caption text-medium-emphasis">{{ entry.shift }}</div>
+                  </div>
+                  <v-icon size="14" color="success">mdi-clock-outline</v-icon>
                 </div>
-                <v-icon size="14" color="success">mdi-clock-outline</v-icon>
-              </div>
+              </transition-group>
             </v-card>
           </v-col>
         </v-row>
@@ -462,6 +475,35 @@
       </v-card>
     </v-dialog>
 
+    <v-dialog v-model="resetDialog" max-width="480">
+      <v-card rounded="xl">
+        <v-card-title class="d-flex align-center pa-4">
+          <v-icon color="warning" class="mr-2">mdi-lock-reset</v-icon>
+          Reset password
+        </v-card-title>
+        <v-card-text class="pa-5">
+          <v-alert type="warning" variant="tonal" border="start" prominent density="compact" class="mb-4">
+            <strong>{{ pendingReset?.user_name }}</strong> will lose access to the current password and must use the new one to log in. Make sure to share the new password securely.
+          </v-alert>
+          <v-alert type="info" variant="tonal" border="start" density="compact" class="mb-3">
+            <div class="text-caption text-uppercase font-weight-bold mb-1">New password</div>
+            <div class="d-flex align-center">
+              <code class="text-body-1 flex-grow-1" style="word-break:break-all">{{ pendingResetPw }}</code>
+              <v-btn icon="mdi-content-copy" size="small" variant="text" class="ml-2"
+                     @click="copyToClipboard(pendingResetPw)" />
+            </div>
+          </v-alert>
+        </v-card-text>
+        <v-card-actions class="pa-3">
+          <v-spacer />
+          <v-btn variant="text" @click="resetDialog = false">{{ $t('common.cancel') }}</v-btn>
+          <v-btn color="warning" variant="elevated" prepend-icon="mdi-lock-reset" @click="performResetPassword">
+            Reset password
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-snackbar v-model="snack.show" :color="snack.color" location="top right" :timeout="3000">
       {{ snack.message }}
     </v-snackbar>
@@ -521,6 +563,10 @@ const specForm = ref({ name: '', description: '', is_active: true })
 
 const confirmDialog = ref(false)
 const pendingDelete = ref(null)
+
+const resetDialog = ref(false)
+const pendingReset = ref(null)
+const pendingResetPw = ref('')
 
 const snack = reactive({ show: false, color: 'success', message: '' })
 
@@ -827,7 +873,7 @@ async function saveStaff() {
 
 function confirmDelete(item) { pendingDelete.value = item; confirmDialog.value = true }
 
-async function quickResetPassword(item) {
+function genRandomPassword() {
   const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
   const lower = 'abcdefghjkmnpqrstuvwxyz'
   const digits = '23456789'
@@ -836,12 +882,26 @@ async function quickResetPassword(item) {
   const pick = s => s[Math.floor(Math.random() * s.length)]
   let pw = pick(upper) + pick(lower) + pick(digits) + pick(symbols)
   for (let i = 0; i < 8; i++) pw += pick(all)
-  pw = pw.split('').sort(() => Math.random() - 0.5).join('')
-  if (!confirm(`Reset password for ${item.user_name}?\n\nNew password will be:\n${pw}\n\nMake sure to copy and share it securely.`)) return
+  return pw.split('').sort(() => Math.random() - 0.5).join('')
+}
+
+function quickResetPassword(item) {
+  pendingReset.value = item
+  pendingResetPw.value = genRandomPassword()
+  resetDialog.value = true
+}
+
+async function copyToClipboard(text) {
+  try { await navigator.clipboard.writeText(text) } catch {}
+}
+
+async function performResetPassword() {
+  if (!pendingReset.value) return
   try {
-    await $api.patch(`/staff/${item.id}/`, { password: pw })
-    try { await navigator.clipboard.writeText(pw); notify('Password reset and copied to clipboard') }
-    catch { notify('Password reset (copy from prompt)') }
+    await $api.patch(`/staff/${pendingReset.value.id}/`, { password: pendingResetPw.value })
+    try { await navigator.clipboard.writeText(pendingResetPw.value); notify('Password reset and copied to clipboard') }
+    catch { notify('Password reset (copy from dialog)') }
+    resetDialog.value = false
   } catch (e) { notify(extractError(e) || 'Reset failed', 'error') }
 }
 
@@ -950,8 +1010,14 @@ onMounted(() => { reloadAll() })
 <style scoped>
 /* ── Hero band ─────────────────────────────────────────────── */
 .hero-band {
-  background: linear-gradient(135deg, #312e81 0%, #4338ca 50%, #6366f1 100%);
+  background: linear-gradient(135deg, #1e1b4b 0%, #312e81 40%, #4338ca 70%, #6366f1 100%);
   box-shadow: 0 12px 32px rgba(79, 70, 229, 0.25);
+}
+.hero-icon-wrap {
+  width: 56px; height: 56px; border-radius: 14px;
+  background: rgba(255, 255, 255, 0.18); display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.12);
 }
 .hero-chip {
   background: rgba(255, 255, 255, 0.16) !important;
@@ -959,29 +1025,107 @@ onMounted(() => { reloadAll() })
   backdrop-filter: blur(4px);
 }
 
-/* ── KPI cards ─────────────────────────────────────────────── */
-.kpi-card { transition: transform 0.15s ease, box-shadow 0.15s ease; border: 1px solid rgba(var(--v-theme-on-surface), 0.06); }
-.kpi-card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.07); }
+/* ── KPI gradient cards ────────────────────────────────────── */
+.kpi-gradient-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  color: #fff;
+  border: none;
+  min-height: 120px;
+}
+.kpi-gradient-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 28px rgba(0,0,0,0.15);
+}
+.kpi-grad-0 { background: linear-gradient(135deg, #4f46e5 0%, #6366f1 50%, #818cf8 100%); }
+.kpi-grad-1 { background: linear-gradient(135deg, #059669 0%, #10b981 50%, #34d399 100%); }
+.kpi-grad-2 { background: linear-gradient(135deg, #d97706 0%, #f59e0b 50%, #fbbf24 100%); }
+.kpi-grad-3 { background: linear-gradient(135deg, #0891b2 0%, #06b6d4 50%, #22d3ee 100%); }
+.kpi-glow {
+  position: absolute; top: -30px; right: -20px;
+  width: 90px; height: 90px; border-radius: 50%;
+  background: rgba(255,255,255,0.12); filter: blur(20px);
+}
+.kpi-label { color: rgba(255,255,255,0.78); font-size: 0.72rem; letter-spacing: 0.5px; }
+.kpi-value { color: #fff; line-height: 1.2; }
+.kpi-sub { color: rgba(255,255,255,0.65); }
+.kpi-icon-wrap {
+  width: 42px; height: 42px; border-radius: 12px;
+  background: rgba(255,255,255,0.18); display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(6px); flex-shrink: 0;
+}
+
+/* ── Tab bar ───────────────────────────────────────────────── */
+.tab-bar { box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+
+/* ── Filter card ───────────────────────────────────────────── */
+.filter-card { box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
 
 /* ── Table rows ───────────────────────────────────────────── */
 .staff-table :deep(tbody tr) { transition: background-color .15s ease; }
 .staff-table :deep(tbody tr:hover) { background-color: rgba(99, 102, 241, 0.06); }
+.staff-avatar { box-shadow: 0 2px 6px rgba(0,0,0,0.12); }
 
 .avail-dot {
   position: absolute;
   bottom: 0;
   right: 0;
-  width: 11px;
-  height: 11px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   border: 2px solid rgb(var(--v-theme-surface));
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
 }
 .avail-dot--on { background: #22c55e; }
 .avail-dot--off { background: #9ca3af; }
 
+/* ── Empty states ──────────────────────────────────────────── */
+.empty-icon-wrap {
+  width: 72px; height: 72px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(var(--v-theme-on-surface), 0.04);
+}
+
 /* ── Schedule ──────────────────────────────────────────────── */
-.schedule-day { background: rgba(99, 102, 241, 0.03); transition: transform .15s ease, box-shadow .15s ease; }
-.schedule-day:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,0.06); }
-.schedule-day--today { background: rgba(99, 102, 241, 0.10); border-color: rgba(99, 102, 241, 0.5) !important; }
-.schedule-entry { background: rgba(99, 102, 241, 0.07); }
+.schedule-hero {
+  background: linear-gradient(135deg, #312e81 0%, #4338ca 50%, #6366f1 100%);
+  box-shadow: 0 8px 24px rgba(79, 70, 229, 0.18);
+}
+.header-icon-wrap {
+  width: 42px; height: 42px; border-radius: 12px;
+  background: rgba(255, 255, 255, 0.18); display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(6px);
+}
+.schedule-day {
+  background: rgba(255, 255, 255, 0.08);
+  transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+.schedule-day:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.12); }
+.schedule-day--today {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.4) !important;
+}
+.schedule-day-icon {
+  width: 28px; height: 28px; border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12); display: flex; align-items: center; justify-content: center;
+  color: rgba(255, 255, 255, 0.7);
+}
+.schedule-day-icon--today {
+  background: rgb(var(--v-theme-primary));
+  color: #fff;
+}
+.border-dashed {
+  border: 1.5px dashed rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.03);
+}
+.schedule-entry {
+  background: rgba(255, 255, 255, 0.08);
+  transition: background .15s ease;
+}
+.schedule-entry:hover { background: rgba(255, 255, 255, 0.14); }
+
+/* ── Transitions ───────────────────────────────────────────── */
+.list-enter-active, .list-leave-active { transition: all .25s ease; }
+.list-enter-from { opacity: 0; transform: translateX(-10px); }
+.list-leave-to { opacity: 0; transform: translateX(10px); }
 </style>

@@ -357,3 +357,91 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             po.refresh_from_db()
         _sync_shipping_expense(po)
         return po
+
+
+# ── RFQ Serializers ─────────────────────────────────────────────────────────
+
+from .models import RequestForQuotation, RFQQuote, SupplierEvaluation, ReorderSuggestion
+
+
+class RFQQuoteSerializer(serializers.ModelSerializer):
+    supplier_name = serializers.CharField(source='supplier.name', read_only=True)
+
+    class Meta:
+        model = RFQQuote
+        fields = [
+            'id', 'rfq', 'supplier', 'supplier_name',
+            'items', 'total_cost', 'delivery_days',
+            'status', 'notes', 'valid_until', 'submitted_at',
+        ]
+        read_only_fields = ['id', 'submitted_at']
+
+
+class RequestForQuotationSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.CharField(source='created_by.full_name', read_only=True, default=None)
+    branch_name = serializers.CharField(source='branch.name', read_only=True, default=None)
+    awarded_supplier_name = serializers.CharField(source='awarded_supplier.name', read_only=True, default=None)
+    quote_count = serializers.IntegerField(read_only=True, default=0)
+    quotes = RFQQuoteSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = RequestForQuotation
+        fields = [
+            'id', 'rfq_number', 'title', 'description', 'items',
+            'status', 'expected_delivery', 'response_deadline',
+            'created_by', 'created_by_name', 'branch', 'branch_name',
+            'awarded_supplier', 'awarded_supplier_name', 'awarded_po',
+            'notes', 'quote_count', 'quotes',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'created_by']
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        if request and getattr(request, 'user', None) and request.user.is_authenticated:
+            validated_data['created_by'] = request.user
+        if not validated_data.get('rfq_number'):
+            validated_data['rfq_number'] = f'RFQ-{uuid.uuid4().hex[:8].upper()}'
+        return super().create(validated_data)
+
+
+class SupplierEvaluationSerializer(serializers.ModelSerializer):
+    supplier_name = serializers.CharField(source='supplier.name', read_only=True)
+    evaluated_by_name = serializers.CharField(source='evaluated_by.full_name', read_only=True, default=None)
+
+    class Meta:
+        model = SupplierEvaluation
+        fields = [
+            'id', 'supplier', 'supplier_name', 'evaluation_date',
+            'on_time_delivery_score', 'quality_score',
+            'responsiveness_score', 'pricing_competitiveness',
+            'payment_flexibility', 'overall_rating',
+            'notes', 'evaluated_by', 'evaluated_by_name',
+        ]
+        read_only_fields = ['id', 'evaluation_date', 'overall_rating', 'evaluated_by']
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        if request and getattr(request, 'user', None) and request.user.is_authenticated:
+            validated_data['evaluated_by'] = request.user
+        return super().create(validated_data)
+
+
+class ReorderSuggestionSerializer(serializers.ModelSerializer):
+    stock_name = serializers.CharField(source='stock.medication_name', read_only=True, default=None)
+    stock_sku = serializers.CharField(source='stock.barcode', read_only=True, default=None)
+    stock_category = serializers.CharField(source='stock.category.name', read_only=True, default=None)
+    unit_name = serializers.CharField(source='stock.unit.abbreviation', read_only=True, default=None)
+    recommended_supplier_name = serializers.CharField(source='recommended_supplier.name', read_only=True, default=None)
+
+    class Meta:
+        model = ReorderSuggestion
+        fields = [
+            'id', 'stock', 'stock_name', 'stock_sku', 'stock_category',
+            'unit_name',
+            'current_quantity', 'reorder_level', 'suggested_quantity',
+            'recommended_supplier', 'recommended_supplier_name',
+            'last_unit_cost', 'estimated_cost', 'status', 'branch',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']

@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from .models import (
-    Category, Unit, MedicationStock, StockBatch, StockAdjustment,
+    Category, Unit, Classification, MedicationStock, StockBatch, StockAdjustment,
     InventoryCount, InventoryCountLine,
     StockTransfer, StockTransferLine,
     ControlledSubstanceLog,
@@ -26,6 +26,15 @@ class UnitSerializer(serializers.ModelSerializer):
         model = Unit
         fields = ['id', 'name', 'abbreviation', 'created_at']
         read_only_fields = ['id', 'created_at']
+
+
+class ClassificationSerializer(serializers.ModelSerializer):
+    stock_count = serializers.IntegerField(read_only=True, default=0)
+
+    class Meta:
+        model = Classification
+        fields = ['id', 'name', 'description', 'is_active', 'stock_count', 'created_at']
+        read_only_fields = ['id', 'stock_count', 'created_at']
 
 
 class StockBatchSerializer(serializers.ModelSerializer):
@@ -60,6 +69,7 @@ class MedicationStockSerializer(serializers.ModelSerializer):
     unit_name = serializers.CharField(source='unit.name', read_only=True, default=None)
     unit_abbreviation = serializers.CharField(source='unit.abbreviation', read_only=True, default=None)
     branch_name = serializers.CharField(source='branch.name', read_only=True, default=None)
+    classification_name = serializers.CharField(source='classification.name', read_only=True, default=None)
 
     # Write-only fields for creating an initial batch alongside the stock item
     initial_quantity = serializers.IntegerField(write_only=True, required=False, min_value=0)
@@ -71,15 +81,34 @@ class MedicationStockSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'medication_id', 'medication_name', 'abbreviation',
             'category', 'category_name', 'unit', 'unit_name', 'unit_abbreviation',
+            'classification', 'classification_name',
+            'brand_name', 'generic_name', 'strength', 'dosage_form',
             'branch', 'branch_name',
             'selling_price', 'cost_price', 'tax_percent', 'discount_percent',
             'reorder_level', 'reorder_quantity',
             'location_in_store', 'barcode', 'prescription_required', 'is_active',
+            'items_per_unit',
             'total_quantity', 'available_quantity', 'is_low_stock',
             'batches', 'created_at', 'updated_at',
             'initial_quantity', 'batch_number', 'expiry_date',
         ]
         read_only_fields = ['id', 'medication_id', 'created_at', 'updated_at']
+
+    def validate(self, data):
+        name = data.get('medication_name') or (self.instance and self.instance.medication_name)
+        branch = data.get('branch') or (self.instance and self.instance.branch)
+        if name and branch:
+            qs = MedicationStock.objects.filter(
+                medication_name__iexact=name, branch=branch,
+            )
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    f'"{name}" already exists in {branch.name}. '
+                    f'Use a different warehouse or edit the existing item.'
+                )
+        return data
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -92,6 +121,13 @@ class MedicationStockSerializer(serializers.ModelSerializer):
         initial_quantity = validated_data.pop('initial_quantity', None)
         batch_number = validated_data.pop('batch_number', None) or ''
         expiry_date = validated_data.pop('expiry_date', None)
+        # Ensure a classification is set — fall back to this tenant's
+        # "Routine" classification when the client omitted it (the model
+        # default already covers raw ORM saves; this guards the serializer
+        # path where DRF strips None values before reaching the model).
+        if not validated_data.get('classification_id'):
+            routine, _ = Classification.objects.get_or_create(name='Routine')
+            validated_data['classification'] = routine
         stock = super().create(validated_data)
         if initial_quantity:
             StockBatch.objects.create(

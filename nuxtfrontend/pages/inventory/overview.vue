@@ -10,6 +10,7 @@
           <h1 class="text-h5 text-md-h4 font-weight-bold mb-0">Inventory Overview</h1>
           <div class="text-body-2 text-medium-emphasis">
             Live snapshot of the whole warehouse — stock, expiry, procurement &amp; fulfilment
+            <span v-if="branchStore.currentBranch"> · {{ branchStore.currentBranch.name }}</span>
           </div>
         </div>
       </div>
@@ -472,8 +473,10 @@
 
 <script setup>
 import { formatMoney } from '~/utils/format'
+import { useBranchStore } from '~/stores/branch'
 
 const { $api } = useNuxtApp()
+const branchStore = useBranchStore()
 
 // Pharmacy tenants reuse this page under /pharmacy, inventory/warehouse
 // tenants under /ims — the sub-paths are identical after the prefix.
@@ -605,6 +608,7 @@ async function load() {
     const params = {}
     if (dateFrom.value) params.date_from = dateFrom.value
     if (dateTo.value) params.date_to = dateTo.value
+    if (branchStore.currentBranchId) params.branch_id = branchStore.currentBranchId
     const { data } = await $api.get('/inventory/overview/', { params })
     overview.stock = data.stock || {}
     overview.expiry = data.expiry || {}
@@ -628,6 +632,7 @@ async function loadMovements() {
     const params = {}
     if (dateFrom.value) params.date_from = dateFrom.value
     if (dateTo.value) params.date_to = dateTo.value
+    if (branchStore.currentBranchId) params.branch_id = branchStore.currentBranchId
     const { data } = await $api.get('/inventory/stock-movements/', { params })
     movements.value = data.movements || []
   } catch (e) {
@@ -638,4 +643,8 @@ async function loadMovements() {
 }
 
 onMounted(load)
+
+watch(() => branchStore.currentBranchId, () => {
+  load()
+})
 </script>

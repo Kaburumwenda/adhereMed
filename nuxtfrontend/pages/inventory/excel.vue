@@ -133,14 +133,20 @@
                   <th class="col-row">Row</th>
                   <th class="col-status">Status</th>
                   <th class="col-name">Medication Name</th>
+                  <th class="col-brand">Brand Name</th>
+                  <th class="col-generic">Generic Name</th>
+                  <th class="col-strength">Strength</th>
+                  <th class="col-form">Dosage Form</th>
                   <th class="col-branch">Branch</th>
                   <th class="col-cat">Category</th>
+                  <th class="col-class">Classification</th>
                   <th class="col-unit">Unit</th>
                   <th class="col-num">Sell (KSh)</th>
                   <th class="col-num">Cost (KSh)</th>
                   <th class="col-num">Disc %</th>
                   <th class="col-num">Tax %</th>
                   <th class="col-num">Qty</th>
+                  <th class="col-num">Items/Unit</th>
                   <th class="col-num">Reorder Lv</th>
                   <th class="col-num">Reorder Qty</th>
                   <th class="col-loc">Location</th>
@@ -169,6 +175,24 @@
                              placeholder="Required" @input="touchRow(row, 'medication_name', row.medication_name)" />
                     </td>
                     <td>
+                      <input v-model="row.brand_name" class="cell-input" type="text"
+                             placeholder="e.g. Panadol" />
+                    </td>
+                    <td>
+                      <input v-model="row.generic_name" class="cell-input" type="text"
+                             placeholder="e.g. paracetamol" />
+                    </td>
+                    <td>
+                      <input v-model="row.strength" class="cell-input" type="text"
+                             placeholder="e.g. 500mg" />
+                    </td>
+                    <td>
+                      <select v-model="row.dosage_form" class="cell-input">
+                        <option value="">—</option>
+                        <option v-for="df in dosageFormOptions" :key="df" :value="df">{{ df }}</option>
+                      </select>
+                    </td>
+                    <td>
                       <select v-model="row.branch" class="cell-input" @change="touchRow(row, 'branch', row.branch)">
                         <option value="">Warehouse…</option>
                         <option v-for="b in branchList" :key="b.id" :value="b.name">{{ b.name }}</option>
@@ -177,6 +201,12 @@
                     <td>
                       <v-combobox v-model="row.category" :items="categoryNames" clearable
                                   placeholder="Category" density="compact" variant="outlined"
+                                  hide-details single-line class="cell-combo"
+                                  :menu-props="{ maxHeight: 220 }" />
+                    </td>
+                    <td>
+                      <v-combobox v-model="row.classification" :items="classificationNames" clearable
+                                  placeholder="Classification" density="compact" variant="outlined"
                                   hide-details single-line class="cell-combo"
                                   :menu-props="{ maxHeight: 220 }" />
                     </td>
@@ -195,8 +225,7 @@
                       <div v-if="row.status === 'update' && row.existing_quantity != null" class="text-caption text-medium-emphasis">
                         now: {{ row.existing_quantity }}
                       </div>
-                    </td>
-                    <td><input v-model.number="row.reorder_level" class="cell-input num" type="number" min="0" step="1" /></td>
+                    </td>                    <td><input v-model.number="row.items_per_unit" class="cell-input num" type="number" min="0" step="1" /></td>                    <td><input v-model.number="row.reorder_level" class="cell-input num" type="number" min="0" step="1" /></td>
                     <td><input v-model.number="row.reorder_quantity" class="cell-input num" type="number" min="0" step="1" /></td>
                     <td><input v-model="row.location_in_store" class="cell-input" type="text" /></td>
                     <td><input v-model="row.barcode" class="cell-input cell-mono" type="text" /></td>
@@ -221,7 +250,7 @@
                     </td>
                   </tr>
                   <tr v-if="row.errors && Object.keys(row.errors).length" class="error-row">
-                    <td :colspan="18">
+                    <td :colspan="24">
                       <v-icon size="13" color="error" class="mr-1">mdi-alert-circle</v-icon>
                       <span v-for="(msg, field) in row.errors" :key="field" class="error-msg">
                         <strong>{{ fieldLabel(field) }}</strong>: {{ msg }} ·
@@ -305,6 +334,7 @@ const { $api } = useNuxtApp()
 
 const stockCount = ref(0)
 const categories = ref([])
+const classifications = ref([])
 const units = ref([])
 const branchList = ref([])
 const busy = ref('')
@@ -324,21 +354,28 @@ const { branches: branchesApi } = useTenantEndpoints()
 
 onMounted(async () => {
   try {
-    const [stocksRes, catsRes, unitsRes, branchesRes] = await Promise.all([
+    const [stocksRes, catsRes, classRes, unitsRes, branchesRes] = await Promise.all([
       $api.get('/inventory/stocks/', { params: { page_size: 1 } }),
       $api.get('/inventory/categories/', { params: { page_size: 1000 } }),
+      $api.get('/inventory/classifications/', { params: { page_size: 1000 } }),
       $api.get('/inventory/units/', { params: { page_size: 1000 } }),
       $api.get(branchesApi.value, { params: { page_size: 200 } }),
     ])
     stockCount.value = stocksRes.data?.count ?? (stocksRes.data?.length ?? 0)
     categories.value = catsRes.data?.results ?? catsRes.data
+    classifications.value = classRes.data?.results ?? classRes.data
     units.value = unitsRes.data?.results ?? unitsRes.data
     branchList.value = branchesRes.data?.results ?? branchesRes.data
   } catch { /* count is cosmetic */ }
 })
 
 const categoryNames = computed(() => categories.value.map(c => c.name))
+const classificationNames = computed(() => classifications.value.map(c => c.name))
 const unitNames = computed(() => units.value.map(u => u.name))
+
+const dosageFormOptions = ['tablet', 'capsule', 'syrup', 'injection', 'cream',
+  'ointment', 'drops', 'inhaler', 'suppository', 'suspension', 'powder',
+  'gel', 'patch', 'lozenge', 'spray']
 
 // ── Download helpers ───────────────────────────────────────────────
 async function download(kind) {
@@ -421,11 +458,17 @@ async function upload(file) {
 // ── Row helpers ───────────────────────────────────────────────────
 const FIELD_LABELS = {
   medication_name: 'Medication Name',
+  brand_name: 'Brand Name',
+  generic_name: 'Generic Name',
+  strength: 'Strength',
+  dosage_form: 'Dosage Form',
   branch: 'Branch (Warehouse)',
   category: 'Category', unit: 'Unit',
+  classification: 'Classification',
   selling_price: 'Selling Price', cost_price: 'Cost Price',
   discount_percent: 'Discount %', tax_percent: 'Tax %',
   total_quantity: 'Total Quantity',
+  items_per_unit: 'Items Per Unit',
   reorder_level: 'Reorder Level', reorder_quantity: 'Reorder Quantity',
   location_in_store: 'Location', barcode: 'Barcode',
   prescription_required: 'Prescription Required', is_active: 'Active',
@@ -440,7 +483,12 @@ const filteredRows = computed(() => {
   if (!q) return rows.value
   return rows.value.filter(r =>
     (r.medication_name || '').toLowerCase().includes(q) ||
+    (r.brand_name || '').toLowerCase().includes(q) ||
+    (r.generic_name || '').toLowerCase().includes(q) ||
+    (r.strength || '').toLowerCase().includes(q) ||
+    (r.dosage_form || '').toLowerCase().includes(q) ||
     (r.category || '').toLowerCase().includes(q) ||
+    (r.classification || '').toLowerCase().includes(q) ||
     (r.barcode || '').toLowerCase().includes(q))
 })
 
@@ -468,9 +516,10 @@ function addBlankRow() {
   rows.value.push({
     uid: uidSeq++,
     row_num: rows.value.length + 2,
-    medication_name: '', branch: '', category: '', unit: '',
+    medication_name: '', brand_name: '', generic_name: '', strength: '', dosage_form: '',
+    branch: '', category: '', classification: '', unit: '',
     selling_price: null, cost_price: null, discount_percent: null, tax_percent: null,
-    total_quantity: null, reorder_level: null, reorder_quantity: null,
+    total_quantity: null, items_per_unit: null, reorder_level: null, reorder_quantity: null,
     location_in_store: '', barcode: '',
     prescription_required: 'none', is_active: 'Yes',
     status: 'error', existing_id: null, existing_quantity: null,
@@ -499,12 +548,13 @@ async function submitImport() {
     const items = rows.value.map(r => {
       const out = { row_num: r.row_num, medication_name: r.medication_name }
       if (r.branch) out.branch = r.branch
-      for (const f of ['category', 'unit', 'location_in_store', 'barcode',
-                       'prescription_required', 'is_active']) {
+      for (const f of ['category', 'classification', 'unit', 'location_in_store', 'barcode',
+                       'prescription_required', 'is_active',
+                       'brand_name', 'generic_name', 'strength', 'dosage_form']) {
         if (r[f] !== null && r[f] !== undefined && r[f] !== '') out[f] = r[f]
       }
       for (const f of ['selling_price', 'cost_price', 'discount_percent', 'tax_percent',
-                       'total_quantity', 'reorder_level', 'reorder_quantity']) {
+                       'total_quantity', 'items_per_unit', 'reorder_level', 'reorder_quantity']) {
         if (r[f] !== null && r[f] !== undefined && r[f] !== '') out[f] = Number(r[f])
       }
       return out

@@ -1400,7 +1400,9 @@
     "fullscreen": "Enter fullscreen",
     "exitFullscreen": "Exit fullscreen",
     "theme": "Theme",
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "collapse": "Collapse",
+    "expand": "Expand"
   },
   "sidenav": {
     "collapse": "Collapse"

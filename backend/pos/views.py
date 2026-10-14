@@ -3,8 +3,9 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
+from django_filters import CharFilter, FilterSet
 from django.utils import timezone
-from django.db.models import Sum, Count, Avg, F
+from django.db.models import Sum, Count, Avg, F, Q
 from datetime import timedelta
 
 from .models import POSTransaction, Customer, ParkedSale, CreditSale, CreditPayment
@@ -21,8 +22,9 @@ from config.branch_scope import BranchScopedMixin, get_user_branch, is_branch_sc
 
 
 # Roles that may view ALL POS records and analytics for the tenant.
-# Anyone else (e.g. cashier, pharmacy_tech, storekeeper) only sees their own data.
-ADMIN_ROLES = {'super_admin', 'tenant_admin', 'branch_admin', 'pharmacist', 'inventory_admin'}
+# Anyone else is strictly locked to their own branch.
+from config.branch_scope import BRANCH_ADMIN_BYPASS_ROLES
+ADMIN_ROLES = BRANCH_ADMIN_BYPASS_ROLES
 
 
 def _user_is_admin(user) -> bool:
@@ -33,11 +35,25 @@ def _user_is_admin(user) -> bool:
     return getattr(user, 'role', None) in ADMIN_ROLES
 
 
-class CustomerViewSet(viewsets.ModelViewSet):
+class CustomerFilterSet(FilterSet):
+    """Adds branch filter that includes customers with branch=NULL (shared/unassigned)."""
+    branch = CharFilter(method='filter_branch', help_text='Filter by branch, including unassigned')
+
+    class Meta:
+        model = Customer
+        fields = ['is_active']
+
+    def filter_branch(self, queryset, name, value):
+        if not value:
+            return queryset
+        return queryset.filter(Q(branch_id=value) | Q(branch__isnull=True))
+
+
+class CustomerViewSet(BranchScopedMixin, viewsets.ModelViewSet):
     queryset = Customer.objects.all()
     serializer_class = CustomerSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['is_active']
+    filterset_class = CustomerFilterSet
     search_fields = ['name', 'phone', 'email']
     ordering_fields = ['name', 'total_purchases', 'visit_count', 'created_at']
 
@@ -242,6 +258,10 @@ class SalesAnalyticsView(APIView):
             transactions = POSTransaction.objects.filter(created_at__date__gte=start)
 
         branch_id = request.query_params.get('branch_id')
+        # Force non-admin users to their own branch
+        if not _user_is_admin(request.user):
+            from config.branch_scope import get_user_branch
+            branch_id = get_user_branch(request.user)
         if branch_id:
             transactions = transactions.filter(branch_id=branch_id)
         if not _user_is_admin(request.user):
@@ -329,6 +349,10 @@ class ParkedSaleViewSet(BranchScopedMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # Auto-exclude parked sales older than 48 hours (expired).
+        from datetime import timedelta
+        cutoff = timezone.now() - timedelta(hours=48)
+        qs = qs.filter(created_at__gte=cutoff)
         # Non-admin users only see their own parked sales.
         if not _user_is_admin(self.request.user):
             qs = qs.filter(cashier=self.request.user)

@@ -32,7 +32,8 @@
       type="error" variant="tonal" density="compact" rounded="lg" class="mb-4"
     >{{ errorMsg }}</v-alert>
 
-    <v-row dense>
+    <!-- ═══════ Business Details (from PharmacyDetail) ═══════ -->
+    <v-row dense class="mt-1">
       <!-- ── Brand / identity card ── -->
       <v-col cols="12" md="4">
         <v-card rounded="xl" variant="outlined" class="h-100 overflow-hidden">
@@ -174,6 +175,163 @@
       </v-col>
     </v-row>
 
+    <!-- ═══════ Extra sections: License, Hours, Delivery, Insurance ═══════ -->
+    <div class="mt-2">
+      <div class="d-flex flex-wrap align-center mb-3 mt-4">
+        <v-icon icon="mdi-store-cog-outline" class="mr-2" color="primary" />
+        <h2 class="text-subtitle-1 font-weight-bold">Business Settings</h2>
+        <v-chip size="x-small" variant="tonal" color="primary" class="ml-2">Operating hours, delivery, insurance</v-chip>
+        <v-spacer />
+        <v-btn
+          v-if="canEdit"
+          color="primary" rounded="lg" class="text-none"
+          prepend-icon="mdi-content-save" :loading="savingBusiness" :disabled="!businessDirty" @click="saveBusiness"
+        >
+          Save Business Settings
+        </v-btn>
+      </div>
+
+      <v-row dense>
+        <!-- License & Description -->
+        <v-col cols="12" md="6">
+          <v-card rounded="xl" variant="outlined" class="h-100 overflow-hidden">
+            <div class="section-header">
+              <v-icon icon="mdi-card-account-details-outline" size="20" class="mr-2" />
+              <span class="text-subtitle-2 font-weight-bold">License & Description</span>
+            </div>
+            <div class="pa-5">
+              <v-text-field
+                v-model="biz.license_number" label="License number"
+                :disabled="!canEdit"
+                variant="outlined" density="comfortable" rounded="lg"
+                prepend-inner-icon="mdi-card-account-details" hide-details="auto" class="mb-3"
+              />
+              <v-textarea
+                v-model="biz.description" label="Description" rows="3" auto-grow
+                :disabled="!canEdit" hide-details="auto"
+                variant="outlined" density="comfortable" rounded="lg"
+                prepend-inner-icon="mdi-text-box-outline"
+              />
+            </div>
+          </v-card>
+        </v-col>
+
+        <!-- Delivery & Services -->
+        <v-col cols="12" md="6">
+          <v-card rounded="xl" variant="outlined" class="h-100 overflow-hidden">
+            <div class="section-header">
+              <v-icon icon="mdi-truck-fast-outline" size="20" class="mr-2" />
+              <span class="text-subtitle-2 font-weight-bold">Delivery &amp; Services</span>
+            </div>
+            <div class="pa-5">
+              <v-row dense>
+                <v-col cols="12" sm="6">
+                  <v-text-field
+                    v-model.number="biz.delivery_radius_km" type="number" min="0" step="0.5"
+                    label="Delivery radius (km)"
+                    :disabled="!canEdit"
+                    variant="outlined" density="comfortable" rounded="lg"
+                    prepend-inner-icon="mdi-map-marker-radius" hide-details="auto" class="mb-3"
+                  />
+                </v-col>
+                <v-col cols="12" sm="6">
+                  <v-text-field
+                    v-model.number="biz.delivery_fee" type="number" min="0" step="50"
+                    label="Delivery fee"
+                    :disabled="!canEdit"
+                    variant="outlined" density="comfortable" rounded="lg"
+                    prepend-inner-icon="mdi-cash" hide-details="auto" class="mb-3"
+                  />
+                </v-col>
+              </v-row>
+              <v-combobox
+                v-model="biz.services" label="Services offered" multiple chips closable-chips
+                :disabled="!canEdit"
+                variant="outlined" density="comfortable" rounded="lg"
+                placeholder="e.g. delivery, compounding, vaccinations"
+                hint="Press enter after each" persistent-hint
+                prepend-inner-icon="mdi-format-list-bulleted"
+              />
+            </div>
+          </v-card>
+        </v-col>
+
+        <!-- Operating Hours -->
+        <v-col cols="12">
+          <v-card rounded="xl" variant="outlined" class="overflow-hidden">
+            <div class="section-header">
+              <v-icon icon="mdi-clock-outline" size="20" class="mr-2" />
+              <span class="text-subtitle-2 font-weight-bold">Operating Hours</span>
+            </div>
+            <div class="pa-5">
+              <div class="text-body-2 text-medium-emphasis mb-3">
+                Set the open and close time for each day. Toggle off to mark as closed.
+              </div>
+              <v-row dense>
+                <v-col v-for="day in days" :key="day.key" cols="12" sm="6" md="4" lg="3">
+                  <v-card variant="outlined" rounded="lg" class="pa-3">
+                    <div class="d-flex align-center mb-2">
+                      <v-icon class="mr-2" color="primary" size="18">mdi-calendar-week</v-icon>
+                      <div class="font-weight-medium text-body-2">{{ day.label }}</div>
+                      <v-spacer />
+                      <v-switch
+                        v-model="hours[day.key].open" color="success"
+                        :disabled="!canEdit"
+                        density="compact" hide-details inset
+                      />
+                    </div>
+                    <v-row dense v-if="hours[day.key].open">
+                      <v-col cols="6">
+                        <v-text-field
+                          v-model="hours[day.key].from" type="time" label="Opens"
+                          :disabled="!canEdit"
+                          density="compact" variant="outlined" hide-details
+                        />
+                      </v-col>
+                      <v-col cols="6">
+                        <v-text-field
+                          v-model="hours[day.key].to" type="time" label="Closes"
+                          :disabled="!canEdit"
+                          density="compact" variant="outlined" hide-details
+                        />
+                      </v-col>
+                    </v-row>
+                    <div v-else class="text-caption text-medium-emphasis">Closed</div>
+                  </v-card>
+                </v-col>
+              </v-row>
+            </div>
+          </v-card>
+        </v-col>
+
+        <!-- Insurance -->
+        <v-col cols="12">
+          <v-card rounded="xl" variant="outlined" class="overflow-hidden">
+            <div class="section-header">
+              <v-icon icon="mdi-shield-check-outline" size="20" class="mr-2" />
+              <span class="text-subtitle-2 font-weight-bold">Insurance</span>
+            </div>
+            <div class="pa-5">
+              <v-switch
+                v-model="biz.accepts_insurance" label="Accepts insurance"
+                :disabled="!canEdit"
+                color="success" density="comfortable" inset hide-details class="mb-3"
+              />
+              <v-combobox
+                v-model="biz.insurance_providers" label="Accepted insurance providers"
+                multiple chips closable-chips
+                :disabled="!canEdit || !biz.accepts_insurance"
+                variant="outlined" density="comfortable" rounded="lg"
+                placeholder="e.g. NHIF, Britam, Jubilee"
+                hint="Press enter after each" persistent-hint
+                prepend-inner-icon="mdi-shield-account"
+              />
+            </div>
+          </v-card>
+        </v-col>
+      </v-row>
+    </div>
+
     <MapPicker v-model="mapPickerOpen" :initial="mapPickerInitial" @picked="onMapPicked" />
 
     <v-snackbar v-model="snack.show" :color="snack.color" location="top right" timeout="3000" rounded="lg">
@@ -186,9 +344,11 @@
 import { useAuthStore } from '~/stores/auth'
 import { useGoogleMaps } from '~/composables/useGoogleMaps'
 import { formatDate } from '~/utils/format'
+import { useTenantEndpoints } from '~/composables/useTenantEndpoints'
 
 const auth = useAuthStore()
 const { $api } = useNuxtApp()
+const { isInventory, profile: profileApi } = useTenantEndpoints()
 
 const ADMIN_EDIT_ROLES = new Set([
   'super_admin', 'tenant_admin', 'clinic_admin', 'hospital_admin',
@@ -225,6 +385,46 @@ const snack = reactive({ show: false, color: 'success', text: '' })
 const logoInput = ref(null)
 const logoFile = ref(null)
 const uploading = ref(false)
+
+// ── Business settings (PharmacyDetail model) ───────────────────────────
+const days = [
+  { key: 'mon', label: 'Monday' }, { key: 'tue', label: 'Tuesday' },
+  { key: 'wed', label: 'Wednesday' }, { key: 'thu', label: 'Thursday' },
+  { key: 'fri', label: 'Friday' }, { key: 'sat', label: 'Saturday' },
+  { key: 'sun', label: 'Sunday' },
+]
+function defaultHours() {
+  const h = {}
+  days.forEach(d => { h[d.key] = { open: d.key !== 'sun', from: '08:00', to: '18:00' } })
+  return h
+}
+
+const biz = reactive({
+  id: null, license_number: '', description: '',
+  delivery_radius_km: 0, delivery_fee: 0,
+  accepts_insurance: false, insurance_providers: [], services: [],
+  operating_hours: {},
+})
+const hours = reactive(defaultHours())
+let bizSnapshot = ''
+const savingBusiness = ref(false)
+
+const businessDirty = computed(() => {
+  const op = {}
+  days.forEach(d => { op[d.key] = hours[d.key].open
+    ? { open: true, from: hours[d.key].from, to: hours[d.key].to }
+    : { open: false } })
+  return JSON.stringify({
+    license_number: biz.license_number,
+    description: biz.description,
+    delivery_radius_km: biz.delivery_radius_km,
+    delivery_fee: biz.delivery_fee,
+    accepts_insurance: biz.accepts_insurance,
+    insurance_providers: biz.insurance_providers,
+    services: biz.services,
+    operating_hours: op,
+  }) !== bizSnapshot
+})
 
 const typeMeta = computed(() => TYPES[org.type] || { title: org.type || 'Organization', icon: 'mdi-office-building', color: '#14B8A6' })
 const logoUrl = computed(() => org.logo || null)
@@ -299,7 +499,8 @@ async function load() {
   loading.value = true
   errorMsg.value = ''
   try {
-    const { data } = await $api.get('/tenants/me/')
+    const [tenantRes] = await Promise.all([ $api.get('/tenants/me/') ])
+    const data = tenantRes.data
     Object.keys(org).forEach(k => {
       if (data[k] !== undefined && data[k] !== null) org[k] = data[k]
     })
@@ -308,6 +509,86 @@ async function load() {
     errorMsg.value = e?.response?.data?.detail || 'Failed to load organization profile.'
   } finally {
     loading.value = false
+  }
+  // Load business settings (non-fatal if endpoint missing)
+  await loadBusiness()
+}
+
+async function loadBusiness() {
+  try {
+    const { data } = await $api.get(profileApi.value)
+    const list = data?.results || data || []
+    const p = Array.isArray(list) && list.length ? list[0] : (data && !Array.isArray(data) ? data : null)
+    if (p) {
+      biz.id = p.id || null
+      biz.license_number = p.license_number || ''
+      biz.description = p.description || ''
+      biz.delivery_radius_km = p.delivery_radius_km || 0
+      biz.delivery_fee = p.delivery_fee || 0
+      biz.accepts_insurance = !!p.accepts_insurance
+      biz.insurance_providers = p.insurance_providers || []
+      biz.services = p.services || []
+      const h = p.operating_hours || {}
+      days.forEach(d => {
+        if (h[d.key]) hours[d.key] = { open: !!h[d.key].open, from: h[d.key].from || '08:00', to: h[d.key].to || '18:00' }
+      })
+    }
+  } catch { /* endpoint may not exist for all tenant types */ }
+  takeBizSnapshot()
+}
+
+function takeBizSnapshot() {
+  const op = {}
+  days.forEach(d => { op[d.key] = hours[d.key].open
+    ? { open: true, from: hours[d.key].from, to: hours[d.key].to }
+    : { open: false } })
+  bizSnapshot = JSON.stringify({
+    license_number: biz.license_number,
+    description: biz.description,
+    delivery_radius_km: biz.delivery_radius_km,
+    delivery_fee: biz.delivery_fee,
+    accepts_insurance: biz.accepts_insurance,
+    insurance_providers: biz.insurance_providers,
+    services: biz.services,
+    operating_hours: op,
+  })
+}
+
+async function saveBusiness() {
+  savingBusiness.value = true
+  const op = {}
+  days.forEach(d => { op[d.key] = hours[d.key].open
+    ? { open: true, from: hours[d.key].from, to: hours[d.key].to }
+    : { open: false } })
+  const payload = {
+    name: org.name || biz.license_number || 'Profile',
+    license_number: biz.license_number || '',
+    description: biz.description || '',
+    delivery_radius_km: biz.delivery_radius_km || 0,
+    delivery_fee: biz.delivery_fee || 0,
+    accepts_insurance: !!biz.accepts_insurance,
+    insurance_providers: biz.insurance_providers || [],
+    services: biz.services || [],
+    operating_hours: op,
+  }
+  try {
+    if (biz.id) {
+      const { data } = await $api.patch(`${profileApi.value}${biz.id}/`, payload)
+      Object.assign(biz, data)
+    } else {
+      const { data } = await $api.post(profileApi.value, payload)
+      Object.assign(biz, data)
+    }
+    takeBizSnapshot()
+    snack.color = 'success'
+    snack.text = 'Business settings saved.'
+    snack.show = true
+  } catch (e) {
+    snack.color = 'error'
+    snack.text = e?.response?.data?.detail || 'Failed to save business settings.'
+    snack.show = true
+  } finally {
+    savingBusiness.value = false
   }
 }
 

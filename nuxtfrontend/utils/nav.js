@@ -10,6 +10,7 @@ export function getNavSections(role, tenantType, t = (x) => x) {
       label: 'SUPER ADMIN',
       items: [
         { icon: 'mdi-shield-account', label: 'Overview', path: '/superadmin' },
+        { icon: 'mdi-sitemap', label: 'Organizations', path: '/superadmin/organizations' },
         { icon: 'mdi-domain', label: 'Tenants', path: '/superadmin/tenants' },
         { icon: 'mdi-account-multiple', label: 'All Users', path: '/superadmin/users' },
         {
@@ -187,7 +188,13 @@ export function getNavSections(role, tenantType, t = (x) => x) {
         {
           icon: 'mdi-cart-variant', label: t('nav.purchases'), path: '/pharmacy/purchase-orders',
           children: [
+            { icon: 'mdi-chart-box-outline', label: 'Dashboard', path: '/pharmacy/purchase-orders/dashboard' },
             { icon: 'mdi-cart', label: t('nav.purchaseOrders'), path: '/pharmacy/purchase-orders' },
+            { icon: 'mdi-file-document-multiple', label: 'RFQs', path: '/pharmacy/purchase-orders/rfqs' },
+            { icon: 'mdi-package-check', label: 'Goods Received', path: '/pharmacy/purchase-orders/grns' },
+            { icon: 'mdi-cart-arrow-down', label: 'Reorder Suggestions', path: '/pharmacy/purchase-orders/reorder-suggestions' },
+            { icon: 'mdi-truck', label: t('nav.suppliers'), path: '/pharmacy/suppliers' },
+            { icon: 'mdi-star-circle', label: 'Supplier Evaluations', path: '/pharmacy/evaluations' },
           ]
         },
         {
@@ -217,6 +224,15 @@ export function getNavSections(role, tenantType, t = (x) => x) {
           ]
         },
         {
+          icon: 'mdi-file-document-multiple-outline', label: 'Documents', path: '/pharmacy/documents',
+          children: [
+            { icon: 'mdi-file-document-multiple', label: 'All Documents', path: '/pharmacy/documents' },
+            { icon: 'mdi-star', label: 'Starred', path: '/pharmacy/documents/starred' },
+            { icon: 'mdi-share-variant', label: 'Shared with me', path: '/pharmacy/documents/shared' },
+            { icon: 'mdi-trash-can', label: 'Trash', path: '/pharmacy/documents/trash' },
+          ]
+        },
+        {
           icon: 'mdi-chart-bar', label: t('nav.analytics'), path: '/pharmacy/analytics',
           children: [
             { icon: 'mdi-chart-bar', label: t('nav.overview'), path: '/pharmacy/analytics' },
@@ -238,6 +254,7 @@ export function getNavSections(role, tenantType, t = (x) => x) {
           icon: 'mdi-pill', label: t('nav.medications'), path: '/pharmacy/medications',
           children: [
             { icon: 'mdi-pill', label: t('nav.catalog'), path: '/pharmacy/medications' },
+            { icon: 'mdi-tag-multiple', label: 'Brand Names', path: '/pharmacy/medications/brand-names' },
             { icon: 'mdi-pill-multiple', label: t('nav.drugInteractions'), path: '/pharmacy/medications/interactions' }
           ]
         },
@@ -255,7 +272,12 @@ export function getNavSections(role, tenantType, t = (x) => x) {
             { icon: 'mdi-heart-pulse', label: t('nav.systemHealth'), path: '/pharmacy/system-health' }
           ]
         },
-        { icon: 'mdi-cog', label: t('nav.settings'), path: '/pharmacy/settings' },
+        { icon: 'mdi-office-building', label: 'Organization', path: '/pharmacy/organization/profile',
+          children: [
+            { icon: 'mdi-card-account-details', label: 'Profile', path: '/pharmacy/organization/profile' },
+            { icon: 'mdi-palette', label: 'Branding', path: '/pharmacy/organization/branding' },
+          ]
+        },
         { icon: 'mdi-database-import', label: 'Setup / Seed', path: '/pharmacy/setup' },
         {
           icon: 'mdi-gift', label: 'Referrals', path: '/pharmacy/referral',
@@ -294,12 +316,21 @@ export function getNavSections(role, tenantType, t = (x) => x) {
         ]
       },
       {
+        icon: 'mdi-file-document-multiple-outline', label: 'Documents', path: '/ims/documents',
+        children: [
+          { icon: 'mdi-file-document-multiple', label: 'All Documents', path: '/ims/documents' },
+          { icon: 'mdi-star', label: 'Starred', path: '/ims/documents/starred' },
+          { icon: 'mdi-share-variant', label: 'Shared with me', path: '/ims/documents/shared' },
+          { icon: 'mdi-trash-can', label: 'Trash', path: '/ims/documents/trash' },
+        ]
+      },
+      {
         icon: 'mdi-cart-outline', label: 'Sales', path: '/ims/pos',
         children: [
           { icon: 'mdi-point-of-sale', label: 'POS', path: '/ims/pos' },
           { icon: 'mdi-receipt-text-plus', label: 'Sales Orders', path: '/ims/sales-orders' },
           { icon: 'mdi-history', label: 'Sales History', path: '/ims/pos/history' },
-          { icon: 'mdi-account-multiple', label: 'Customers', path: '/ims/customers' },
+          { icon: 'mdi-account-tie-hat-outline', label: 'Customer CRM', path: '/ims/customers' },
           { icon: 'mdi-account-cash-outline', label: 'Credits', path: '/ims/credit' },
           { icon: 'mdi-tray-arrow-up', label: 'On-Hold Sales', path: '/ims/pos/parked' },
           { icon: 'mdi-truck', label: 'Deliveries', path: '/ims/deliveries' },
@@ -312,13 +343,19 @@ export function getNavSections(role, tenantType, t = (x) => x) {
           { icon: 'mdi-shape', label: 'Categories', path: '/ims/categories' },
           { icon: 'mdi-ruler', label: 'Units of Measure', path: '/ims/units' },
           { icon: 'mdi-pill-multiple', label: 'Medication Catalog', path: '/ims/medications' },
+          { icon: 'mdi-tag-multiple', label: 'Brand Names', path: '/ims/medications/brand-names' },
         ]
       },
       {
         icon: 'mdi-cart-variant', label: 'Procurement', path: '/ims/purchase-orders',
         children: [
+          { icon: 'mdi-chart-box-outline', label: 'Dashboard', path: '/ims/purchase-orders/dashboard' },
           { icon: 'mdi-cart', label: 'Purchase Orders', path: '/ims/purchase-orders' },
+          { icon: 'mdi-file-document-multiple', label: 'RFQs', path: '/ims/purchase-orders/rfqs' },
+          { icon: 'mdi-package-check', label: 'Goods Received', path: '/ims/purchase-orders/grns' },
+          { icon: 'mdi-cart-arrow-down', label: 'Reorder Suggestions', path: '/ims/purchase-orders/reorder-suggestions' },
           { icon: 'mdi-truck', label: 'Suppliers', path: '/ims/suppliers' },
+          { icon: 'mdi-star-circle', label: 'Supplier Evaluations', path: '/ims/evaluations' },
         ]
       },
       {
@@ -343,6 +380,7 @@ export function getNavSections(role, tenantType, t = (x) => x) {
         icon: 'mdi-office-building', label: 'Organization', path: '/ims/organization/profile',
         children: [
           { icon: 'mdi-card-account-details', label: 'Profile', path: '/ims/organization/profile' },
+          { icon: 'mdi-palette', label: 'Branding', path: '/ims/organization/branding' },
           { icon: 'mdi-source-branch', label: 'Branches', path: '/ims/branches' },
         ]
       },
@@ -353,7 +391,6 @@ export function getNavSections(role, tenantType, t = (x) => x) {
           { icon: 'mdi-shield-key', label: 'Roles & Access', path: '/ims/rbac' },
           { icon: 'mdi-history', label: 'Audit Logs', path: '/ims/audit-logs' },
           { icon: 'mdi-heart-pulse', label: 'System Health', path: '/ims/system-health' },
-          { icon: 'mdi-cog', label: 'Settings', path: '/ims/settings' },
           { icon: 'mdi-database-import', label: 'Setup / Seed', path: '/ims/setup' },
         ]
       },

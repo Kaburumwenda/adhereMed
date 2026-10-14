@@ -35,6 +35,17 @@ class Tenant(TenantMixin):
         null=True, blank=True,
         help_text='Access is permitted despite overdue bills until this date '
                   '(superadmin-granted grace / extended suspension).')
+    # ── Branding / custom colours ──
+    brand_primary = models.CharField(
+        max_length=7, blank=True, default='',
+        help_text='Hex colour (e.g. #2f6dff) for the primary brand colour.')
+    brand_secondary = models.CharField(
+        max_length=7, blank=True, default='',
+        help_text='Hex colour (e.g. #143ce1) for the secondary / deep brand colour.')
+    brand_accent = models.CharField(
+        max_length=7, blank=True, default='',
+        help_text='Hex colour (e.g. #37d6ff) for the accent / highlight colour.')
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

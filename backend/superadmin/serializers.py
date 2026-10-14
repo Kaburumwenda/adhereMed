@@ -84,6 +84,34 @@ class UserAdminSerializer(serializers.ModelSerializer):
         read_only_fields = ["date_joined"]
 
 
+class UserAdminCreateSerializer(serializers.ModelSerializer):
+    """Creates a user (with password) from the super admin UI."""
+
+    password = serializers.CharField(write_only=True, required=True, min_length=8)
+
+    class Meta:
+        model = User
+        fields = [
+            "email", "phone", "first_name", "last_name",
+            "role", "tenant", "password", "is_active", "is_staff",
+        ]
+
+    def validate_email(self, value):
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("This email is already in use.")
+        return value
+
+    def validate_role(self, value):
+        if value not in User.Role.values:
+            raise serializers.ValidationError("Invalid role.")
+        return value
+
+    def create(self, validated_data):
+        password = validated_data.pop("password")
+        email = validated_data.pop("email")
+        return User.objects.create_user(email, password=password, **validated_data)
+
+
 class UserAdminUpdateSerializer(serializers.ModelSerializer):
     """Allows updating user info but not password (use the dedicated endpoint)."""
 

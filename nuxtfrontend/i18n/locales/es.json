@@ -1347,7 +1347,9 @@
     "fullscreen": "Pantalla completa",
     "exitFullscreen": "Salir de pantalla completa",
     "theme": "Tema",
-    "refresh": "Actualizar"
+    "refresh": "Actualizar",
+    "collapse": "Contraer",
+    "expand": "Expandir"
   },
   "sidenav": {
     "collapse": "Contraer"

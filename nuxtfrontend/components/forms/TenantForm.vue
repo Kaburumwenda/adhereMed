@@ -120,7 +120,7 @@
               <v-text-field
                 v-model="form.domain"
                 label="Domain *"
-                hint="e.g. city_hospital.adheremed.com"
+                hint="e.g. city_hospital.adheremed.co"
                 persistent-hint
                 :rules="req"
                 variant="outlined"
@@ -128,6 +128,36 @@
                 rounded="lg"
                 prepend-inner-icon="mdi-web"
               />
+            </v-col>
+
+            <!-- Domain field (edit mode) -->
+            <v-col v-if="isEdit" cols="12" sm="6">
+              <v-text-field
+                v-model="form.domain"
+                label="Domain"
+                hint="e.g. city_hospital.adheremed.co"
+                persistent-hint
+                variant="outlined"
+                density="comfortable"
+                rounded="lg"
+                prepend-inner-icon="mdi-web"
+                :class="{ 'text-warning': domainMissing }"
+              >
+                <template v-if="domainMissing" #append-inner>
+                  <v-btn
+                    size="small"
+                    color="warning"
+                    variant="flat"
+                    rounded="lg"
+                    :loading="creatingDomain"
+                    prepend-icon="mdi-auto-fix"
+                    @click="autoCreateDomain"
+                  >Create</v-btn>
+                </template>
+              </v-text-field>
+              <div v-if="domainMissing" class="text-caption text-warning mt-1">
+                <v-icon icon="mdi-alert" size="14" class="mr-1" />No domain set — click Create to auto-generate one from the slug.
+              </div>
             </v-col>
             <v-col cols="12" sm="6">
               <v-text-field
@@ -488,6 +518,7 @@ const form = reactive({
   slug: '',
   type: 'hospital',
   domain: '',
+  domains: [],
   city: '',
   country: 'Kenya',
   address: '',
@@ -596,7 +627,7 @@ function onNameChange(v) {
   if (!slugTouched) {
     const slug = slugify(v)
     form.slug = slug
-    form.domain = slug ? `${slug}.adheremed.com` : ''
+    form.domain = slug ? `${slug}.adheremed.co` : ''
   }
 }
 
@@ -612,9 +643,41 @@ onMounted(async () => {
       Object.keys(form).forEach((k) => {
         if (data[k] !== undefined && data[k] !== null) form[k] = data[k]
       })
+      // Extract primary domain from the domains array
+      if (data.domains && data.domains.length > 0) {
+        const primary = data.domains.find(d => d.is_primary) || data.domains[0]
+        form.domain = primary.domain
+        form.domains = data.domains
+      } else {
+        form.domain = ''
+        form.domains = []
+      }
     }
   }
 })
+
+const domainMissing = computed(() => isEdit.value && (!form.domain || form.domain.trim() === ''))
+const creatingDomain = ref(false)
+
+async function autoCreateDomain() {
+  if (!loadId.value) return
+  creatingDomain.value = true
+  topError.value = ''
+  try {
+    const { $api } = useNuxtApp()
+    const { data } = await $api.post(`/superadmin/tenants/${loadId.value}/create-domain/`, {})
+    form.domain = data.domain
+    form.domains = [{ domain: data.domain, is_primary: true, id: Date.now() }]
+    snack.text = `Domain created: ${data.domain}`
+    snack.color = 'success'
+    snack.show = true
+  } catch (e) {
+    const d = e?.response?.data
+    topError.value = d?.detail || e?.message || 'Failed to create domain'
+  } finally {
+    creatingDomain.value = false
+  }
+}
 
 async function onSubmit() {
   topError.value = ''
@@ -661,7 +724,9 @@ async function onSubmit() {
         admin_last_name: form.admin_last_name.trim()
       }
       if (form.admin_password) payload.admin_password = form.admin_password
-      const result = await r.create(payload)
+      // Tenant creation runs the tenant's full migration set synchronously
+      // (can take 30s+), so use a generous timeout for this request only.
+      const result = await r.create(payload, { timeout: 180000 })
       const tenantName = result?.tenant?.name || form.name.trim()
       const adminEmail = result?.admin_user?.email || form.admin_email.trim()
       const generated = result?.admin_user?.generated_password
@@ -677,6 +742,8 @@ async function onSubmit() {
       const firstVal = firstKey ? data[firstKey] : null
       const msg = Array.isArray(firstVal) ? firstVal[0] : firstVal
       topError.value = data.detail || (firstKey ? `${firstKey}: ${msg}` : 'Save failed.')
+    } else if (e?.code === 'ECONNABORTED' || e?.message?.includes?.('timeout') || e?.message === 'Network Error') {
+      topError.value = 'The server took too long to respond. The tenant schema migrations can take a while. Please check the tenants list — the tenant may have been created successfully.'
     } else {
       topError.value = r.error.value || 'Save failed.'
     }

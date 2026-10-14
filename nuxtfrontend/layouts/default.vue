@@ -7,10 +7,11 @@
     :user-role="auth.role"
     :tenant-type="auth.tenantType"
     :tenant-name="auth.tenantName"
-    @toggle-rail="rail = !rail"
+    :tenant-logo="auth.tenantLogo"
     @logout="onLogout"
   />
-  <TopBar :show-menu="mobile" :page-title="pageTitle" @toggle-drawer="drawer = !drawer" />
+  <TopBar :show-menu="mobile" :page-title="pageTitle" :rail="rail"
+          @toggle-drawer="drawer = !drawer" @toggle-rail="rail = !rail" />
   <v-main>
     <slot />
   </v-main>

@@ -21,6 +21,7 @@ from .serializers import (
     TenantAdminSerializer,
     TenantCreateSerializer,
     UserAdminSerializer,
+    UserAdminCreateSerializer,
     UserAdminUpdateSerializer,
     CoinAllocateSerializer,
     CoinDeductSerializer,
@@ -107,9 +108,34 @@ class TenantListView(generics.ListCreateAPIView):
         return TenantAdminSerializer
 
     def create(self, request, *args, **kwargs):
+        import logging
+        from django.db import connection
+        logger = logging.getLogger(__name__)
+
         serializer = TenantCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+
+        # Check if a tenant with this slug or domain already exists but is
+        # incomplete (e.g. created during a previous failed attempt). If so,
+        # clean it up before creating a new one.
+        existing_tenant = Tenant.objects.filter(slug=data["slug"]).first()
+        if existing_tenant and not Domain.objects.filter(tenant=existing_tenant).exists():
+            logger.warning(
+                "Removing incomplete tenant %s (no domain) before re-creation",
+                existing_tenant.pk,
+            )
+            schema_name = existing_tenant.schema_name
+            try:
+                if schema_name and schema_name != "public":
+                    with connection.cursor() as cursor:
+                        cursor.execute(
+                            f'DROP SCHEMA IF EXISTS "{schema_name}" CASCADE'
+                        )
+                existing_tenant.delete()
+            except Exception:
+                # If ORM delete fails, clean up via raw SQL
+                _cleanup_tenant_public_rows(connection, existing_tenant.pk)
 
         tenant = Tenant.objects.create(
             name=data["name"],
@@ -126,27 +152,53 @@ class TenantListView(generics.ListCreateAPIView):
             longitude=data.get("longitude"),
             place_name=data.get("place_name", ""),
         )
-        Domain.objects.create(
-            domain=data["domain"],
-            tenant=tenant,
-            is_primary=True,
-        )
 
-        admin_password = data.get("admin_password") or _generate_password()
-        admin = User.objects.create_user(
-            email=data["admin_email"],
-            password=admin_password,
-            first_name=data["admin_first_name"],
-            last_name=data["admin_last_name"],
-            role=User.Role.TENANT_ADMIN,
-            tenant=tenant,
-        )
+        # ── Wrap Domain + Admin user creation in a try/except that
+        #    cleans up the tenant on failure so we don't leave orphans. ──
+        try:
+            Domain.objects.create(
+                domain=data["domain"],
+                tenant=tenant,
+                is_primary=True,
+            )
 
-        # Auto-create coin wallet & grant 300 coins for pharmacies
-        from usage_billing.referral_models import ReferralProfile
-        profile, _ = ReferralProfile.objects.get_or_create(tenant=tenant)
-        if tenant.type == "pharmacy":
-            profile.credit(300, "Welcome bonus: 300 Adhere Coins on registration")
+            admin_password = data.get("admin_password") or _generate_password()
+            admin = User.objects.create_user(
+                email=data["admin_email"],
+                password=admin_password,
+                first_name=data["admin_first_name"],
+                last_name=data["admin_last_name"],
+                role=User.Role.TENANT_ADMIN,
+                tenant=tenant,
+            )
+
+            # Auto-create coin wallet & grant 300 coins for pharmacies
+            from usage_billing.referral_models import ReferralProfile
+            profile, _ = ReferralProfile.objects.get_or_create(tenant=tenant)
+            if tenant.type == "pharmacy":
+                profile.credit(300, "Welcome bonus: 300 Adhere Coins on registration")
+
+        except Exception as exc:
+            logger.exception(
+                "Failed to complete tenant setup for %s (pk=%s): %s",
+                data["name"], tenant.pk, exc,
+            )
+            # Rollback: drop the schema and delete the tenant record
+            schema_name = tenant.schema_name
+            try:
+                if schema_name and schema_name != "public":
+                    with connection.cursor() as cursor:
+                        cursor.execute(
+                            f'DROP SCHEMA IF EXISTS "{schema_name}" CASCADE'
+                        )
+                _cleanup_tenant_public_rows(connection, tenant.pk)
+            except Exception:
+                logger.exception("Rollback also failed for tenant pk=%s", tenant.pk)
+
+            return Response(
+                {"detail": f"Tenant creation failed: {exc}. Rolled back."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         return Response(
             {
@@ -162,10 +214,142 @@ class TenantListView(generics.ListCreateAPIView):
         )
 
 
-class TenantDetailView(generics.RetrieveUpdateAPIView):
+def _cleanup_tenant_public_rows(connection, tenant_pk):
+    """Delete all rows that reference a given tenant, across all schemas.
+
+    Uses session_replication_role = replica to temporarily disable FK constraint
+    checks, then NULLs out cross-schema references (instead of deleting other
+    tenants' data), deletes the accounts_user rows and tenant record, and
+    restores FK checks.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute("SET search_path = public")
+
+        # ── Disable FK constraint checks for this session ──
+        # This allows us to delete/UPDATE without triggering cascading FK errors
+        # from the deep dependency chains in tenant schemas.
+        cursor.execute("SET session_replication_role = replica")
+
+        # Get user IDs to delete
+        cursor.execute("SELECT id FROM accounts_user WHERE tenant_id = %s", [tenant_pk])
+        user_ids = [r[0] for r in cursor.fetchall()]
+
+        if user_ids:
+            user_id_list = ",".join(str(u) for u in user_ids)
+
+            # 1. Dynamically find ALL FKs pointing to accounts_user(id)
+            #    and NULL out the references (don't delete other tenants' rows).
+            cursor.execute("""
+                SELECT
+                    nsp.nspname  AS schema_name,
+                    cls.relname   AS table_name,
+                    att.attname   AS col_name
+                FROM pg_constraint con
+                JOIN pg_class cls       ON con.conrelid   = cls.oid
+                JOIN pg_namespace nsp     ON cls.relnamespace = nsp.oid
+                JOIN pg_class ref_cls   ON con.confrelid  = ref_cls.oid
+                JOIN pg_namespace ref_nsp ON ref_cls.relnamespace = ref_nsp.oid
+                JOIN pg_attribute att    ON att.attrelid = cls.oid
+                                        AND att.attnum   = con.conkey[1]
+                WHERE ref_cls.relname  = 'accounts_user'
+                  AND ref_nsp.nspname  = 'public'
+                ORDER BY nsp.nspname, cls.relname
+            """)
+            user_fks = cursor.fetchall()
+
+            for schema, table, col in user_fks:
+                try:
+                    cursor.execute(
+                        f'UPDATE "{schema}"."{table}" '
+                        f'SET "{col}" = NULL '
+                        f'WHERE "{col}" IN ({user_id_list})'
+                    )
+                except Exception:
+                    pass
+
+            # 2. Delete accounts_user rows for this tenant
+            cursor.execute(
+                "DELETE FROM accounts_user WHERE tenant_id = %s", [tenant_pk]
+            )
+
+        # 3. Dynamically find ALL FKs pointing to tenants_tenant(id)
+        #    and NULL out / delete the references.
+        cursor.execute("""
+            SELECT
+                nsp.nspname  AS schema_name,
+                cls.relname   AS table_name,
+                att.attname   AS col_name
+            FROM pg_constraint con
+            JOIN pg_class cls       ON con.conrelid   = cls.oid
+            JOIN pg_namespace nsp     ON cls.relnamespace = nsp.oid
+            JOIN pg_class ref_cls   ON con.confrelid  = ref_cls.oid
+            JOIN pg_namespace ref_nsp ON ref_cls.relnamespace = ref_nsp.oid
+            JOIN pg_attribute att    ON att.attrelid = cls.oid
+                                    AND att.attnum   = con.conkey[1]
+            WHERE ref_cls.relname  = 'tenant'
+              AND ref_nsp.nspname  = 'public'
+            ORDER BY nsp.nspname, cls.relname
+        """)
+        tenant_fks = cursor.fetchall()
+
+        for schema, table, col in tenant_fks:
+            try:
+                cursor.execute(
+                    f'DELETE FROM "{schema}"."{table}" '
+                    f'WHERE "{col}" = %s', [tenant_pk]
+                )
+            except Exception:
+                pass
+
+        # 4. Finally delete the tenant record
+        cursor.execute("DELETE FROM tenants_tenant WHERE id = %s", [tenant_pk])
+
+        # ── Re-enable FK constraint checks ──
+        cursor.execute("SET session_replication_role = origin")
+
+
+class TenantDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsSuperAdmin]
     serializer_class = TenantAdminSerializer
     queryset = Tenant.objects.exclude(schema_name="public")
+
+    def perform_destroy(self, instance):
+        """Drop the tenant schema and delete the tenant record via raw SQL.
+        Bypasses Django ORM cascade which tries to query tenant-only tables."""
+        from django.db import connection
+        schema_name = instance.schema_name
+        pk = instance.pk
+        # 1. Drop the tenant schema first (removes all tenant data)
+        if schema_name and schema_name != "public":
+            with connection.cursor() as cursor:
+                cursor.execute(f"DROP SCHEMA IF EXISTS \"{schema_name}\" CASCADE")
+        # 2. Delete all public-schema rows referencing this tenant (correct FK order)
+        _cleanup_tenant_public_rows(connection, pk)
+        connection.set_schema_to_public()
+
+
+@api_view(["DELETE"])
+@permission_classes([IsSuperAdmin])
+def delete_tenant(request, pk):
+    """Delete a tenant: drop its schema and remove the tenant record."""
+    try:
+        tenant = Tenant.objects.exclude(schema_name="public").get(pk=pk)
+    except Tenant.DoesNotExist:
+        return Response({"detail": "Tenant not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    from django.db import connection
+    schema_name = tenant.schema_name
+    tenant_name = tenant.name
+    tenant_pk = tenant.pk
+    # 1. Drop the tenant schema first (removes all tenant data via CASCADE)
+    if schema_name and schema_name != "public":
+        with connection.cursor() as cursor:
+            cursor.execute(f"DROP SCHEMA IF EXISTS \"{schema_name}\" CASCADE")
+    # 2. Delete all public-schema rows referencing this tenant (correct FK order)
+    _cleanup_tenant_public_rows(connection, tenant_pk)
+    # Reset connection to public schema so audit middleware can log
+    connection.set_schema_to_public()
+    return Response({"detail": f"Tenant '{tenant_name}' deleted successfully."}, status=status.HTTP_200_OK)
 
 
 @api_view(["POST"])
@@ -178,6 +362,38 @@ def toggle_tenant_active(request, pk):
     tenant.is_active = not tenant.is_active
     tenant.save(update_fields=["is_active"])
     return Response({"is_active": tenant.is_active, "name": tenant.name})
+
+
+@api_view(["POST"])
+@permission_classes([IsSuperAdmin])
+def create_tenant_domain(request, pk):
+    """Create a domain for a tenant that has none (fixes orphaned tenants)."""
+    try:
+        tenant = Tenant.objects.exclude(schema_name="public").get(pk=pk)
+    except Tenant.DoesNotExist:
+        return Response({"detail": "Tenant not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    domain_value = request.data.get("domain", "").strip()
+    if not domain_value:
+        # Auto-generate from slug
+        domain_value = f"{tenant.slug}.adheremed.co"
+
+    # Check uniqueness
+    if Domain.objects.filter(domain=domain_value).exists():
+        return Response(
+            {"detail": f"Domain '{domain_value}' is already in use."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    domain = Domain.objects.create(
+        domain=domain_value,
+        tenant=tenant,
+        is_primary=True,
+    )
+    return Response(
+        {"domain": domain.domain, "is_primary": True, "tenant_id": tenant.pk},
+        status=status.HTTP_201_CREATED,
+    )
 
 
 @api_view(["GET"])
@@ -205,9 +421,13 @@ def tenant_stats(request, pk):
 
 # ── User Management ─────────────────────────────────────────────────────────────
 
-class UserListView(generics.ListAPIView):
+class UserListView(generics.ListCreateAPIView):
     permission_classes = [IsSuperAdmin]
-    serializer_class = UserAdminSerializer
+
+    def get_serializer_class(self):
+        if self.request.method == "POST":
+            return UserAdminCreateSerializer
+        return UserAdminSerializer
 
     def get_queryset(self):
         qs = User.objects.select_related("tenant").order_by("-date_joined")

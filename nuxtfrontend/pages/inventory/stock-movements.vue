@@ -8,7 +8,10 @@
         </v-avatar>
         <div>
           <h1 class="text-h5 font-weight-bold mb-1">Stock Movements</h1>
-          <div class="text-body-2 text-medium-emphasis">Track every stock inflow, outflow, and transfer with full audit trail</div>
+          <div class="text-body-2 text-medium-emphasis">
+            Track every stock inflow, outflow, and transfer with full audit trail
+            <span v-if="branchStore.currentBranch"> · {{ branchStore.currentBranch.name }}</span>
+          </div>
         </div>
       </div>
       <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
@@ -447,11 +450,13 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useNuxtApp } from '#app'
 import { formatMoney, formatStamp } from '~/utils/format'
+import { useBranchStore } from '~/stores/branch'
 import SparkArea from '~/components/SparkArea.vue'
 import BarChart from '~/components/BarChart.vue'
 import DonutRing from '~/components/DonutRing.vue'
 
 const { $api } = useNuxtApp()
+const branchStore = useBranchStore()
 
 const loading = ref(false)
 const smData = ref(null)
@@ -750,17 +755,22 @@ async function load() {
     const { start, end } = resolveRange()
     const params = { date_from: start, date_to: end }
     if (itemFilter.value) params.stock_id = itemFilter.value
+    if (branchStore.currentBranchId) params.branch_id = branchStore.currentBranchId
+    const stockParams = { page_size: 1000 }
+    if (branchStore.currentBranchId) stockParams.branch = branchStore.currentBranchId
+    const transferParams = { page_size: 500 }
+    if (branchStore.currentBranchId) transferParams.branch = branchStore.currentBranchId
     const [report, stocks, transfers] = await Promise.all([
       $api.get('/inventory/stock-movements/', { params }).then(r => r.data),
       // item picker + per-item names (loaded once)
       stockItems.value.length
         ? Promise.resolve(null)
-        : $api.get('/inventory/stocks/', { params: { page_size: 1000 } })
+        : $api.get('/inventory/stocks/', { params: stockParams })
             .then(r => { stockItems.value = r.data?.results || r.data || [] }),
       // transfers list for the aggregate tab
       transfersData.value.length
         ? Promise.resolve(null)
-        : $api.get('/inventory/transfers/', { params: { page_size: 500 } })
+        : $api.get('/inventory/transfers/', { params: transferParams })
             .then(r => { transfersData.value = r.data?.results || r.data || [] }),
     ])
     smData.value = report
@@ -778,11 +788,13 @@ async function exportPdf() {
   pdfLoading.value = true
   try {
     const { start, end } = resolveRange()
-    const { data: blob } = await $api.get('/inventory/stock-movements/', {
-      params: {
+    const pdfParams = {
         date_from: start, date_to: end, fmt: 'pdf',
         ...(itemFilter.value ? { stock_id: itemFilter.value } : {}),
-      },
+    }
+    if (branchStore.currentBranchId) pdfParams.branch_id = branchStore.currentBranchId
+    const { data: blob } = await $api.get('/inventory/stock-movements/', {
+      params: pdfParams,
       responseType: 'blob',
     })
     const url = URL.createObjectURL(blob)
@@ -833,6 +845,13 @@ function downloadCsv(name, headers, rows) {
 }
 
 onMounted(() => load())
+
+watch(() => branchStore.currentBranchId, () => {
+  // Reset cached data so stocks/transfers reload for the new branch
+  stockItems.value = []
+  transfersData.value = []
+  load()
+})
 </script>
 
 <style scoped>

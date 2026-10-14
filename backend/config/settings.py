@@ -34,6 +34,7 @@ SHARED_APPS = [
     'doctors',
     'messaging',
     'superadmin',
+    'organizations',
     'clinical_catalog',
     'usage_billing',
     # inventory tenant API namespace (URL-only app, no models)
@@ -69,6 +70,8 @@ TENANT_APPS = [
     'expenses',
     'insurance',
     'reports',
+    # Document Management System
+    'documents',
     # Generic per-tenant audit trail (IAM & Security)
     'audit',
     # homecare tenant app

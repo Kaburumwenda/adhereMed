@@ -37,6 +37,9 @@
     <v-snackbar v-model="snack.show" :color="snack.color" location="top right" timeout="3000">
       {{ snack.text }}
     </v-snackbar>
+
+    <!-- Extra slot for dialogs / overlays outside the form card -->
+    <slot name="below" />
   </v-container>
 </template>
 
@@ -96,8 +99,18 @@ async function onSubmit() {
     emit('saved', result)
   } catch (e) {
     const data = e?.response?.data
-    if (data && typeof data === 'object' && !data.detail) errors.value = data
-    topError.value = props.resource.error.value || t('common.saveFailed')
+    if (data && typeof data === 'object') {
+      // Field-level errors from DRF 400
+      errors.value = data
+      // Build a readable top error from the field errors
+      const parts = Object.entries(data).map(([k, v]) => {
+        const val = Array.isArray(v) ? v.join(', ') : String(v)
+        return `${k}: ${val}`
+      })
+      topError.value = parts.join(' | ')
+    } else {
+      topError.value = props.resource.error.value || t('common.saveFailed')
+    }
   }
 }
 </script>

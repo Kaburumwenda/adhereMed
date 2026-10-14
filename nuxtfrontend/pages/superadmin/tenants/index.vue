@@ -162,6 +162,14 @@
               :loading="toggling === item.id"
               @click.stop="toggleActive(item)"
             />
+            <v-btn
+              icon="mdi-delete-outline"
+              variant="text"
+              size="small"
+              color="error"
+              title="Delete"
+              @click.stop="openDeleteDialog(item)"
+            />
           </div>
         </template>
 
@@ -235,6 +243,64 @@
     <v-snackbar v-model="snack.show" :color="snack.color" location="top right" timeout="3000">
       {{ snack.text }}
     </v-snackbar>
+
+    <!-- Delete confirmation dialog -->
+    <v-dialog v-model="deleteDialog.show" max-width="540" persistent>
+      <v-card rounded="lg">
+        <v-card-item>
+          <template #prepend>
+            <v-avatar color="error" variant="tonal" size="44">
+              <v-icon>mdi-delete-alert</v-icon>
+            </v-avatar>
+          </template>
+          <v-card-title class="font-weight-bold">Delete Tenant</v-card-title>
+          <template #append>
+            <v-btn icon="mdi-close" variant="text" size="small" @click="deleteDialog.show = false" />
+          </template>
+        </v-card-item>
+
+        <v-card-text>
+          <v-alert type="error" variant="tonal" rounded="lg" class="mb-4" density="comfortable">
+            This will <strong>permanently delete</strong> the tenant
+            <strong>"{{ deleteDialog.tenant?.name }}"</strong> and <strong>drop its entire database schema</strong>.
+            All users, patients, prescriptions, inventory, and all other data in this tenant will be lost forever.
+          </v-alert>
+
+          <div class="text-body-2 mb-2">
+            To confirm, type the tenant name
+            <strong>"{{ deleteDialog.tenant?.name }}"</strong> below:
+          </div>
+          <v-text-field
+            v-model="deleteDialog.confirmName"
+            placeholder="Type tenant name to confirm"
+            density="compact"
+            variant="outlined"
+            hide-details
+            class="mb-3"
+            :disabled="!!deleting"
+          />
+        </v-card-text>
+
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" rounded="lg" class="text-none" :disabled="!!deleting" @click="deleteDialog.show = false">
+            Cancel
+          </v-btn>
+          <v-btn
+            color="error"
+            variant="flat"
+            rounded="lg"
+            class="text-none"
+            prepend-icon="mdi-delete"
+            :loading="!!deleting"
+            :disabled="!canDelete"
+            @click="commitDelete"
+          >
+            Delete Tenant
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-container>
 </template>
 
@@ -252,7 +318,7 @@ const headers = [
   { title: 'Users', key: 'user_count', align: 'center' },
   { title: 'Status', key: 'is_active' },
   { title: 'Created', key: 'created_at' },
-  { title: '', key: 'actions', sortable: false, align: 'end', width: 160 }
+  { title: '', key: 'actions', sortable: false, align: 'end', width: 200 }
 ]
 
 const typeOptions = [
@@ -271,7 +337,12 @@ const statusOptions = [
 const typeFilter = ref(null)
 const statusFilter = ref(null)
 const toggling = ref(null)
-
+const deleting = ref(null)
+const deleteDialog = reactive({
+  show: false,
+  tenant: null,
+  confirmName: '',
+})
 const snack = reactive({ show: false, color: 'success', text: '' })
 const statsDialog = reactive({ show: false, tenant: null, loading: false, error: '', data: null })
 
@@ -367,6 +438,40 @@ async function openStats(tenant) {
     statsDialog.error = e?.response?.data?.detail || 'Failed to load tenant stats.'
   } finally {
     statsDialog.loading = false
+  }
+}
+
+function openDeleteDialog(item) {
+  deleteDialog.tenant = item
+  deleteDialog.confirmName = ''
+  deleteDialog.show = true
+}
+
+const canDelete = computed(() => {
+  return (
+    deleteDialog.tenant &&
+    deleteDialog.confirmName &&
+    deleteDialog.confirmName.trim().toLowerCase() ===
+      String(deleteDialog.tenant.name).trim().toLowerCase()
+  )
+})
+
+async function commitDelete() {
+  if (!canDelete.value) return
+  deleting.value = deleteDialog.tenant.id
+  try {
+    await $api.delete(`/superadmin/tenants/${deleteDialog.tenant.id}/delete/`)
+    snack.text = `Tenant '${deleteDialog.tenant.name}' deleted successfully.`
+    snack.color = 'success'
+    snack.show = true
+    deleteDialog.show = false
+    await reload()
+  } catch (e) {
+    snack.text = e?.response?.data?.detail || 'Failed to delete tenant.'
+    snack.color = 'error'
+    snack.show = true
+  } finally {
+    deleting.value = null
   }
 }
 

@@ -11,7 +11,7 @@ class CustomerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customer
         fields = [
-            'id', 'name', 'phone', 'email', 'address', 'notes',
+            'id', 'name', 'phone', 'email', 'branch', 'address', 'notes',
             'total_purchases', 'visit_count',
             'loyalty_points', 'loyalty_tier', 'loyalty_joined_at',
             'is_active',
@@ -264,6 +264,7 @@ class ParkedSaleSerializer(serializers.ModelSerializer):
     cashier_name = serializers.CharField(source='cashier.full_name', read_only=True)
     item_count = serializers.IntegerField(read_only=True)
     total = serializers.FloatField(read_only=True)
+    expires_at = serializers.SerializerMethodField()
 
     class Meta:
         model = ParkedSale
@@ -271,10 +272,16 @@ class ParkedSaleSerializer(serializers.ModelSerializer):
             'id', 'park_number', 'customer_name', 'customer_phone',
             'payment_method', 'discount', 'items', 'notes',
             'cashier', 'cashier_name', 'branch',
-            'item_count', 'total',
+            'item_count', 'total', 'expires_at',
             'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'park_number', 'cashier', 'cashier_name', 'created_at', 'updated_at']
+
+    def get_expires_at(self, obj):
+        """Return the ISO timestamp when this parked sale expires (48h after creation)."""
+        from datetime import timedelta
+        from django.utils import timezone
+        return (obj.created_at + timedelta(hours=48)).isoformat()
 
     def create(self, validated_data):
         import uuid

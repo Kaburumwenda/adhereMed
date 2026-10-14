@@ -1,6 +1,6 @@
 ﻿<template>
   <v-container fluid class="pa-4 pa-md-6 po-list-shell">
-    <PageHeader title="Purchase Orders" icon="mdi-cart" subtitle="Track procurement, deliveries and supplier spend">
+    <PageHeader title="Purchase Orders" icon="mdi-cart" :subtitle="pageSubtitle">
       <template #actions>
         <v-btn variant="tonal" rounded="lg" class="text-none" prepend-icon="mdi-refresh" @click="refresh" :loading="loading">Refresh</v-btn>
         <v-btn variant="tonal" color="teal" rounded="lg" class="text-none" prepend-icon="mdi-file-chart-outline" :loading="exporting === 'report'" @click="downloadReport">Report (PDF)</v-btn>
@@ -351,6 +351,12 @@ const branchFilterItems = computed(() => {
 const items = computed(() => r.items.value)
 const loading = computed(() => r.loading.value)
 
+const pageSubtitle = computed(() => {
+  const base = 'Track procurement, deliveries and supplier spend'
+  const bn = branchFilterItems.value.find(b => b.id === branchFilter.value)?.name
+  return bn && bn !== 'All Branches' ? `${base} · ${bn}` : base
+})
+
 const search = ref('')
 const statusFilter = ref('all')
 const supplierFilter = ref(null)
@@ -535,6 +541,14 @@ watch(datePreset, () => refresh())
 watch(dateFrom, () => { if (datePreset.value === 'custom') refresh() })
 watch(dateTo, () => { if (datePreset.value === 'custom') refresh() })
 
+watch(() => branchStore.currentBranchId, (newId) => {
+  if (isBranchLocked.value) {
+    branchFilter.value = newId
+  } else {
+    branchFilter.value = newId || null
+  }
+})
+
 const exporting = ref('')
 
 const invoicingId = ref(null)
@@ -615,6 +629,8 @@ async function exportOrders(fmt) {
 
 onMounted(() => {
   if (isBranchLocked.value && branchStore.currentBranchId) {
+    branchFilter.value = branchStore.currentBranchId
+  } else if (!isBranchLocked.value && branchStore.currentBranchId) {
     branchFilter.value = branchStore.currentBranchId
   }
   refresh()

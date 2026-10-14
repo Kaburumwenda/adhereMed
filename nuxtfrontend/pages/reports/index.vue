@@ -1,6 +1,6 @@
 <template>
-  <v-container fluid class="pa-3 pa-md-5">
-    <!-- Header -->
+  <v-container fluid class="pa-3 pa-md-5 d-flex align-center justify-center" style="min-height: 60vh">
+    <!--
     <div class="d-flex flex-wrap align-center justify-space-between mb-4">
       <div>
         <h1 class="text-h5 text-md-h4 font-weight-bold mb-1">{{ $t('reports.title') }}</h1>
@@ -23,8 +23,8 @@
         />
       </div>
     </div>
-
-    <!-- Custom range dialog -->
+    -->
+    <!--
     <v-dialog v-model="customDialog" max-width="420">
       <v-card rounded="lg">
         <v-card-title class="text-h6">Custom date range</v-card-title>
@@ -39,8 +39,8 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
-
-    <!-- Report catalog -->
+    -->
+    <!--
     <v-row dense>
       <v-col v-for="r in reports" :key="r.key" cols="12" sm="6" md="4">
         <v-card
@@ -66,6 +66,26 @@
         </v-card>
       </v-col>
     </v-row>
+    -->
+
+    <div class="text-center">
+      <v-icon size="80" color="primary" class="mb-4">mdi-chart-box-outline</v-icon>
+      <h1 class="text-h4 font-weight-bold mb-2">Reports</h1>
+      <p class="text-body-1 text-medium-emphasis mb-6" style="max-width: 420px; margin-inline: auto">
+        The Reports module is currently under development. Please check back soon for a comprehensive reporting suite.
+      </p>
+      <v-chip color="warning" variant="tonal" size="large" prepend-icon="mdi-hammer-wrench">
+        Under Development
+      </v-chip>
+    </div>
+
+    <v-snackbar v-model="snackbar" :timeout="4000" color="info" location="top right">
+      <v-icon class="mr-2">mdi-information-outline</v-icon>
+      The Reports feature is under development.
+      <template #actions>
+        <v-btn variant="text" @click="snackbar = false">Dismiss</v-btn>
+      </template>
+    </v-snackbar>
   </v-container>
 </template>
 
@@ -73,7 +93,7 @@
 import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { REPORT_CATALOG, RANGE_OPTIONS, resolveRange, startOfDay, addDays } from '~/utils/reportsCatalog'
 
 const router = useRouter()
@@ -86,6 +106,12 @@ const customDialog = ref(false)
 const customStart = ref('')
 const customEnd = ref('')
 const customRange = ref(null)
+
+const snackbar = ref(true)
+
+onMounted(() => {
+  snackbar.value = true
+})
 
 const activeRange = computed(() => resolveRange(rangeKey.value, customRange.value))
 const rangeLabel = computed(() => activeRange.value.label)

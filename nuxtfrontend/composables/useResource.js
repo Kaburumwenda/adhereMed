@@ -51,11 +51,11 @@ export function useResource(endpoint) {
     }
   }
 
-  async function create(payload) {
+  async function create(payload, opts = {}) {
     saving.value = true
     error.value = null
     try {
-      const { data } = await $api.post(endpoint, payload)
+      const { data } = await $api.post(endpoint, payload, opts)
       return data
     } catch (e) {
       error.value = _msg(e)
@@ -95,9 +95,18 @@ export function useResource(endpoint) {
   }
 
   function _msg(e) {
-    return e?.response?.data?.detail
-      || e?.response?.data?.message
-      || (typeof e?.response?.data === 'string' ? e.response.data : null)
+    const data = e?.response?.data
+    if (data && typeof data === 'object' && !data.detail) {
+      // DRF 400 field-level errors — flatten to readable string
+      const parts = Object.entries(data).map(([k, v]) => {
+        const val = Array.isArray(v) ? v.join(', ') : String(v)
+        return `${k}: ${val}`
+      })
+      return parts.join(' | ')
+    }
+    return data?.detail
+      || data?.message
+      || (typeof data === 'string' ? data : null)
       || e?.message
       || 'Request failed.'
   }

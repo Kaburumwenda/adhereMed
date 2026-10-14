@@ -44,20 +44,28 @@ export const useAuthStore = defineStore('auth', {
     user: null,
     loading: false,
     initialized: false,
-    error: null
+    error: null,
+    // When an org admin switches into a linked tenant, this holds the
+    // override info { name, type, slug, schema_name } so the frontend knows
+    // which tenant context is active.
+    activeTenantOverride: null,
   }),
 
   getters: {
     isLoggedIn: (s) => !!s.user,
     role: (s) => s.user?.role || '',
-    tenantType: (s) => s.user?.tenant_type || null,
-    tenantSchema: (s) => s.user?.tenant_schema || null,
-    tenantName: (s) => s.user?.tenant_name || '',
+    tenantType: (s) => s.activeTenantOverride?.type || s.user?.tenant_type || null,
+    tenantSchema: (s) => s.activeTenantOverride?.schema_name || s.user?.tenant_schema || null,
+    tenantName: (s) => s.activeTenantOverride?.name || s.user?.tenant_name || '',
+    tenantLogo: (s) => s.user?.tenant_logo || null,
     isTenantAdmin: (s) => !!s.user?.is_tenant_admin,
     billing: (s) => s.user?.billing || null,
     billingLocked: (s) => !!s.user?.billing?.locked,
     hasOverdue: (s) => !!s.user?.billing?.has_overdue,
     overdueTotal: (s) => s.user?.billing?.total_overdue || '0',
+    organizationId: (s) => s.user?.organization_id || null,
+    organizationName: (s) => s.user?.organization_name || null,
+    isOrgAdmin: (s) => !!s.user?.is_org_admin && !!s.user?.organization_id,
     fullName: (s) => {
       if (!s.user) return ''
       return `${s.user.first_name || ''} ${s.user.last_name || ''}`.trim()
@@ -83,14 +91,16 @@ export const useAuthStore = defineStore('auth', {
     _persistUser(user) {
       writeJSON(KEYS.user, user)
       this.user = user
-      if (user?.tenant_schema) {
-        setItem(KEYS.tenantSchema, user.tenant_schema)
+      const schema = this.activeTenantOverride?.schema_name || user?.tenant_schema
+      if (schema) {
+        setItem(KEYS.tenantSchema, schema)
       }
     },
 
     async restore() {
       if (this.initialized) return
       this.initialized = true
+      this._restoreOverride()
       const token = typeof window !== 'undefined'
         ? localStorage.getItem(KEYS.accessToken) : null
       if (!token) return
@@ -120,6 +130,11 @@ export const useAuthStore = defineStore('auth', {
     async login(email, password) {
       this.loading = true
       this.error = null
+      // Clear any stale tenant override from a previous session
+      this.activeTenantOverride = null
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('org_tenant_override')
+      }
       try {
         const { data } = await this._api().post('/auth/login/', { email, password })
         this._setTokens(data.tokens)
@@ -177,6 +192,10 @@ export const useAuthStore = defineStore('auth', {
         this._clearTokens()
         setItem(KEYS.tenantSchema, null)
         this.user = null
+        this.activeTenantOverride = null
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('org_tenant_override')
+        }
       }
     },
 
@@ -186,6 +205,47 @@ export const useAuthStore = defineStore('auth', {
 
     async resetPassword({ uid, token, password }) {
       await this._api().post('/auth/password/reset/', { uid, token, password })
+    },
+
+    // ── Organization Command Center: tenant switching ──
+
+    // Restore any saved override from sessionStorage on app boot.
+    _restoreOverride() {
+      if (typeof window === 'undefined') return
+      try {
+        const raw = sessionStorage.getItem('org_tenant_override')
+        if (raw) this.activeTenantOverride = JSON.parse(raw)
+      } catch { /* ignore */ }
+    },
+
+    async switchTenant(tenantId) {
+      const { data } = await this._api().post(
+        '/organizations/switch-tenant/', { tenant_id: tenantId })
+      // data = { id, name, type, slug, schema_name }
+      this.activeTenantOverride = data
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('org_tenant_override', JSON.stringify(data))
+        setItem(KEYS.tenantSchema, data.schema_name)
+      }
+      return data
+    },
+
+    async switchBack() {
+      try {
+        const { data } = await this._api().post('/organizations/switch-back/')
+        // data = { schema_name?, name?, type? }
+        if (data.schema_name) {
+          setItem(KEYS.tenantSchema, data.schema_name)
+        } else {
+          // No home tenant — reset to user's own (or clear)
+          setItem(KEYS.tenantSchema,
+            this.user?.tenant_schema || null)
+        }
+      } catch { /* ignore */ }
+      this.activeTenantOverride = null
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('org_tenant_override')
+      }
     }
   }
 })

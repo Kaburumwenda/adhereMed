@@ -183,10 +183,20 @@ export default defineNuxtConfig({
         ['pharmacy-inventory-stocks-id-edit', '/pharmacy/inventory/stocks/:id()/edit',    'inventory/stocks/[id]/edit.vue'],
         ['pharmacy-inventory-cats-new',       '/pharmacy/inventory/categories/new',       'inventory/categories/new.vue'],
         ['pharmacy-inventory-cats-id-edit',   '/pharmacy/inventory/categories/:id()/edit','inventory/categories/[id]/edit.vue'],
+        ['pharmacy-inventory-classifications-new',     '/pharmacy/inventory/classifications/new',     'inventory/classifications/new.vue'],
+        ['pharmacy-inventory-classifications-id-edit', '/pharmacy/inventory/classifications/:id()/edit','inventory/classifications/[id]/edit.vue'],
         ['pharmacy-inventory-units-new',      '/pharmacy/inventory/units/new',            'inventory/units/new.vue'],
         ['pharmacy-inventory-units-id-edit',  '/pharmacy/inventory/units/:id()/edit',     'inventory/units/[id]/edit.vue'],
         ['pharmacy-inventory-adj-new',        '/pharmacy/inventory/adjustments/new',      'inventory/adjustments/new.vue'],
         ['pharmacy-inventory-adj-id-edit',    '/pharmacy/inventory/adjustments/:id()/edit','inventory/adjustments/[id]/edit.vue'],
+        // Document Management System
+        ['pharmacy-documents',                '/pharmacy/documents',                      'documents/index.vue'],
+        ['pharmacy-documents-new',            '/pharmacy/documents/new',                  'documents/new.vue'],
+        ['pharmacy-documents-id',             '/pharmacy/documents/:id()',                'documents/[id]/index.vue'],
+        ['pharmacy-documents-id-edit',        '/pharmacy/documents/:id()/edit',           'documents/[id]/edit.vue'],
+        ['pharmacy-documents-trash',          '/pharmacy/documents/trash',                'documents/trash.vue'],
+        ['pharmacy-documents-shared',         '/pharmacy/documents/shared',               'documents/shared.vue'],
+        ['pharmacy-documents-starred',        '/pharmacy/documents/starred',              'documents/starred.vue'],
         // Categories / Units / Adjustments (top-level shortcuts)
         ['pharmacy-categories',               '/pharmacy/categories',                     'categories/index.vue'],
         ['pharmacy-units',                    '/pharmacy/units',                          'units/index.vue'],
@@ -220,6 +230,13 @@ export default defineNuxtConfig({
         ['pharmacy-purchase-orders-new',      '/pharmacy/purchase-orders/new',            'purchase-orders/new.vue'],
         ['pharmacy-purchase-orders-id',       '/pharmacy/purchase-orders/:id()',          'purchase-orders/[id]/index.vue'],
         ['pharmacy-purchase-orders-id-edit',           '/pharmacy/purchase-orders/:id()/edit',  'purchase-orders/[id]/edit.vue'],
+        ['pharmacy-po-dashboard',          '/pharmacy/purchase-orders/dashboard',      'purchase-orders/dashboard.vue'],
+        ['pharmacy-rfqs',                   '/pharmacy/purchase-orders/rfqs',          'purchase-orders/rfqs/index.vue'],
+        ['pharmacy-rfqs-new',               '/pharmacy/purchase-orders/rfqs/new',       'purchase-orders/rfqs/new.vue'],
+        ['pharmacy-rfqs-id',                '/pharmacy/purchase-orders/rfqs/:id()',     'purchase-orders/rfqs/[id].vue'],
+        ['pharmacy-evaluations',            '/pharmacy/evaluations',                     'purchase-orders/evaluations.vue'],
+        ['pharmacy-reorder-suggestions',    '/pharmacy/purchase-orders/reorder-suggestions', 'purchase-orders/reorder-suggestions.vue'],
+        ['pharmacy-grns',                   '/pharmacy/purchase-orders/grns',           'purchase-orders/grns.vue'],
         // Sales Orders
         ['pharmacy-sales-orders',                      '/pharmacy/sales-orders',                   'sales-orders/index.vue'],
         ['pharmacy-sales-orders-new',                  '/pharmacy/sales-orders/new',               'sales-orders/new.vue'],
@@ -236,11 +253,15 @@ export default defineNuxtConfig({
         ['pharmacy-insurance-providers',      '/pharmacy/insurance/providers',            'insurance/providers.vue'],
         // Medications
         ['pharmacy-medications',              '/pharmacy/medications',                    'medications/index.vue'],
+        ['pharmacy-medications-bulk',          '/pharmacy/medications/bulk',                'medications/bulk.vue'],
+        ['pharmacy-medications-excel',         '/pharmacy/medications/excel',                'medications/excel.vue'],
+        ['pharmacy-medications-brands',        '/pharmacy/medications/brand-names',         'medications/brand-names.vue'],
         ['pharmacy-medications-interactions', '/pharmacy/medications/interactions',       'medications/interactions.vue'],
         // Customers
         ['pharmacy-customers',                '/pharmacy/customers',                      'customers.vue'],
         ['pharmacy-customers-index',          '/pharmacy/customers/index',                'customers/index.vue'],
         ['pharmacy-customers-new',            '/pharmacy/customers/new',                  'customers/new.vue'],
+        ['pharmacy-customers-id',             '/pharmacy/customers/:id()',                'customers/[id]/index.vue'],
         ['pharmacy-customers-id-edit',        '/pharmacy/customers/:id()/edit',           'customers/[id]/edit.vue'],
         // Staff
         ['pharmacy-staff',                    '/pharmacy/staff',                          'staff/index.vue'],
@@ -260,8 +281,9 @@ export default defineNuxtConfig({
         ['pharmacy-suppliers',                '/pharmacy/suppliers',                      'suppliers/index.vue'],
         ['pharmacy-suppliers-new',            '/pharmacy/suppliers/new',                  'suppliers/new.vue'],
         ['pharmacy-suppliers-id-edit',        '/pharmacy/suppliers/:id()/edit',           'suppliers/[id]/edit.vue'],
-        // Settings
-        ['pharmacy-settings',                 '/pharmacy/settings',                       'settings/index.vue'],
+        // Settings → now merged into Organization Profile
+        ['pharmacy-org-profile',             '/pharmacy/organization/profile',            'organization/profile.vue'],
+        ['pharmacy-org-branding',            '/pharmacy/organization/branding',           'organization/branding.vue'],
         // Setup / Seed
         ['pharmacy-setup',                    '/pharmacy/setup',                          'setup/index.vue'],
         // Branches
@@ -289,17 +311,30 @@ export default defineNuxtConfig({
         ['ims-inventory-stocks-id-edit',       '/ims/inventory/stocks/:id()/edit',         'inventory/stocks/[id]/edit.vue'],
         ['ims-inventory-cats-new',             '/ims/inventory/categories/new',            'inventory/categories/new.vue'],
         ['ims-inventory-cats-id-edit',         '/ims/inventory/categories/:id()/edit',     'inventory/categories/[id]/edit.vue'],
+        ['ims-inventory-classifications-new',     '/ims/inventory/classifications/new',       'inventory/classifications/new.vue'],
+        ['ims-inventory-classifications-id-edit', '/ims/inventory/classifications/:id()/edit','inventory/classifications/[id]/edit.vue'],
         ['ims-inventory-units-new',            '/ims/inventory/units/new',                'inventory/units/new.vue'],
         ['ims-inventory-units-id-edit',        '/ims/inventory/units/:id()/edit',         'inventory/units/[id]/edit.vue'],
         ['ims-inventory-adj-new',              '/ims/inventory/adjustments/new',          'inventory/adjustments/new.vue'],
         ['ims-inventory-adj-id-edit',          '/ims/inventory/adjustments/:id()/edit',   'inventory/adjustments/[id]/edit.vue'],
+        // Document Management System
+        ['ims-documents',                     '/ims/documents',                           'documents/index.vue'],
+        ['ims-documents-new',                 '/ims/documents/new',                       'documents/new.vue'],
+        ['ims-documents-id',                  '/ims/documents/:id()',                     'documents/[id]/index.vue'],
+        ['ims-documents-id-edit',             '/ims/documents/:id()/edit',                'documents/[id]/edit.vue'],
+        ['ims-documents-trash',               '/ims/documents/trash',                     'documents/trash.vue'],
+        ['ims-documents-shared',              '/ims/documents/shared',                    'documents/shared.vue'],
+        ['ims-documents-starred',             '/ims/documents/starred',                   'documents/starred.vue'],
         // Catalog
         ['ims-categories',                    '/ims/categories',                          'categories/index.vue'],
         ['ims-units',                         '/ims/units',                               'units/index.vue'],
         ['ims-medications',                   '/ims/medications',                         'medications/index.vue'],
+        ['ims-medications-bulk',              '/ims/medications/bulk',                    'medications/bulk.vue'],
+        ['ims-medications-excel',             '/ims/medications/excel',                    'medications/excel.vue'],
+        ['ims-medications-brands',            '/ims/medications/brand-names',             'medications/brand-names.vue'],
         ['ims-adjustments',                   '/ims/adjustments',                         'adjustments/index.vue'],
         // Stock alerts
-        ['ims-alerts',                        '/ims/alerts',                              'alerts/index.vue'],
+        ['ims-alerts',                        '/ims/alerts',                              'ims/alerts/index.vue'],
         // Sales — POS
         ['ims-pos',                           '/ims/pos',                                 'pos/index.vue'],
         ['ims-pos-history',                   '/ims/pos/history',                         'pos/history.vue'],
@@ -309,6 +344,7 @@ export default defineNuxtConfig({
         // Sales — customers
         ['ims-customers',                     '/ims/customers',                            'customers/index.vue'],
         ['ims-customers-new',                 '/ims/customers/new',                        'customers/new.vue'],
+        ['ims-customers-id',                 '/ims/customers/:id()',                      'customers/[id]/index.vue'],
         ['ims-customers-id-edit',            '/ims/customers/:id()/edit',                'customers/[id]/edit.vue'],
         // Sales — credit management
         ['ims-credit',                        '/ims/credit',                               'pharmacy/credit/index.vue'],
@@ -324,6 +360,13 @@ export default defineNuxtConfig({
         ['ims-purchase-orders-new',           '/ims/purchase-orders/new',                 'purchase-orders/new.vue'],
         ['ims-purchase-orders-id',             '/ims/purchase-orders/:id()',               'purchase-orders/[id]/index.vue'],
         ['ims-purchase-orders-id-edit',        '/ims/purchase-orders/:id()/edit',          'purchase-orders/[id]/edit.vue'],
+        ['ims-po-dashboard',                  '/ims/purchase-orders/dashboard',            'purchase-orders/dashboard.vue'],
+        ['ims-rfqs',                          '/ims/purchase-orders/rfqs',                 'purchase-orders/rfqs/index.vue'],
+        ['ims-rfqs-new',                      '/ims/purchase-orders/rfqs/new',              'purchase-orders/rfqs/new.vue'],
+        ['ims-rfqs-id',                       '/ims/purchase-orders/rfqs/:id()',           'purchase-orders/rfqs/[id].vue'],
+        ['ims-evaluations',                   '/ims/evaluations',                          'purchase-orders/evaluations.vue'],
+        ['ims-reorder-suggestions',          '/ims/purchase-orders/reorder-suggestions',  'purchase-orders/reorder-suggestions.vue'],
+        ['ims-grns',                          '/ims/purchase-orders/grns',                 'purchase-orders/grns.vue'],
         // Suppliers
         ['ims-suppliers',                     '/ims/suppliers',                           'suppliers/index.vue'],
         ['ims-suppliers-new',                 '/ims/suppliers/new',                       'suppliers/new.vue'],
@@ -358,6 +401,7 @@ export default defineNuxtConfig({
         ['ims-reports-key',                   '/ims/reports/:key()',                       'reports/[key].vue'],
         // Organization (tenant profile)
         ['ims-organization-profile',          '/ims/organization/profile',               'organization/profile.vue'],
+        ['ims-organization-branding',         '/ims/organization/branding',              'organization/branding.vue'],
         // Staff
         ['ims-staff',                         '/ims/staff',                                'staff/index.vue'],
         // Roles & Access (RBAC)
@@ -365,8 +409,7 @@ export default defineNuxtConfig({
         // Audit logs + system health
         ['ims-audit-logs',                    '/ims/audit-logs',                           'pharmacy/audit-logs/index.vue'],
         ['ims-system-health',                 '/ims/system-health',                        'iam/system-health.vue'],
-        // Settings + setup
-        ['ims-settings',                      '/ims/settings',                             'settings/index.vue'],
+        // Setup / Seed
         ['ims-setup',                         '/ims/setup',                                'setup/index.vue'],
 
         // ── Hospital tenant aliases ──────────────────────────────────────────

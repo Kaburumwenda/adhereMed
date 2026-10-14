@@ -59,6 +59,20 @@ class User(AbstractBaseUser, PermissionsMixin):
     )
     date_joined = models.DateTimeField(auto_now_add=True)
 
+    # ── Organization (multi-tenant grouping) ──
+    organization = models.ForeignKey(
+        'organizations.Organization',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='org_users',
+    )
+    is_org_admin = models.BooleanField(
+        default=False,
+        help_text='Can access the Organization Command Center and switch '
+                  'between linked tenants.',
+    )
+
     objects = UserManager()
 
     USERNAME_FIELD = 'email'

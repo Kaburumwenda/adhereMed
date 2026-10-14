@@ -12,6 +12,10 @@ class UserSerializer(serializers.ModelSerializer):
     branch_name = serializers.SerializerMethodField()
     is_tenant_admin = serializers.SerializerMethodField()
     billing = serializers.SerializerMethodField()
+    tenant_logo = serializers.SerializerMethodField()
+    organization_id = serializers.SerializerMethodField()
+    organization_name = serializers.SerializerMethodField()
+    is_org_admin = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -19,7 +23,8 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'email', 'phone', 'first_name', 'last_name',
             'role', 'tenant', 'tenant_name', 'tenant_type', 'tenant_schema',
             'is_active', 'date_joined', 'pin',
-            'branch_id', 'branch_name', 'is_tenant_admin', 'billing',
+            'branch_id', 'branch_name', 'is_tenant_admin', 'billing', 'tenant_logo',
+            'organization_id', 'organization_name', 'is_org_admin',
         ]
         read_only_fields = ['date_joined', 'pin']
 
@@ -38,6 +43,30 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_is_tenant_admin(self, obj):
         return obj.role in {'tenant_admin', 'homecare_admin', 'inventory_admin', 'admin'}
+
+    def get_organization_id(self, obj):
+        org = getattr(obj, 'organization', None)
+        return org.id if org else None
+
+    def get_organization_name(self, obj):
+        org = getattr(obj, 'organization', None)
+        return org.name if org else None
+
+    def get_is_org_admin(self, obj):
+        return bool(getattr(obj, 'is_org_admin', False) and obj.organization_id)
+
+    def get_tenant_logo(self, obj):
+        tenant = getattr(obj, 'tenant', None)
+        if tenant is None or getattr(tenant, 'schema_name', 'public') == 'public':
+            return None
+        logo = getattr(tenant, 'logo', None)
+        if not logo:
+            return None
+        request = self.context.get('request')
+        try:
+            return request.build_absolute_uri(logo.url) if request else logo.url
+        except Exception:
+            return None
 
     def get_billing(self, obj):
         """Lightweight overdue-lock summary so the frontend can gate access."""

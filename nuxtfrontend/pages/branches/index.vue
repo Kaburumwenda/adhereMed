@@ -117,6 +117,33 @@
       </v-data-table>
     </v-card>
 
+    <!-- ══════ BOTTOM MAP: All branch locations ══════ -->
+    <v-card flat rounded="xl" border class="mt-4 overflow-hidden">
+      <v-card-title class="d-flex align-center py-3">
+        <v-icon class="mr-2" color="blue-darken-2" size="22">mdi-map-marker-multiple</v-icon>
+        {{ isInventoryTenant ? 'Warehouse Locations' : 'Branch Locations' }}
+        <v-spacer />
+        <v-chip size="small" variant="tonal" color="blue">{{ geoBranches.length }} with coordinates</v-chip>
+      </v-card-title>
+      <v-divider />
+      <div v-if="geoBranches.length === 0" class="d-flex flex-column align-center justify-center py-12">
+        <v-icon size="48" color="grey-lighten-1" class="mb-2">mdi-map-marker-off</v-icon>
+        <div class="text-body-2 text-medium-emphasis">{{ isInventoryTenant ? 'Add coordinates to your warehouses to see them on the map.' : 'Add coordinates to your branches to see them on the map.' }}</div>
+      </div>
+      <div v-else>
+        <div ref="bottomMapEl" class="branches-map-bottom" />
+        <!-- Legend chips under the map -->
+        <div class="d-flex flex-wrap ga-2 pa-3 border-t">
+          <v-chip v-for="b in geoBranches" :key="b.id" size="small" variant="tonal"
+                  :color="b.is_main ? 'amber-darken-2' : b.is_active ? 'blue' : 'grey'"
+                  :prepend-icon="b.is_main ? 'mdi-star' : 'mdi-store'"
+                  @click="panBottomMarker(b)">
+            {{ b.name }}
+          </v-chip>
+        </div>
+      </div>
+    </v-card>
+
     <v-dialog v-model="formDialog" max-width="640" persistent scrollable>
       <v-card rounded="xl">
         <v-card-title class="d-flex align-center">
@@ -276,7 +303,12 @@ async function loadAll() {
     const { data } = await $api.get(branchesApi.value, { params: { page_size: 200 } })
     branches.value = data?.results || data || []
   } catch { notify('Failed to load branches', 'error') }
-  finally { loading.value = false }
+  finally {
+    loading.value = false
+    // Initialize bottom map once branches are loaded
+    await nextTick()
+    await initBottomMap()
+  }
 }
 onMounted(loadAll)
 
@@ -593,6 +625,90 @@ function destroyMapMarkers() {
   allMap = null
 }
 
+// ── Bottom map (always visible below the table) ──
+const bottomMapEl = ref(null)
+let bottomMap = null
+let bottomMarkers = []
+let bottomInfoWindow = null
+
+async function initBottomMap() {
+  try {
+    await loadGoogleMaps()
+  } catch { return }
+  await nextTick()
+  const el = bottomMapEl.value
+  if (!el || !window.google?.maps) return
+
+  const gbs = geoBranches.value
+  if (!gbs.length) return
+
+  const bounds = new google.maps.LatLngBounds()
+  gbs.forEach(b => bounds.extend({ lat: Number(b.latitude), lng: Number(b.longitude) }))
+
+  bottomMap = new google.maps.Map(el, {
+    center: bounds.getCenter(),
+    zoom: 12,
+    mapTypeControl: true,
+    mapTypeControlOptions: { position: google.maps.ControlPosition.TOP_RIGHT },
+    streetViewControl: false,
+    fullscreenControl: true,
+    styles: [
+      { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+      { featureType: 'transit', stylers: [{ visibility: 'simplified' }] },
+    ],
+  })
+
+  bottomInfoWindow = new google.maps.InfoWindow()
+
+  bottomMarkers = gbs.map(b => {
+    const marker = new google.maps.Marker({
+      position: { lat: Number(b.latitude), lng: Number(b.longitude) },
+      map: bottomMap,
+      title: b.name,
+      icon: {
+        url: pinIcon,
+        scaledSize: new google.maps.Size(b.is_main ? 48 : 38, b.is_main ? 48 : 38),
+        anchor: new google.maps.Point(b.is_main ? 24 : 19, b.is_main ? 48 : 38),
+      },
+      animation: google.maps.Animation.DROP,
+      branchId: b.id,
+    })
+
+    marker.addListener('click', () => {
+      bottomInfoWindow.setContent(buildMapContent(b))
+      bottomInfoWindow.open(bottomMap, marker)
+    })
+
+    return marker
+  })
+
+  if (gbs.length === 1) {
+    bottomMap.setCenter({ lat: Number(gbs[0].latitude), lng: Number(gbs[0].longitude) })
+    bottomMap.setZoom(15)
+  } else {
+    bottomMap.fitBounds(bounds, { top: 40, bottom: 40, left: 40, right: 40 })
+  }
+}
+
+function panBottomMarker(branch) {
+  if (!bottomMap) return
+  const pos = { lat: Number(branch.latitude), lng: Number(branch.longitude) }
+  bottomMap.panTo(pos)
+  bottomMap.setZoom(16)
+  const marker = bottomMarkers.find(m => m.branchId === branch.id)
+  if (marker && bottomInfoWindow) {
+    bottomInfoWindow.setContent(buildMapContent(branch))
+    bottomInfoWindow.open(bottomMap, marker)
+  }
+}
+
+function destroyBottomMapMarkers() {
+  bottomMarkers.forEach(m => m.setMap(null))
+  bottomMarkers = []
+  if (bottomInfoWindow) { bottomInfoWindow.close(); bottomInfoWindow = null }
+  bottomMap = null
+}
+
 // Re-init map when switching to map view or when branches change
 watch(viewMode, async (v) => {
   if (v === 'map') {
@@ -608,6 +724,10 @@ watch(geoBranches, async () => {
     await nextTick()
     await initAllBranchesMap()
   }
+  // Always re-init bottom map when branch geodata changes
+  destroyBottomMapMarkers()
+  await nextTick()
+  await initBottomMap()
 })
 
 const snack = reactive({ show: false, color: 'success', message: '', action: null })
@@ -618,5 +738,6 @@ function notify(message, color = 'success') { Object.assign(snack, { show: true,
 .kpi-card { transition: transform 0.15s ease, box-shadow 0.15s ease; border: 1px solid rgba(var(--v-theme-on-surface), 0.06); }
 .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.06); }
 .branches-map { width: 100%; height: 520px; min-height: 400px; background: #f5f5f5; }
-@media (min-width: 960px) { .branches-map { height: 620px; } }
+.branches-map-bottom { width: 100%; height: 360px; min-height: 280px; background: #f5f5f5; }
+@media (min-width: 960px) { .branches-map { height: 620px; } .branches-map-bottom { height: 460px; } }
 </style>

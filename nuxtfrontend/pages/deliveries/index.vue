@@ -973,7 +973,7 @@ import EmptyState from '~/components/EmptyState.vue'
 
 const { $api } = useNuxtApp()
 // Inventory tenants use their own /ims API namespace.
-const { deliveries: deliveriesApi } = useTenantEndpoints()
+const { deliveries: deliveriesApi, isInventory } = useTenantEndpoints()
 const { getPredictions, getPlaceDetails, reverseGeocode } = useGoogleMaps()
 
 // ─── State ───────────────────────────────────────────────────────────
@@ -984,7 +984,7 @@ const loadingStaff = ref(false)
 const saving = ref(false)
 const search = ref('')
 const filterStatus = ref('all')
-const viewMode = ref('grid')
+const viewMode = ref(isInventory.value ? 'table' : 'grid')
 const datePreset = ref('all')
 const dateFrom = ref(null)
 const dateTo = ref(null)

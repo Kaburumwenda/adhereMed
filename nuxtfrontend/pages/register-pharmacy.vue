@@ -19,9 +19,7 @@
 
             <div class="form-card pa-6 pa-md-8">
               <div class="text-center mb-7">
-                <div class="brand-badge mx-auto mb-4" style="width:54px;height:54px;border-radius:16px;">
-                  <v-icon size="26" color="white">mdi-medical-bag</v-icon>
-                </div>
+                <BrandLogo :size="54" class="mx-auto mb-4" />
                 <h2 class="form-title">Register your Pharmacy</h2>
                 <p class="form-sub">
                   Create your pharmacy tenant on AdhereMed — POS, inventory, dispensing &amp; analytics

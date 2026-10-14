@@ -15,9 +15,7 @@
 
             <v-card rounded="xl" elevation="12" class="form-card pa-6 pa-md-8">
               <div class="text-center mb-6">
-                <div class="brand-badge mx-auto mb-4 d-flex align-center justify-center">
-                  <v-icon size="24" color="white">mdi-heart-pulse</v-icon>
-                </div>
+                <BrandLogo :size="50" class="mx-auto mb-4" />
                 <h2 class="form-title">Register your facility</h2>
                 <p class="form-sub">
                   Set up a hospital, pharmacy or lab tenant on AdhereMed

@@ -11,7 +11,16 @@
   >
     <!-- Logo / Brand -->
     <div class="d-flex align-center px-4" style="height:68px;">
-      <BrandLogo :size="38" />
+      <v-img
+        v-if="tenantLogo"
+        :src="tenantLogo"
+        cover
+        rounded="lg"
+        :width="38"
+        :height="38"
+        style="border-radius: 11px; object-fit: cover; box-shadow: 0 3px 10px rgba(15,118,110,0.18)"
+      />
+      <BrandLogo v-else :size="38" />
       <div v-if="!rail || mobile" class="ml-3 brand-tenant">
         <div class="brand-tenant-name text-truncate" :title="tenantName || 'AdhereMed'">
           {{ tenantName || 'AdhereMed' }}
@@ -68,19 +77,6 @@
     </v-list>
 
     <template #append>
-      <div class="pa-2">
-        <v-btn
-          v-if="!mobile"
-          block
-          variant="tonal"
-          size="small"
-          :prepend-icon="rail ? 'mdi-chevron-right' : 'mdi-chevron-left'"
-          @click="$emit('toggle-rail')"
-        >
-          <span v-if="!rail">{{ $t('sidenav.collapse') }}</span>
-        </v-btn>
-      </div>
-      <v-divider />
       <div class="pa-3">
         <div
           class="d-flex align-center pa-3 rounded-lg"
@@ -114,9 +110,10 @@ const props = defineProps({
   userName: { type: String, default: '' },
   userRole: { type: String, default: '' },
   tenantType: { type: String, default: null },
-  tenantName: { type: String, default: '' }
+  tenantName: { type: String, default: '' },
+  tenantLogo: { type: String, default: null }
 })
-const emit = defineEmits(['update:modelValue', 'toggle-rail', 'logout'])
+const emit = defineEmits(['update:modelValue', 'logout'])
 
 const drawer = computed({
   get: () => props.modelValue,
@@ -124,7 +121,6 @@ const drawer = computed({
 })
 
 const route = useRoute()
-const router = useRouter()
 
 const sections = computed(() => filterNavSections(getNavSections(props.userRole, props.tenantType, t), props.userRole))
 

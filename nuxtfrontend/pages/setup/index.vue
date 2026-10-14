@@ -9,9 +9,9 @@
               <v-icon color="teal-darken-2" size="32">mdi-database-import</v-icon>
             </v-avatar>
             <div>
-              <div class="text-h5 text-md-h4 font-weight-bold">Pharmacy Setup</div>
+              <div class="text-h5 text-md-h4 font-weight-bold">{{ pageTitle }}</div>
               <div class="text-body-2" style="opacity:0.9">
-                Seed default data for your new pharmacy — categories, units, medications &amp; stock.
+                {{ pageSubtitle }}
               </div>
             </div>
           </div>
@@ -143,13 +143,22 @@ import { useNuxtApp } from '#app'
 
 const { $api } = useNuxtApp()
 // Inventory tenants use their own /ims API namespace.
-const { setupSeed: setupSeedApi, setupSeedRun: setupSeedRunApi } = useTenantEndpoints()
+const { setupSeed: setupSeedApi, setupSeedRun: setupSeedRunApi, isInventory } = useTenantEndpoints()
 
 const loading = ref(false)
 const seeds = ref([])
 const busy = ref({})
 const results = ref({})
 const history = ref([])
+
+const pageTitle = computed(() =>
+  isInventory.value ? 'Inventory Setup' : 'Pharmacy Setup',
+)
+const pageSubtitle = computed(() =>
+  isInventory.value
+    ? 'Seed default data for your new warehouse — categories, units, catalog & stock.'
+    : 'Seed default data for your new pharmacy — categories, units, catalog & stock.',
+)
 
 const snack = ref(false)
 const snackText = ref('')
@@ -166,6 +175,7 @@ function confirmSeed(seed) {
 
 const ICONS = {
   categories_units: { icon: 'mdi-shape', color: 'purple' },
+  pharmacy_stock: { icon: 'mdi-package-variant-closed', color: 'teal' },
   medications: { icon: 'mdi-pill', color: 'blue' },
   interactions: { icon: 'mdi-swap-horizontal-circle', color: 'orange' },
 }

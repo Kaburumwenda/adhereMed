@@ -8,7 +8,10 @@
         </v-avatar>
         <div>
           <h1 class="text-h5 text-md-h4 font-weight-bold mb-0">{{ $t('stockAnalysis.title') }}</h1>
-          <div class="text-body-2 text-medium-emphasis">Inventory health · valuation · expiry &amp; movement</div>
+          <div class="text-body-2 text-medium-emphasis">
+            Inventory health · valuation · expiry &amp; movement
+            <span v-if="branchStore.currentBranch"> · {{ branchStore.currentBranch.name }}</span>
+          </div>
         </div>
       </div>
       <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
@@ -305,10 +308,12 @@
 import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { formatMoney, formatDate } from '~/utils/format'
+import { useBranchStore } from '~/stores/branch'
 
 const { $api } = useNuxtApp()
+const branchStore = useBranchStore()
 
 const loading = ref(false)
 const stocks = ref([])
@@ -327,9 +332,13 @@ const reasonColors = {
 async function load() {
   loading.value = true
   try {
+    const stockParams = { page_size: 5000 }
+    if (branchStore.currentBranchId) stockParams.branch = branchStore.currentBranchId
+    const adjParams = { page_size: 5000 }
+    if (branchStore.currentBranchId) adjParams.stock__branch = branchStore.currentBranchId
     const [s, a] = await Promise.all([
-      $api.get('/inventory/stocks/', { params: { page_size: 5000 } }).then(r => r.data?.results || r.data || []).catch(() => []),
-      $api.get('/inventory/adjustments/', { params: { page_size: 5000 } }).then(r => r.data?.results || r.data || []).catch(() => [])
+      $api.get('/inventory/stocks/', { params: stockParams }).then(r => r.data?.results || r.data || []).catch(() => []),
+      $api.get('/inventory/adjustments/', { params: adjParams }).then(r => r.data?.results || r.data || []).catch(() => [])
     ])
     stocks.value = Array.isArray(s) ? s : []
     adjustments.value = Array.isArray(a) ? a : []
@@ -338,6 +347,10 @@ async function load() {
   }
 }
 onMounted(load)
+
+watch(() => branchStore.currentBranchId, () => {
+  load()
+})
 
 // ---------- KPIs ----------
 const totalCost = computed(() =>

@@ -28,6 +28,7 @@
         </div>
       </div>
       <div class="cc-hero-glow" /><div class="cc-hero-pattern" />
+      <canvas ref="particleCanvas" class="cc-hero-particles" />
     </div>
 
     <!-- ═══════════════════════════════════ KPI ROW ═══════════════════════════════════════════ -->
@@ -4123,6 +4124,128 @@ const auth = useAuthStore()
 const tab = ref('overview')
 const pageLoading = ref(true)
 const savingVitals = ref(false)
+
+// ── Particle network background ──
+const particleCanvas = ref(null)
+let particleRAF = null
+
+function startParticleNetwork(canvas) {
+  if (!import.meta.client || !canvas) return
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  const parent = canvas.parentElement
+
+  let particles = []
+  const PARTICLE_COUNT = 60
+  const MAX_DISTANCE = 130
+  const MOUSE_RADIUS = 160
+  let mouse = { x: -9999, y: -9999 }
+
+  function resize() {
+    canvas.width = parent.clientWidth
+    canvas.height = parent.clientHeight
+  }
+  resize()
+  const ro = new ResizeObserver(resize)
+  ro.observe(parent)
+
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    particles.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      vx: (Math.random() - 0.5) * 0.35,
+      vy: (Math.random() - 0.5) * 0.35,
+      r: Math.random() * 1.5 + 0.8,
+    })
+  }
+
+  function onMouseMove(e) {
+    const rect = canvas.getBoundingClientRect()
+    mouse.x = e.clientX - rect.left
+    mouse.y = e.clientY - rect.top
+  }
+  function onMouseLeave() {
+    mouse.x = -9999
+    mouse.y = -9999
+  }
+  parent.addEventListener('mousemove', onMouseMove)
+  parent.addEventListener('mouseleave', onMouseLeave)
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+    // Move particles, bounce off edges, repel from mouse
+    for (const p of particles) {
+      p.x += p.vx
+      p.y += p.vy
+      if (p.x < 0 || p.x > canvas.width) p.vx *= -1
+      if (p.y < 0 || p.y > canvas.height) p.vy *= -1
+
+      // Mouse repulsion
+      const dx = p.x - mouse.x
+      const dy = p.y - mouse.y
+      const dist = Math.hypot(dx, dy)
+      if (dist < MOUSE_RADIUS) {
+        const force = (MOUSE_RADIUS - dist) / MOUSE_RADIUS * 0.6
+        p.x += (dx / dist) * force
+        p.y += (dy / dist) * force
+      }
+    }
+
+    // Draw connections
+    for (let i = 0; i < particles.length; i++) {
+      for (let j = i + 1; j < particles.length; j++) {
+        const dx = particles[i].x - particles[j].x
+        const dy = particles[i].y - particles[j].y
+        const dist = Math.hypot(dx, dy)
+        if (dist < MAX_DISTANCE) {
+          const alpha = (1 - dist / MAX_DISTANCE) * 0.35
+          ctx.strokeStyle = `rgba(255,255,255,${alpha})`
+          ctx.lineWidth = 0.7
+          ctx.beginPath()
+          ctx.moveTo(particles[i].x, particles[i].y)
+          ctx.lineTo(particles[j].x, particles[j].y)
+          ctx.stroke()
+        }
+      }
+
+      // Mouse-to-particle connections
+      const mdx = particles[i].x - mouse.x
+      const mdy = particles[i].y - mouse.y
+      const mdist = Math.hypot(mdx, mdy)
+      if (mdist < MOUSE_RADIUS) {
+        const alpha = (1 - mdist / MOUSE_RADIUS) * 0.5
+        ctx.strokeStyle = `rgba(255,255,255,${alpha})`
+        ctx.lineWidth = 0.8
+        ctx.beginPath()
+        ctx.moveTo(particles[i].x, particles[i].y)
+        ctx.lineTo(mouse.x, mouse.y)
+        ctx.stroke()
+      }
+    }
+
+    // Draw particle dots
+    for (const p of particles) {
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2)
+      ctx.fillStyle = 'rgba(255,255,255,0.7)'
+      ctx.fill()
+    }
+
+    particleRAF = requestAnimationFrame(draw)
+  }
+  draw()
+
+  // Return cleanup function
+  return () => {
+    if (particleRAF) cancelAnimationFrame(particleRAF)
+    ro.disconnect()
+    parent.removeEventListener('mousemove', onMouseMove)
+    parent.removeEventListener('mouseleave', onMouseLeave)
+  }
+}
+
+let cleanupParticles = null
 const careSummaryData = ref(null)
 const vitalsData = ref([])
 const assessmentData = ref([])
@@ -7411,7 +7534,10 @@ function onDocKeydown(e) {
     case 'ArrowDown': docViewerPanY.value -= 30; break
   }
 }
-onBeforeUnmount(() => { window.removeEventListener('keydown', onDocKeydown) })
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onDocKeydown)
+  if (cleanupParticles) cleanupParticles()
+})
 function downloadPatientDoc(item) {
   if (item?.file_url) window.open(item.file_url, '_blank')
   else notify('File not available.', 'info')
@@ -7503,6 +7629,9 @@ async function loadAll() {
 }
 
 onMounted(async () => {
+  if (particleCanvas.value) {
+    cleanupParticles = startParticleNetwork(particleCanvas.value)
+  }
   loadCompanyProfile()
   loadWorklistFromStorage() // load from localStorage first (instant)
   await loadAll()
@@ -7520,6 +7649,7 @@ onMounted(async () => {
 .cc-hero-inner { position: relative; z-index: 2; }
 .cc-hero-glow { position: absolute; right: -80px; top: -100px; width: 340px; height: 340px; border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,0.1), transparent 65%); pointer-events: none; }
 .cc-hero-pattern { position: absolute; inset: 0; background-image: radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px); background-size: 24px 24px; pointer-events: none; }
+.cc-hero-particles { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
 .cc-kpi-row { position: relative; z-index: 3; }
 .cc-kpi-card { background: white; border: 1px solid rgba(15,23,42,0.05); transition: transform 0.2s; }
 .cc-kpi-card:hover { transform: translateY(-2px); }

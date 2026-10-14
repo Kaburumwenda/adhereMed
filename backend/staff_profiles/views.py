@@ -112,10 +112,10 @@ class StaffProfileViewSet(BranchScopedMixin, viewsets.ModelViewSet):
             tx_qs = tx_qs.filter(branch_id=branch_id)
 
         # Restrict non-admin users to their own row.
-        ADMIN_ROLES = {'super_admin', 'tenant_admin', 'pharmacist'}
+        from config.branch_scope import BRANCH_ADMIN_BYPASS_ROLES
         is_admin = (
             getattr(request.user, 'is_superuser', False)
-            or getattr(request.user, 'role', None) in ADMIN_ROLES
+            or getattr(request.user, 'role', None) in BRANCH_ADMIN_BYPASS_ROLES
         )
         if not is_admin:
             tx_qs = tx_qs.filter(cashier=request.user)

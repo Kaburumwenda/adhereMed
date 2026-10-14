@@ -7,7 +7,7 @@
           Welcome back, {{ auth.user?.first_name || 'there' }}
         </h1>
         <div class="text-body-2 text-medium-emphasis">
-          {{ today }} · {{ auth.tenantName || 'Inventory' }} · live warehouse overview
+          {{ today }} · {{ auth.tenantName || 'Inventory' }} · {{ branchStore.currentBranch ? branchStore.currentBranch.name : 'All Branches' }} · live warehouse overview
         </div>
       </div>
       <div class="d-flex align-center mt-2 mt-md-0">
@@ -42,36 +42,44 @@
     <v-row class="mt-1">
       <v-col cols="12" lg="8">
         <v-card rounded="lg" class="pa-4 h-100">
-          <div class="d-flex align-center justify-space-between mb-3">
+          <div class="d-flex align-center justify-space-between mb-2">
             <div>
               <h3 class="text-h6 font-weight-bold">Stock Flow — Last {{ trendDays }} Days</h3>
               <div class="text-caption text-medium-emphasis">Inflow vs outflow units across all warehouses</div>
             </div>
-            <div class="d-flex ga-4">
-              <div class="text-center">
-                <div class="text-caption text-medium-emphasis">In</div>
-                <div class="text-h6 font-weight-bold text-success">{{ flowKpis.total_in }}</div>
+            <div class="d-flex align-center ga-2">
+              <div class="text-center px-2 py-1 rounded-lg" style="background: rgba(34,197,94,0.1)">
+                <div class="text-caption text-medium-emphasis" style="font-size: 10px">In</div>
+                <div class="text-subtitle-1 font-weight-bold text-success">{{ flowKpis.total_in }}</div>
               </div>
-              <div class="text-center">
-                <div class="text-caption text-medium-emphasis">Out</div>
-                <div class="text-h6 font-weight-bold text-error">{{ flowKpis.total_out }}</div>
+              <div class="text-center px-2 py-1 rounded-lg" style="background: rgba(239,68,68,0.1)">
+                <div class="text-caption text-medium-emphasis" style="font-size: 10px">Out</div>
+                <div class="text-subtitle-1 font-weight-bold text-error">{{ flowKpis.total_out }}</div>
               </div>
-              <div class="text-center">
-                <div class="text-caption text-medium-emphasis">Transferred</div>
-                <div class="text-h6 font-weight-bold text-info">{{ flowKpis.total_transfer }}</div>
+              <div class="text-center px-2 py-1 rounded-lg" style="background: rgba(0,191,255,0.1)">
+                <div class="text-caption text-medium-emphasis" style="font-size: 10px">Transferred</div>
+                <div class="text-subtitle-1 font-weight-bold text-info">{{ flowKpis.total_transfer }}</div>
               </div>
             </div>
           </div>
-          <div class="d-flex align-center mb-1">
-            <v-chip size="x-small" color="success" variant="tonal" class="mr-2">Inflow</v-chip>
-            <div class="text-caption text-medium-emphasis">units received</div>
+          <!-- Legend -->
+          <div class="d-flex align-center ga-4 mb-1">
+            <div class="d-flex align-center">
+              <span class="legend-dot" style="background:#22c55e"></span>
+              <span class="text-caption text-medium-emphasis ml-1">Inflow</span>
+            </div>
+            <div class="d-flex align-center">
+              <span class="legend-dot" style="background:#ef4444"></span>
+              <span class="text-caption text-medium-emphasis ml-1">Outflow</span>
+            </div>
+            <div class="text-caption text-medium-emphasis ml-auto" style="font-size: 11px">Hover for details</div>
           </div>
-          <BarChart :values="inflowValues" :labels="trendLabels" color="#22c55e" :height="100" />
-          <div class="d-flex align-center mt-2 mb-1">
-            <v-chip size="x-small" color="error" variant="tonal" class="mr-2">Outflow</v-chip>
-            <div class="text-caption text-medium-emphasis">units issued / adjusted out</div>
-          </div>
-          <BarChart :values="outflowValues" :labels="trendLabels" color="#ef4444" :height="100" />
+          <StockFlowChart
+            :inflow="inflowValues"
+            :outflow="outflowValues"
+            :labels="trendLabels"
+            :height="220"
+          />
         </v-card>
       </v-col>
 
@@ -307,10 +315,12 @@
 
 <script setup>
 import { useAuthStore } from '~/stores/auth'
+import { useBranchStore } from '~/stores/branch'
 import { formatMoney, formatDate } from '~/utils/format'
 import { canAccessRoute } from '~/utils/permissions'
 
 const auth = useAuthStore()
+const branchStore = useBranchStore()
 const { $api } = useNuxtApp()
 
 const today = new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
@@ -371,17 +381,21 @@ async function load() {
   const safeGet = (p) => $api.get(p).then(r => r.data).catch(() => null)
   const safeList = (p) => safeGet(p).then(d => d?.results || (Array.isArray(d) ? d : []))
 
+  const bid = branchStore.currentBranchId
+  const bp = bid ? `&branch_id=${bid}` : ''
+  const bpStocks = bid ? `&branch=${bid}` : ''
+
   const end = new Date()
   const start = new Date(end.getTime() - (trendDays - 1) * 86400000)
   const iso = (d) => d.toISOString().slice(0, 10)
 
   const [an, st, mv, po, tr, cnt] = await Promise.all([
-    safeGet('/inventory/analytics/'),
-    safeList('/inventory/stocks/?page_size=1000'),
-    safeGet(`/inventory/stock-movements/?date_from=${iso(start)}&date_to=${iso(end)}`),
-    safeList('/purchase-orders/?page_size=100'),
-    safeList('/inventory/transfers/?page_size=100'),
-    safeList('/inventory/counts/?page_size=100'),
+    safeGet(`/inventory/analytics/${bid ? `?branch_id=${bid}` : ''}`),
+    safeList(`/inventory/stocks/?page_size=1000${bpStocks}`),
+    safeGet(`/inventory/stock-movements/?date_from=${iso(start)}&date_to=${iso(end)}${bp}`),
+    safeList(`/purchase-orders/?page_size=100${bid ? `&branch=${bid}` : ''}`),
+    safeList(`/inventory/transfers/?page_size=100${bid ? `&branch=${bid}` : ''}`),
+    safeList(`/inventory/counts/?page_size=100${bid ? `&branch=${bid}` : ''}`),
   ])
 
   analytics.value = an
@@ -434,9 +448,16 @@ async function load() {
   if (mv) {
     Object.assign(flowKpis, mv.kpis || {})
     const trend = mv.trend || []
-    trendLabels.value = trend.map(d => new Date(d.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }))
-    inflowValues.value = trend.map(d => (d.inflow || 0) + (d.transfer || 0))
-    outflowValues.value = trend.map(d => d.outflow || 0)
+    const active = trend
+      .map(d => ({
+        label: new Date(d.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }),
+        inflow: (d.inflow || 0) + (d.transfer || 0),
+        outflow: d.outflow || 0,
+      }))
+      .filter(d => d.inflow > 0 || d.outflow > 0)
+    trendLabels.value = active.map(d => d.label)
+    inflowValues.value = active.map(d => d.inflow)
+    outflowValues.value = active.map(d => d.outflow)
     recentMovements.value = (mv.movements || [])
       .slice()
       .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))
@@ -454,4 +475,17 @@ async function load() {
 }
 
 onMounted(load)
+
+watch(() => branchStore.currentBranchId, () => {
+  load()
+})
 </script>
+
+<style scoped>
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+</style>

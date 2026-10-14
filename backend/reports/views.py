@@ -43,6 +43,24 @@ def _parse_range(request):
             datetime.combine(today + timedelta(days=1), datetime.min.time()))
 
 
+def _resolve_branch(request):
+    """Return the branch_id to filter on.
+
+    For tenant_admin / inventory_admin / super_admin: use the explicit ?branch_id=
+    param (or None for all branches).
+    For all other roles: force the user's assigned branch, ignoring any ?branch_id=
+    param so they cannot access other branches' data.
+    """
+    from config.branch_scope import BRANCH_ADMIN_BYPASS_ROLES, get_user_branch
+    user = request.user
+    if not user or not getattr(user, 'is_authenticated', False):
+        return None
+    role = getattr(user, 'role', '')
+    if role in BRANCH_ADMIN_BYPASS_ROLES or getattr(user, 'is_superuser', False):
+        return request.query_params.get('branch_id') or None
+    return get_user_branch(user)
+
+
 class SalesSummaryView(APIView):
     """Daily / range sales summary across POS + Dispensing."""
     permission_classes = [IsAuthenticated]
@@ -52,12 +70,17 @@ class SalesSummaryView(APIView):
         from dispensing.models import DispensingRecord
 
         start, end = _parse_range(request)
+        branch_id = _resolve_branch(request)
+        branch_q = Q(branch_id=branch_id) if branch_id else Q()
+
         pos_qs = POSTransaction.objects.filter(
             created_at__gte=start, created_at__lt=end, status='completed'
-        )
+        ).filter(branch_q)
         disp_qs = DispensingRecord.objects.filter(
             dispensed_at__gte=start, dispensed_at__lt=end, status='completed'
         )
+        if branch_id:
+            disp_qs = disp_qs.filter(branch_id=branch_id)
 
         pos_agg = pos_qs.aggregate(count=Count('id'), revenue=Sum('total'),
                                    discount=Sum('discount'), tax=Sum('tax'))
@@ -105,6 +128,7 @@ class TopProductsView(APIView):
     def get(self, request):
         from pos.models import TransactionItem
         start, end = _parse_range(request)
+        branch_id = _resolve_branch(request)
         try:
             limit = int(request.query_params.get('limit', 20))
         except ValueError:
@@ -112,6 +136,7 @@ class TopProductsView(APIView):
         rows = (TransactionItem.objects
                 .filter(transaction__created_at__gte=start, transaction__created_at__lt=end,
                         transaction__status='completed')
+                .filter(Q(transaction__branch_id=branch_id) if branch_id else Q())
                 .values('medication_name')
                 .annotate(quantity=Sum('quantity'),
                           revenue=Sum('total_price'),
@@ -134,8 +159,10 @@ class CashierPerformanceView(APIView):
     def get(self, request):
         from pos.models import POSTransaction
         start, end = _parse_range(request)
+        branch_id = _resolve_branch(request)
         rows = (POSTransaction.objects
                 .filter(created_at__gte=start, created_at__lt=end, status='completed')
+                .filter(Q(branch_id=branch_id) if branch_id else Q())
                 .values('cashier_id', 'cashier__first_name', 'cashier__last_name', 'cashier__email')
                 .annotate(transactions=Count('id'),
                           revenue=Sum('total'),
@@ -160,8 +187,10 @@ class InventoryValuationView(APIView):
 
     def get(self, request):
         from inventory.models import StockBatch, MedicationStock
+        branch_id = _resolve_branch(request)
         batches = (StockBatch.objects
                    .filter(quantity_remaining__gt=0)
+                   .filter(Q(branch_id=branch_id) if branch_id else Q())
                    .select_related('stock'))
         cost_value = 0.0
         sale_value = 0.0
@@ -198,6 +227,7 @@ class ExpiryReportView(APIView):
 
     def get(self, request):
         from inventory.models import StockBatch
+        branch_id = _resolve_branch(request)
         try:
             days = int(request.query_params.get('days', 90))
         except ValueError:
@@ -207,6 +237,7 @@ class ExpiryReportView(APIView):
         batches = (StockBatch.objects
                    .filter(quantity_remaining__gt=0, expiry_date__isnull=False,
                            expiry_date__lte=cutoff)
+                   .filter(Q(branch_id=branch_id) if branch_id else Q())
                    .select_related('stock'))
         rows = []
         loss = 0.0
@@ -237,8 +268,9 @@ class LowStockReportView(APIView):
 
     def get(self, request):
         from inventory.models import MedicationStock
+        branch_id = _resolve_branch(request)
         items = []
-        for s in MedicationStock.objects.filter(is_active=True).select_related('category'):
+        for s in MedicationStock.objects.filter(is_active=True).filter(Q(branch_id=branch_id) if branch_id else Q()).select_related('category'):
             qty = s.total_quantity
             if qty <= (s.reorder_level or 0):
                 items.append({
@@ -267,12 +299,15 @@ class ProfitLossView(APIView):
         from dispensing.models import DispensingRecord
         from expenses.models import Expense
         start, end = _parse_range(request)
+        branch_id = _resolve_branch(request)
+        branch_q_pos = Q(branch_id=branch_id) if branch_id else Q()
+        branch_q_tx = Q(transaction__branch_id=branch_id) if branch_id else Q()
 
         # Sales revenue + COGS from POS line items
         ti = TransactionItem.objects.filter(
             transaction__created_at__gte=start, transaction__created_at__lt=end,
             transaction__status='completed',
-        ).select_related('stock')
+        ).filter(branch_q_tx).select_related('stock')
         pos_revenue = 0.0
         cogs = 0.0
         for it in ti:
@@ -282,12 +317,14 @@ class ProfitLossView(APIView):
         # Dispensing revenue
         disp_revenue = float(DispensingRecord.objects
                              .filter(dispensed_at__gte=start, dispensed_at__lt=end, status='completed')
+                             .filter(branch_q_pos)
                              .aggregate(s=Sum('total'))['s'] or 0)
 
         # Expenses
         try:
             expenses_total = float(Expense.objects
                                    .filter(date__gte=start.date(), date__lt=end.date())
+                                   .filter(Q(branch_id=branch_id) if branch_id else Q())
                                    .aggregate(s=Sum('amount'))['s'] or 0)
         except Exception:
             expenses_total = 0.0
@@ -330,7 +367,7 @@ class ROIView(APIView):
         from django.db.models.functions import TruncDate
 
         start, end = _parse_range(request)
-        branch_id = request.query_params.get('branch_id')
+        branch_id = _resolve_branch(request)
         branch_q_pos = Q(transaction__branch_id=branch_id) if branch_id else Q()
         branch_q_inv = Q(branch_id=branch_id) if branch_id else Q()
 
@@ -595,7 +632,7 @@ class CashFlowView(APIView):
         from django.db.models.functions import TruncDate
 
         start, end = _parse_range(request)
-        branch_id = request.query_params.get('branch_id')
+        branch_id = _resolve_branch(request)
         branch_q_pos = Q(branch_id=branch_id) if branch_id else Q()
 
         # ── Inflows ─────────────────────────────────────────────────────
@@ -624,6 +661,7 @@ class CashFlowView(APIView):
             exp_qs = (Expense.objects
                       .filter(expense_date__gte=start.date(),
                               expense_date__lt=end.date())
+                      .filter(Q(branch_id=branch_id) if branch_id else Q())
                       .exclude(status__in=['rejected', 'cancelled', 'pending']))
         except Exception:
             exp_qs = Expense.objects.none()
@@ -634,7 +672,8 @@ class CashFlowView(APIView):
         try:
             po_qs = (PurchaseOrder.objects
                      .filter(created_at__gte=start, created_at__lt=end,
-                             status__in=['received', 'partial']))
+                             status__in=['received', 'partial'])
+                     .filter(Q(branch_id=branch_id) if branch_id else Q()))
             outflow_po = float(po_qs.aggregate(s=Sum('total_cost'))['s'] or 0)
         except Exception:
             outflow_po = 0.0

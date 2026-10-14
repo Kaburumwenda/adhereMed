@@ -12,6 +12,7 @@ urlpatterns = [
     path('api/medications/', include('medications.urls')),
     path('api/exchange/', include('exchange.urls')),
     path('api/superadmin/', include('superadmin.urls')),
+    path('api/organizations/', include('organizations.urls')),
     path('api/usage-billing/', include('usage_billing.urls')),
     # API — Shared public apps
     path('api/doctors/', include('doctors.urls')),
@@ -43,6 +44,8 @@ urlpatterns = [
     path('api/expenses/', include('expenses.urls')),
     path('api/insurance/', include('insurance.urls')),
     path('api/reports/', include('reports.urls')),
+    # API — Document Management System
+    path('api/documents/', include('documents.urls')),
     # API — Homecare tenant app
     path('api/homecare/', include('homecare.urls')),
     # API — Per-tenant audit trail (IAM & Security)

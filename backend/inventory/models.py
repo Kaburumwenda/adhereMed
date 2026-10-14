@@ -27,6 +27,35 @@ class Unit(models.Model):
         return self.name
 
 
+class Classification(models.Model):
+    """User-managed lookup controlling how a stock item is treated
+    operationally (e.g. Routine, Emergency, Cold Chain, Controlled).
+
+    A default "Routine" classification is seeded for every tenant so new
+    stock items can be classified without any extra setup. Tenants can
+    add more classifications to fit how their warehouse is organised.
+    """
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name_plural = 'Classifications'
+
+    def __str__(self):
+        return self.name
+
+
+def _default_classification_id():
+    """Return the pk of this tenant's "Routine" classification, creating
+    it lazily so new MedicationStock rows default to "Routine" even on a
+    fresh tenant schema that has no classification rows yet."""
+    obj, _ = Classification.objects.get_or_create(name='Routine')
+    return obj.pk
+
+
 class MedicationStock(models.Model):
     medication_id = models.CharField(max_length=20, unique=True, blank=True, help_text='Auto-generated unique medication ID')
     medication_name = models.CharField(max_length=255, help_text='Cached from global pool')
@@ -34,8 +63,19 @@ class MedicationStock(models.Model):
         max_length=20, blank=True, db_index=True,
         help_text='Short code (e.g. PCM, AMOX) for quick POS search.',
     )
+    brand_name = models.CharField(max_length=255, blank=True, default='', help_text='Brand / trade name for this medication item')
+    generic_name = models.CharField(max_length=255, blank=True, default='', help_text='Generic name cached from Medication catalog')
+    strength = models.CharField(max_length=100, blank=True, default='', help_text='Strength cached from Medication catalog')
+    dosage_form = models.CharField(max_length=20, blank=True, default='', help_text='Dosage form cached from Medication catalog')
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, related_name='stocks')
     unit = models.ForeignKey(Unit, on_delete=models.SET_NULL, null=True, blank=True, related_name='stocks')
+    classification = models.ForeignKey(
+        Classification, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='stocks',
+        default=_default_classification_id,
+        help_text='Operational classification (Routine, Emergency, Cold Chain, …). '
+                  'Defaults to "Routine" when left blank.',
+    )
     branch = models.ForeignKey(
         'pharmacy_profile.Branch', on_delete=models.PROTECT,
         null=False, blank=False, related_name='stocks',
@@ -61,6 +101,11 @@ class MedicationStock(models.Model):
         default='none',
         help_text='Whether a doctor prescription is needed',
     )
+    items_per_unit = models.PositiveIntegerField(
+        default=0,
+        help_text='How many individual items are inside one box/pack/strip of this stock item. '
+                  'Only meaningful when the unit is a container type (e.g. box, pack, strip).',
+    )
     is_active = models.BooleanField(default=True)
     committed_qty = models.PositiveIntegerField(
         default=0,
@@ -73,16 +118,15 @@ class MedicationStock(models.Model):
         ordering = ['medication_name']
 
     def save(self, *args, **kwargs):
-        # Auto-fill abbreviation from the shared Medication catalog when missing
-        if not self.abbreviation and self.medication_name:
+        # Auto-fill abbreviation and medication fields from the shared catalog
+        if self.medication_name:
             try:
                 from medications.models import Medication
                 key = self.medication_name.strip()
                 m = (
                     Medication.objects
                     .filter(generic_name__iexact=key)
-                    .exclude(abbreviation='')
-                    .only('abbreviation')
+                    .only('abbreviation', 'brand_names', 'generic_name', 'strength', 'dosage_form')
                     .first()
                 )
                 if not m:
@@ -91,12 +135,30 @@ class MedicationStock(models.Model):
                         m = (
                             Medication.objects
                             .filter(generic_name__iexact=head)
-                            .exclude(abbreviation='')
-                            .only('abbreviation')
+                            .only('abbreviation', 'brand_names', 'generic_name', 'strength', 'dosage_form')
                             .first()
                         )
+                if not m:
+                    # Try matching by brand name in brand_names JSON array
+                    meds = (
+                        Medication.objects
+                        .filter(brand_names__contains=[key])
+                        .only('abbreviation', 'brand_names', 'generic_name', 'strength', 'dosage_form')
+                        [:1]
+                    )
+                    if meds:
+                        m = meds[0]
                 if m:
-                    self.abbreviation = m.abbreviation
+                    if not self.abbreviation and m.abbreviation:
+                        self.abbreviation = m.abbreviation
+                    if not self.generic_name and m.generic_name:
+                        self.generic_name = m.generic_name
+                    if not self.strength and m.strength:
+                        self.strength = m.strength
+                    if not self.dosage_form and m.dosage_form:
+                        self.dosage_form = m.dosage_form
+                    if not self.brand_name and m.brand_names:
+                        self.brand_name = m.brand_names[0] if isinstance(m.brand_names, list) else str(m.brand_names)
             except Exception:
                 pass
 

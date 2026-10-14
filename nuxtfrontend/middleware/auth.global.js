@@ -22,7 +22,15 @@ const PUBLIC_ROUTES = new Set([
   '/pricing',
 ])
 
+// Routes that org admins can always access (command center + tenant dashboards).
+const ORG_ROUTES = new Set([
+  '/command-center',
+  '/command-center/settings',
+])
+
 function getHomePath(auth) {
+  // Org admin without an active tenant override → command center
+  if (auth.isOrgAdmin && !auth.activeTenantOverride) return '/command-center'
   if (auth.tenantType === 'pharmacy') return '/pharmacy'
   if (auth.tenantType === 'lab') return '/lab'
   if (auth.tenantType === 'radiology_center') return '/radiology'
@@ -121,6 +129,7 @@ const INVENTORY_PREFIXED_ROUTES = [
   '/purchase-orders', '/suppliers', '/branches', '/accounts', '/invoices',
   '/expenses', '/analytics', '/reports', '/staff', '/settings', '/setup',
   '/pos', '/sales-orders', '/deliveries', '/customers',
+  '/documents', '/evaluations',
 ]
 
 function shouldRedirectToInventory(auth, path) {
@@ -155,6 +164,14 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
   if (auth.isLoggedIn && isAuthRoute) {
     return navigateTo(getHomePath(auth))
+  }
+
+  // Command Center is accessible to org admins without tenant restrictions.
+  if (ORG_ROUTES.has(path)) {
+    if (!auth.isOrgAdmin) {
+      return navigateTo(getHomePath(auth))
+    }
+    return  // allow
   }
 
   // ── Billing lock gate ──

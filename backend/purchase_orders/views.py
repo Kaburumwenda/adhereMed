@@ -6,12 +6,25 @@ from datetime import datetime
 from django.http import HttpResponse
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
+from rest_framework.generics import GenericAPIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
+from django_filters import CharFilter, FilterSet
+from django.db.models import Q
 
 from config.branch_scope import BranchScopedMixin
 from .models import PurchaseOrder, GoodsReceivedNote
+class PurchaseOrderFilterSet(FilterSet):
+    """Adds branch filter that includes records with branch=NULL (shared/unassigned)."""
+    branch = CharFilter(method='filter_branch', help_text='Filter by branch, including unassigned')
+    class Meta:
+        model = PurchaseOrder
+        fields = ['status', 'supplier']
+    def filter_branch(self, queryset, name, value):
+        if not value:
+            return queryset
+        return queryset.filter(Q(branch_id=value) | Q(branch__isnull=True))
 from .serializers import (
     PurchaseOrderSerializer,
     GoodsReceivedNoteSerializer,
@@ -23,7 +36,7 @@ class PurchaseOrderViewSet(BranchScopedMixin, viewsets.ModelViewSet):
     queryset = PurchaseOrder.objects.select_related('supplier', 'ordered_by', 'branch').prefetch_related('grns').all()
     serializer_class = PurchaseOrderSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['status', 'supplier', 'branch']
+    filterset_class = PurchaseOrderFilterSet
     search_fields = ['po_number', 'supplier__name']
     ordering_fields = ['created_at', 'order_date', 'total_cost']
 
@@ -1182,10 +1195,301 @@ class PurchaseOrderViewSet(BranchScopedMixin, viewsets.ModelViewSet):
         )
 
 
-class GoodsReceivedNoteViewSet(viewsets.ModelViewSet):
+class GoodsReceivedNoteViewSet(BranchScopedMixin, viewsets.ModelViewSet):
     queryset = GoodsReceivedNote.objects.select_related('purchase_order', 'received_by').all()
     serializer_class = GoodsReceivedNoteSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['purchase_order']
     search_fields = ['grn_number']
     ordering_fields = ['received_date']
+
+
+# ── RFQ / Procurement views ───────────────────────────────────────────────
+from .models import RequestForQuotation, RFQQuote, SupplierEvaluation, ReorderSuggestion
+from .serializers import (
+    RequestForQuotationSerializer, RFQQuoteSerializer,
+    SupplierEvaluationSerializer, ReorderSuggestionSerializer,
+)
+
+
+class RequestForQuotationViewSet(BranchScopedMixin, viewsets.ModelViewSet):
+    queryset = RequestForQuotation.objects.select_related(
+        'created_by', 'branch', 'awarded_supplier', 'awarded_po',
+    ).prefetch_related('quotes')
+    serializer_class = RequestForQuotationSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status', 'branch', 'awarded_supplier']
+    search_fields = ['rfq_number', 'title', 'description']
+    ordering_fields = ['created_at', 'response_deadline', 'expected_delivery']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        from django.db.models import Count
+        qs = qs.annotate(quote_count=Count('quotes'))
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def award(self, request, pk=None):
+        """Award the RFQ to a specific supplier quote."""
+        rfq = self.get_object()
+        quote_id = request.data.get('quote_id')
+        quote = rfq.quotes.filter(id=quote_id).first()
+        if not quote:
+            return Response({'detail': 'Quote not found.'}, status=404)
+        # Mark all quotes as rejected except the winner
+        rfq.quotes.exclude(id=quote_id).update(status=RFQQuote.Status.REJECTED)
+        quote.status = RFQQuote.Status.AWARDED
+        quote.save(update_fields=['status'])
+        rfq.status = RequestForQuotation.Status.AWARDED
+        rfq.awarded_supplier = quote.supplier
+        rfq.save(update_fields=['status', 'awarded_supplier'])
+        return Response({'detail': f'Awarded to {quote.supplier.name}'})
+
+    @action(detail=True, methods=['post'])
+    def create_po(self, request, pk=None):
+        """Create a Purchase Order from the awarded quote."""
+        rfq = self.get_object()
+        if rfq.status != RequestForQuotation.Status.AWARDED or not rfq.awarded_supplier:
+            return Response({'detail': 'RFQ must be awarded first.'}, status=400)
+        winning_quote = rfq.quotes.filter(status=RFQQuote.Status.AWARDED).first()
+        if not winning_quote:
+            return Response({'detail': 'No winning quote found.'}, status=400)
+        import uuid as _uuid
+        po = PurchaseOrder.objects.create(
+            po_number=f'PO-{_uuid.uuid4().hex[:8].upper()}',
+            supplier=rfq.awarded_supplier,
+            items=winning_quote.items,
+            total_cost=winning_quote.total_cost,
+            status=PurchaseOrder.Status.DRAFT,
+            ordered_by=request.user if request.user.is_authenticated else None,
+            expected_delivery=rfq.expected_delivery,
+            notes=f'Created from RFQ {rfq.rfq_number}',
+            branch=rfq.branch,
+        )
+        rfq.awarded_po = po
+        rfq.save(update_fields=['awarded_po'])
+        return Response(PurchaseOrderSerializer(po, context={'request': request}).data, status=201)
+
+    @action(detail=True, methods=['post'])
+    def send_to_suppliers(self, request, pk=None):
+        """Mark RFQ as sent to suppliers."""
+        rfq = self.get_object()
+        rfq.status = RequestForQuotation.Status.SENT
+        rfq.save(update_fields=['status'])
+        return Response({'detail': 'RFQ sent to suppliers.'})
+
+
+class RFQQuoteViewSet(viewsets.ModelViewSet):
+    queryset = RFQQuote.objects.select_related('rfq', 'supplier')
+    serializer_class = RFQQuoteSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['rfq', 'supplier', 'status']
+    ordering_fields = ['total_cost', 'submitted_at']
+
+
+class SupplierEvaluationViewSet(viewsets.ModelViewSet):
+    queryset = SupplierEvaluation.objects.select_related('supplier', 'evaluated_by')
+    serializer_class = SupplierEvaluationSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['supplier']
+    search_fields = ['supplier__name', 'notes']
+    ordering_fields = ['evaluation_date', 'overall_rating']
+
+
+class ReorderSuggestionViewSet(BranchScopedMixin, viewsets.ModelViewSet):
+    queryset = ReorderSuggestion.objects.select_related(
+        'stock', 'recommended_supplier', 'branch',
+    )
+    serializer_class = ReorderSuggestionSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status', 'branch', 'recommended_supplier']
+    search_fields = ['stock__medication_name']
+    ordering_fields = ['created_at', 'estimated_cost']
+
+    @action(detail=True, methods=['post'])
+    def dismiss(self, request, pk=None):
+        suggestion = self.get_object()
+        suggestion.status = 'dismissed'
+        suggestion.save(update_fields=['status'])
+        return Response({'detail': 'Suggestion dismissed.'})
+
+    @action(detail=True, methods=['post'])
+    def mark_ordered(self, request, pk=None):
+        suggestion = self.get_object()
+        suggestion.status = 'ordered'
+        suggestion.save(update_fields=['status'])
+        return Response({'detail': 'Marked as ordered.'})
+
+    @action(detail=False, methods=['post'])
+    def generate(self, request):
+        """Generate reorder suggestions based on current stock levels vs reorder points."""
+        from inventory.models import MedicationStock
+        from suppliers.models import SupplierItem
+        from decimal import Decimal
+
+        branch_id = request.data.get('branch') or request.query_params.get('branch')
+        # Force non-admin users to their own branch
+        from config.branch_scope import BRANCH_ADMIN_BYPASS_ROLES, get_user_branch
+        role = getattr(request.user, 'role', '')
+        if role not in BRANCH_ADMIN_BYPASS_ROLES and not getattr(request.user, 'is_superuser', False):
+            branch_id = get_user_branch(request.user)
+        created = []
+        stocks = MedicationStock.objects.select_related('unit', 'category')
+        if branch_id:
+            stocks = stocks.filter(branch_id=branch_id)
+        for stock in stocks:
+            qty = stock.total_quantity or 0
+            reorder = stock.reorder_level or 0
+            if reorder > 0 and qty <= reorder:
+                # Suggest 2x reorder level or the difference, whichever is larger
+                suggested = max(reorder * 2, reorder - qty)
+                if suggested < 1:
+                    continue
+                # Find recommended supplier
+                supplier_item = SupplierItem.objects.filter(stock=stock).first()
+                supplier = supplier_item.supplier if supplier_item else None
+                unit_cost = supplier_item.unit_cost if supplier_item else (stock.cost_price or 0)
+                estimated = Decimal(str(suggested)) * Decimal(str(unit_cost))
+                obj, created_flag = ReorderSuggestion.objects.update_or_create(
+                    stock=stock,
+                    status='pending',
+                    defaults={
+                        'current_quantity': qty,
+                        'reorder_level': reorder,
+                        'suggested_quantity': suggested,
+                        'recommended_supplier': supplier,
+                        'last_unit_cost': unit_cost,
+                        'estimated_cost': estimated,
+                        'branch_id': branch_id,
+                    },
+                )
+                if created_flag:
+                    created.append(obj.id)
+        return Response({'detail': f'Generated {len(created)} new suggestions.', 'new_ids': created})
+
+
+class ProcurementDashboardView(GenericAPIView):
+    """KPI summary for the procurement dashboard."""
+    permission_classes = []
+
+    def get(self, request):
+        from django.db.models import Sum, Count, Avg, F
+        from django.db.models.functions import TruncMonth
+        from django.utils import timezone
+        import datetime
+
+        branch_id = request.query_params.get('branch')
+        # Force non-admin users to their own branch
+        from config.branch_scope import BRANCH_ADMIN_BYPASS_ROLES, get_user_branch
+        role = getattr(request.user, 'role', '')
+        if role not in BRANCH_ADMIN_BYPASS_ROLES and not getattr(request.user, 'is_superuser', False):
+            branch_id = get_user_branch(request.user)
+        qs = PurchaseOrder.objects.all()
+        if branch_id:
+            qs = qs.filter(branch_id=branch_id)
+
+        total_pos = qs.count()
+        pending = qs.filter(status__in=['draft', 'sent']).count()
+        received = qs.filter(status='received').count()
+        partial = qs.filter(status='partial').count()
+        cancelled = qs.filter(status='cancelled').count()
+
+        total_spend = qs.filter(status__in=['received', 'partial']).aggregate(
+            total=Sum('total_cost')
+        )['total'] or 0
+
+        # Pending deliveries (not yet received)
+        pending_delivery = qs.exclude(status__in=['received', 'cancelled', 'returned']).count()
+
+        # Average PO value
+        avg_po_value = qs.filter(status__in=['received', 'partial']).aggregate(
+            avg=Avg('total_cost')
+        )['avg'] or 0
+
+        # RFQ stats
+        rfqs = RequestForQuotation.objects.all()
+        if branch_id:
+            rfqs = rfqs.filter(branch_id=branch_id)
+        open_rfqs = rfqs.exclude(status__in=['awarded', 'closed', 'cancelled']).count()
+        awarded_rfqs = rfqs.filter(status='awarded').count()
+        total_rfqs = rfqs.count()
+
+        # Top suppliers by spend
+        top_suppliers = qs.exclude(status='cancelled').values('supplier__name').annotate(
+            order_count=Count('id'),
+            total_spend=Sum('total_cost'),
+        ).order_by('-total_spend')[:5]
+
+        # Recent orders
+        recent = qs.order_by('-created_at')[:6]
+        recent_data = PurchaseOrderSerializer(recent, many=True, context={'request': request}).data
+
+        # Reorder suggestions waiting
+        suggestions_qs = ReorderSuggestion.objects.filter(status='pending')
+        if branch_id:
+            suggestions_qs = suggestions_qs.filter(branch_id=branch_id)
+        pending_suggestions = suggestions_qs.count()
+        estimated_reorder_cost = suggestions_qs.aggregate(
+            total=Sum('estimated_cost')
+        )['total'] or 0
+
+        # Status breakdown for chart
+        status_breakdown = list(qs.values('status').annotate(
+            count=Count('id'),
+        ).order_by('-count'))
+
+        # Monthly spend trend (last 6 months)
+        six_months_ago = timezone.now() - datetime.timedelta(days=180)
+        monthly_spend = qs.filter(
+            status__in=['received', 'partial'],
+            created_at__gte=six_months_ago,
+        ).annotate(
+            month=TruncMonth('created_at'),
+        ).values('month').annotate(
+            total=Sum('total_cost'),
+            count=Count('id'),
+        ).order_by('month')
+        monthly_data = [
+            {'month': m['month'].strftime('%b %Y'), 'spend': float(m['total'] or 0), 'orders': m['count']}
+            for m in monthly_spend
+        ]
+
+        # Supplier evaluations summary
+        evals_qs = SupplierEvaluation.objects.all()
+        avg_rating = evals_qs.aggregate(avg=Avg('overall_rating'))['avg'] or 0
+        total_evaluations = evals_qs.count()
+        top_rated = evals_qs.order_by('-overall_rating').select_related('supplier')[:3]
+        top_rated_data = [
+            {'supplier_name': e.supplier.name, 'overall_rating': float(e.overall_rating)}
+            for e in top_rated
+        ]
+
+        # Overdue deliveries (expected_delivery < today and not received)
+        today = timezone.now().date()
+        overdue = qs.filter(
+            expected_delivery__lt=today,
+        ).exclude(status__in=['received', 'cancelled', 'returned']).count()
+
+        return Response({
+            'total_pos': total_pos,
+            'pending_orders': pending,
+            'received_orders': received,
+            'partial_orders': partial,
+            'cancelled_orders': cancelled,
+            'total_spend': float(total_spend),
+            'avg_po_value': float(avg_po_value),
+            'pending_delivery': pending_delivery,
+            'overdue_deliveries': overdue,
+            'open_rfqs': open_rfqs,
+            'awarded_rfqs': awarded_rfqs,
+            'total_rfqs': total_rfqs,
+            'pending_suggestions': pending_suggestions,
+            'estimated_reorder_cost': float(estimated_reorder_cost),
+            'top_suppliers': list(top_suppliers),
+            'recent_orders': recent_data,
+            'status_breakdown': status_breakdown,
+            'monthly_spend': monthly_data,
+            'avg_supplier_rating': round(float(avg_rating), 2),
+            'total_evaluations': total_evaluations,
+            'top_rated_suppliers': top_rated_data,
+        })

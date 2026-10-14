@@ -10,7 +10,9 @@ from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
-from django_filters.rest_framework import DjangoFilterBackend
+from django_filters.rest_framework import DjangoFilterBackend, FilterSet
+from django_filters import CharFilter
+from django.db.models import Q
 
 from config.branch_scope import BranchScopedMixin
 from config.pdf_branding import resolve_branding
@@ -18,24 +20,33 @@ from .models import SalesOrder
 from .serializers import SalesOrderSerializer
 
 
+class SalesOrderFilterSet(FilterSet):
+    """Adds branch filter that includes records with branch=NULL (shared/unassigned)."""
+    branch = CharFilter(method='filter_branch', help_text='Filter by branch, including unassigned (branch=NULL)')
+    date_from = CharFilter(field_name='created_at__date', lookup_expr='gte')
+    date_to = CharFilter(field_name='created_at__date', lookup_expr='lte')
+
+    class Meta:
+        model = SalesOrder
+        fields = ['status', 'payment_status', 'branch', 'customer']
+
+    def filter_branch(self, queryset, name, value):
+        if not value:
+            return queryset
+        return queryset.filter(Q(branch_id=value) | Q(branch__isnull=True))
+
+
 class SalesOrderViewSet(BranchScopedMixin, viewsets.ModelViewSet):
     queryset = SalesOrder.objects.select_related('customer', 'branch', 'created_by').all()
     serializer_class = SalesOrderSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['status', 'payment_status', 'branch', 'customer']
+    filterset_class = SalesOrderFilterSet
     search_fields = ['so_number', 'customer_name', 'customer_phone', 'notes']
     ordering_fields = ['created_at', 'expected_delivery', 'total_amount']
 
     def get_queryset(self):
         """Extend the base queryset with optional date range filters."""
         qs = super().get_queryset()
-        params = self.request.query_params
-        date_from = params.get('date_from')
-        date_to = params.get('date_to')
-        if date_from:
-            qs = qs.filter(created_at__date__gte=date_from)
-        if date_to:
-            qs = qs.filter(created_at__date__lte=date_to)
         return qs
 
     @action(detail=True, methods=['post'], url_path='record-payment')
