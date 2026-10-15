@@ -27,8 +27,14 @@ class TenantAdminSerializer(serializers.ModelSerializer):
             "phone", "email", "website",
             "is_active", "created_at", "updated_at",
             "domains", "user_count",
+            "provisioning_status", "provisioning_error",
+            "provisioning_started_at", "provisioning_completed_at",
         ]
-        read_only_fields = ["schema_name", "created_at", "updated_at", "slug"]
+        read_only_fields = [
+            "schema_name", "created_at", "updated_at", "slug",
+            "provisioning_status", "provisioning_error",
+            "provisioning_started_at", "provisioning_completed_at",
+        ]
 
     def get_user_count(self, obj):
         return User.objects.filter(tenant=obj).count()

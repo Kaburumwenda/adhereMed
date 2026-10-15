@@ -14,6 +14,8 @@ urlpatterns = [
     path("tenants/<int:pk>/stats/", views.tenant_stats, name="tenant-stats"),
     path("tenants/<int:pk>/delete/", views.delete_tenant, name="tenant-delete"),
     path("tenants/<int:pk>/create-domain/", views.create_tenant_domain, name="tenant-create-domain"),
+    path("tenants/<int:pk>/ensure-schema/", views.ensure_tenant_schema, name="tenant-ensure-schema"),
+    path("tenants/<int:pk>/provision/", views.provision_tenant_view, name="tenant-provision"),
 
     # User management
     path("users/", views.UserListView.as_view(), name="user-list"),

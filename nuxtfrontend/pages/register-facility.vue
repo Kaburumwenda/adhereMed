@@ -136,6 +136,7 @@ const req = [v => !!v || 'Required']
 
 const tenantTypes = [
   { label: 'Hospital', value: 'hospital' },
+  { label: 'Clinic', value: 'clinic' },
   { label: 'Pharmacy', value: 'pharmacy' },
   { label: 'Laboratory', value: 'lab' },
   { label: 'Homecare', value: 'homecare' },

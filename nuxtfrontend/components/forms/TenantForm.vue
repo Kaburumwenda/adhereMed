@@ -46,6 +46,7 @@
             cols="6"
             sm="4"
             md="4"
+            lg="3"
           >
             <v-card
               rounded="xl"
@@ -395,14 +396,54 @@
     <!-- Created confirmation -->
     <v-dialog v-model="createdDialog.show" max-width="480" persistent>
       <v-card rounded="xl" class="overflow-hidden">
-        <div class="text-center pa-6 pb-2" style="background: linear-gradient(135deg, rgba(var(--v-theme-success), 0.12), rgba(var(--v-theme-success), 0.04));">
-          <v-avatar color="success" size="56" class="mb-3">
-            <v-icon icon="mdi-check-bold" size="28" color="white" />
+        <div class="text-center pa-6 pb-2" :style="createdHeaderStyle">
+          <v-avatar :color="createdDialog.ready ? 'success' : createdDialog.failed ? 'error' : 'info'" size="56" class="mb-3">
+            <v-icon v-if="createdDialog.ready" icon="mdi-check-bold" size="28" color="white" />
+            <v-icon v-else-if="createdDialog.failed" icon="mdi-alert" size="28" color="white" />
+            <v-progress-circular v-else indeterminate color="white" size="26" width="3" />
           </v-avatar>
-          <div class="text-h6 font-weight-bold">Tenant Created</div>
+          <div class="text-h6 font-weight-bold">
+            {{ createdDialog.ready ? 'Tenant Created' : createdDialog.failed ? 'Workspace Setup Failed' : 'Setting Up Workspace' }}
+          </div>
         </div>
         <v-card-text class="pa-5">
-          <p class="mb-4 text-center"><strong>{{ createdDialog.name }}</strong> is ready to go.</p>
+          <p class="mb-4 text-center">
+            <template v-if="createdDialog.ready">
+              <strong>{{ createdDialog.name }}</strong> is ready to go.
+            </template>
+            <template v-else-if="createdDialog.failed">
+              <strong>{{ createdDialog.name }}</strong> was created, but its workspace could not be prepared.
+            </template>
+            <template v-else>
+              <strong>{{ createdDialog.name }}</strong> was created. Its workspace is being prepared in the
+              background — this usually takes under a minute.
+            </template>
+          </p>
+
+          <v-alert
+            v-if="createdDialog.failed"
+            type="error"
+            variant="tonal"
+            density="comfortable"
+            rounded="lg"
+            class="mb-3"
+          >
+            <div class="font-weight-bold mb-1">Setup failed</div>
+            <div class="text-caption" style="word-break: break-word;">
+              {{ createdDialog.error || 'Unknown error.' }}
+            </div>
+            <v-btn
+              class="mt-3 text-none"
+              size="small"
+              color="error"
+              variant="flat"
+              rounded="lg"
+              prepend-icon="mdi-refresh"
+              :loading="createdDialog.retrying"
+              @click="retryProvisioning"
+            >Retry setup</v-btn>
+          </v-alert>
+
           <v-card rounded="lg" variant="tonal" color="info" class="pa-4 mb-3">
             <div class="text-subtitle-2 font-weight-bold mb-2">
               <v-icon icon="mdi-shield-key" size="16" class="mr-1" /> Admin credentials
@@ -423,6 +464,14 @@
         </v-card-text>
         <v-card-actions class="pa-5 pt-0">
           <v-spacer />
+          <v-btn
+            v-if="!createdDialog.ready && !createdDialog.failed"
+            variant="text"
+            rounded="lg"
+            size="large"
+            class="text-none"
+            @click="onDoneCreated"
+          >Finish in background</v-btn>
           <v-btn color="primary" variant="flat" rounded="lg" size="large" class="text-none px-8" @click="onDoneCreated">
             <v-icon icon="mdi-check" start /> Done
           </v-btn>
@@ -439,7 +488,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useResource } from '~/composables/useResource'
 import { useGoogleMaps } from '~/composables/useGoogleMaps'
 
@@ -456,6 +505,7 @@ const steps = ['Facility Type', 'Details & Admin']
 
 const typeOptions = [
   { title: 'Hospital', value: 'hospital', icon: 'mdi-hospital-building', color: '#0EA5E9', desc: 'Full hospital management' },
+  { title: 'Clinic', value: 'clinic', icon: 'mdi-stethoscope', color: '#6366F1', desc: 'Outpatient consultations & care' },
   { title: 'Pharmacy', value: 'pharmacy', icon: 'mdi-medical-bag', color: '#10B981', desc: 'POS, inventory & dispensing' },
   { title: 'Lab', value: 'lab', icon: 'mdi-flask', color: '#F59E0B', desc: 'Lab orders & results' },
   { title: 'Radiology', value: 'radiology_center', icon: 'mdi-radiology', color: '#8B5CF6', desc: 'Imaging & reports' },
@@ -540,7 +590,19 @@ const formRef = ref(null)
 const showPassword = ref(false)
 const topError = ref('')
 const snack = reactive({ show: false, color: 'success', text: '' })
-const createdDialog = reactive({ show: false, name: '', email: '', password: '' })
+const createdDialog = reactive({
+  show: false,
+  name: '',
+  email: '',
+  password: '',
+  id: null,
+  // Provisioning state: the schema is built in the background after creation.
+  status: 'pending',
+  error: '',
+  retrying: false,
+  get ready() { return this.status === 'ready' },
+  get failed() { return this.status === 'failed' },
+})
 
 // ── Google Places + Map picker ──
 const { getPredictions, getPlaceDetails, reverseGeocode } = useGoogleMaps()
@@ -724,16 +786,21 @@ async function onSubmit() {
         admin_last_name: form.admin_last_name.trim()
       }
       if (form.admin_password) payload.admin_password = form.admin_password
-      // Tenant creation runs the tenant's full migration set synchronously
-      // (can take 30s+), so use a generous timeout for this request only.
-      const result = await r.create(payload, { timeout: 180000 })
+      // Creation no longer waits for the schema: the API writes the public
+      // rows, returns 202 and builds the schema in the background.
+      const result = await r.create(payload, { timeout: 60000 })
       const tenantName = result?.tenant?.name || form.name.trim()
       const adminEmail = result?.admin_user?.email || form.admin_email.trim()
       const generated = result?.admin_user?.generated_password
+      createdDialog.id = result?.tenant?.id ?? null
       createdDialog.name = tenantName
       createdDialog.email = adminEmail
       createdDialog.password = form.admin_password || generated || '(auto-generated)'
+      createdDialog.status = result?.provisioning?.status || 'pending'
+      createdDialog.error = result?.provisioning?.error || ''
+      createdDialog.retrying = false
       createdDialog.show = true
+      startProvisioningPoll()
     }
   } catch (e) {
     const data = e?.response?.data
@@ -750,7 +817,76 @@ async function onSubmit() {
   }
 }
 
+// ── Background provisioning ───────────────────────────────────────────────
+// The tenant row (and its admin user) already exist when the dialog opens, so
+// we poll the tenant endpoint until the schema finishes building.
+const createdHeaderStyle = computed(() => {
+  const tone = createdDialog.ready ? 'success' : createdDialog.failed ? 'error' : 'info'
+  return {
+    background: `linear-gradient(135deg, rgba(var(--v-theme-${tone}), 0.12), rgba(var(--v-theme-${tone}), 0.04))`,
+  }
+})
+
+let provisioningTimer = null
+let provisioningAttempts = 0
+const MAX_PROVISIONING_POLLS = 60 // ~3 minutes at 3s
+
+function stopProvisioningPoll() {
+  if (provisioningTimer) {
+    clearInterval(provisioningTimer)
+    provisioningTimer = null
+  }
+}
+
+async function pollProvisioning() {
+  if (!createdDialog.id) return
+  try {
+    const { data } = await $api.get(`/superadmin/tenants/${createdDialog.id}/`)
+    createdDialog.name = data?.name || createdDialog.name
+    createdDialog.status = data?.provisioning_status || createdDialog.status
+    createdDialog.error = data?.provisioning_error || ''
+  } catch {
+    // Ignore transient errors — the next tick retries.
+    return
+  }
+  provisioningAttempts += 1
+  if (createdDialog.status === 'ready' || createdDialog.status === 'failed') {
+    stopProvisioningPoll()
+  } else if (provisioningAttempts >= MAX_PROVISIONING_POLLS) {
+    stopProvisioningPoll()
+  }
+}
+
+function startProvisioningPoll() {
+  stopProvisioningPoll()
+  provisioningAttempts = 0
+  if (createdDialog.status === 'ready' || createdDialog.status === 'failed') return
+  provisioningTimer = setInterval(pollProvisioning, 3000)
+  // First check quickly so a fast provision feels instant.
+  setTimeout(pollProvisioning, 800)
+}
+
+async function retryProvisioning() {
+  if (!createdDialog.id) return
+  createdDialog.retrying = true
+  createdDialog.error = ''
+  try {
+    const { data } = await $api.post(`/superadmin/tenants/${createdDialog.id}/provision/`)
+    createdDialog.status = data?.provisioning?.status || 'pending'
+    createdDialog.error = data?.provisioning?.error || ''
+    startProvisioningPoll()
+  } catch (e) {
+    createdDialog.status = 'failed'
+    createdDialog.error = e?.response?.data?.detail || 'Retry request failed.'
+  } finally {
+    createdDialog.retrying = false
+  }
+}
+
+onBeforeUnmount(stopProvisioningPoll)
+
 function onDoneCreated() {
+  stopProvisioningPoll()
   createdDialog.show = false
   router.push('/superadmin/tenants')
 }

@@ -12,6 +12,21 @@ class Tenant(TenantMixin):
         CLINIC = 'clinic', 'Clinic'
         INVENTORY = 'inventory', 'Inventory / Warehouse'
 
+    class ProvisioningStatus(models.TextChoices):
+        """Lifecycle of a tenant's database schema.
+
+        Tenant creation writes the public rows (Tenant/Domain/admin user) in one
+        fast transaction and marks the tenant ``PENDING``; the schema is then
+        built in the background (it runs ~25 apps' migrations and takes 30s+).
+
+        Requests hitting a tenant that is not ``READY`` are answered with 503
+        instead of failing with ``relation "..." does not exist``.
+        """
+        PENDING = 'pending', 'Pending'
+        PROVISIONING = 'provisioning', 'Provisioning'
+        READY = 'ready', 'Ready'
+        FAILED = 'failed', 'Failed'
+
     name = models.CharField(max_length=255)
     type = models.CharField(max_length=20, choices=TenantType.choices)
     slug = models.SlugField(unique=True)
@@ -49,6 +64,27 @@ class Tenant(TenantMixin):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # ── Schema provisioning bookkeeping ──
+    # Defaults to READY so tenants created by other code paths (which still
+    # create their schema synchronously via ``auto_create_schema``) are never
+    # wrongly treated as unavailable. The async creation flow sets PENDING
+    # explicitly and then flips to PROVISIONING / READY / FAILED.
+    provisioning_status = models.CharField(
+        max_length=16,
+        choices=ProvisioningStatus.choices,
+        default=ProvisioningStatus.READY,
+        db_index=True,
+        help_text='Lifecycle of the tenant schema. Not "ready" means the schema '
+                  'is still being built in the background.',
+    )
+    provisioning_error = models.TextField(
+        blank=True,
+        default='',
+        help_text='Last provisioning failure, if any.',
+    )
+    provisioning_started_at = models.DateTimeField(null=True, blank=True)
+    provisioning_completed_at = models.DateTimeField(null=True, blank=True)
+
     auto_create_schema = True
 
     class Meta:
@@ -56,6 +92,11 @@ class Tenant(TenantMixin):
 
     def __str__(self):
         return f'{self.name} ({self.get_type_display()})'
+
+    @property
+    def is_ready(self) -> bool:
+        """True only once the tenant's schema exists and is fully migrated."""
+        return self.provisioning_status == self.ProvisioningStatus.READY
 
 
 class Domain(DomainMixin):

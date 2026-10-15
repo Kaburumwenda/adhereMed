@@ -124,13 +124,41 @@
         </template>
 
         <template #item.is_active="{ item }">
-          <v-chip
-            size="small"
-            :color="item.is_active ? 'success' : 'grey'"
-            variant="tonal"
-          >
-            {{ item.is_active ? 'Active' : 'Inactive' }}
-          </v-chip>
+          <div class="d-flex align-center ga-1">
+            <v-chip
+              size="small"
+              :color="item.is_active ? 'success' : 'grey'"
+              variant="tonal"
+            >
+              {{ item.is_active ? 'Active' : 'Inactive' }}
+            </v-chip>
+            <!-- Schema provisioning state (built in the background on create) -->
+            <v-tooltip
+              v-if="item.provisioning_status && item.provisioning_status !== 'ready'"
+              :text="provisioningTooltip(item)"
+              location="top"
+              max-width="320"
+            >
+              <template #activator="{ props: tp }">
+                <v-chip
+                  v-bind="tp"
+                  size="small"
+                  :color="provisioningColor(item.provisioning_status)"
+                  variant="tonal"
+                >
+                  <v-progress-circular
+                    v-if="item.provisioning_status !== 'failed'"
+                    indeterminate
+                    size="12"
+                    width="2"
+                    class="mr-1"
+                  />
+                  <v-icon v-else icon="mdi-alert" size="14" class="mr-1" />
+                  {{ provisioningLabel(item.provisioning_status) }}
+                </v-chip>
+              </template>
+            </v-tooltip>
+          </div>
         </template>
 
         <template #item.created_at="{ value }">
@@ -139,6 +167,16 @@
 
         <template #item.actions="{ item }">
           <div class="d-flex justify-end ga-1">
+            <v-btn
+              v-if="item.provisioning_status && item.provisioning_status !== 'ready'"
+              icon="mdi-refresh"
+              variant="text"
+              size="small"
+              :color="item.provisioning_status === 'failed' ? 'error' : 'info'"
+              title="Retry workspace setup"
+              :loading="provisioning === item.id"
+              @click.stop="retryProvisioning(item)"
+            />
             <v-btn
               icon="mdi-chart-box-outline"
               variant="text"
@@ -305,7 +343,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useResource } from '~/composables/useResource'
 
 const { $api } = useNuxtApp()
@@ -323,8 +361,10 @@ const headers = [
 
 const typeOptions = [
   { title: 'Hospital', value: 'hospital' },
+  { title: 'Clinic', value: 'clinic' },
   { title: 'Pharmacy', value: 'pharmacy' },
   { title: 'Lab', value: 'lab' },
+  { title: 'Radiology', value: 'radiology_center' },
   { title: 'Homecare', value: 'homecare' },
   { title: 'Inventory / Warehouse', value: 'inventory' }
 ]
@@ -338,6 +378,7 @@ const typeFilter = ref(null)
 const statusFilter = ref(null)
 const toggling = ref(null)
 const deleting = ref(null)
+const provisioning = ref(null)
 const deleteDialog = reactive({
   show: false,
   tenant: null,
@@ -407,6 +448,74 @@ function formatDate(v) {
     return String(v)
   }
 }
+
+// ── Schema provisioning (built in the background after creation) ──────────
+function provisioningLabel(status) {
+  return {
+    pending: 'Queued',
+    provisioning: 'Setting up',
+    failed: 'Setup failed',
+  }[status] || status
+}
+
+function provisioningColor(status) {
+  return { pending: 'info', provisioning: 'info', failed: 'error' }[status] || 'grey'
+}
+
+function provisioningTooltip(item) {
+  if (item.provisioning_status === 'failed') {
+    return item.provisioning_error || 'Workspace setup failed. Use the retry button to try again.'
+  }
+  return 'The workspace schema is still being prepared. It will be available shortly.'
+}
+
+async function retryProvisioning(item) {
+  provisioning.value = item.id
+  try {
+    const { data } = await $api.post(`/superadmin/tenants/${item.id}/provision/`)
+    item.provisioning_status = data?.tenant?.provisioning_status || 'pending'
+    item.provisioning_error = data?.tenant?.provisioning_error || ''
+    snack.text = `Setup restarted for ${item.name}.`
+    snack.color = 'info'
+    snack.show = true
+    // Reflect progress without a full reload storm.
+    pollUntilReady(item.id)
+  } catch (e) {
+    snack.text = e?.response?.data?.detail || 'Could not restart setup.'
+    snack.color = 'error'
+    snack.show = true
+  } finally {
+    provisioning.value = null
+  }
+}
+
+let pollTimer = null
+function pollUntilReady(id, attempts = 0) {
+  if (pollTimer) clearTimeout(pollTimer)
+  pollTimer = setTimeout(async () => {
+    try {
+      const { data } = await $api.get(`/superadmin/tenants/${id}/`)
+      const row = (r.items.value || []).find((t) => t.id === id)
+      if (row) {
+        row.provisioning_status = data.provisioning_status
+        row.provisioning_error = data.provisioning_error
+      }
+      if (data.provisioning_status !== 'ready' && data.provisioning_status !== 'failed' && attempts < 60) {
+        pollUntilReady(id, attempts + 1)
+      } else if (data.provisioning_status === 'ready') {
+        snack.text = `${data.name} workspace is ready.`
+        snack.color = 'success'
+        snack.show = true
+      }
+    } catch {
+      if (attempts < 60) pollUntilReady(id, attempts + 1)
+    }
+  }, 3000)
+}
+
+onBeforeUnmount(() => {
+  if (pollTimer) clearTimeout(pollTimer)
+})
 
 async function toggleActive(item) {
   toggling.value = item.id

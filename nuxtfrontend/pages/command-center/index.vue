@@ -112,12 +112,25 @@
                   </div>
                   <!-- Body -->
                   <div class="tenant-card__body">
-                    <div class="d-flex align-center justify-space-between mb-1">
-                      <div class="text-subtitle-1 font-weight-bold text-truncate">{{ t.name }}</div>
+                    <div class="d-flex align-center justify-space-between mb-2">
+                      <div class="text-subtitle-1 font-weight-bold text-truncate tenant-card__name">{{ t.name }}</div>
                       <v-chip v-if="!t.is_active" size="x-small" variant="flat" color="grey">Inactive</v-chip>
                     </div>
-                    <div class="text-caption text-medium-emphasis text-capitalize mb-3">
-                      {{ (t.type || '').replace('_', ' ') }}
+                    <div class="tenant-type-row mb-3">
+                      <div class="tenant-type" :style="typeBadgeStyle(t.type)">
+                        <v-icon size="13" class="tenant-type__icon">{{ typeIcon(t.type) }}</v-icon>
+                        <span class="tenant-type__label">{{ typeLabel(t.type) }}</span>
+                      </div>
+                      <!-- Live module indicator: blinks green while the facility is active -->
+                      <span
+                        class="tenant-live"
+                        :class="t.is_active ? 'tenant-live--on' : 'tenant-live--off'"
+                        :title="t.is_active ? 'Module active' : 'Module inactive'"
+                        :aria-label="t.is_active ? 'Module active' : 'Module inactive'"
+                        role="status"
+                      >
+                        <span class="tenant-live__dot" />
+                      </span>
                     </div>
 
                     <!-- Mini stats -->
@@ -209,13 +222,24 @@ const initial = computed(() => {
 })
 
 const TENANT_META = {
-  hospital: { icon: 'mdi-hospital-building', color: 'red', grad: 'linear-gradient(135deg, #ef4444, #b91c1c)' },
-  clinic: { icon: 'mdi-stethoscope', color: 'teal', grad: 'linear-gradient(135deg, #14b8a6, #0d9488)' },
-  pharmacy: { icon: 'mdi-pill', color: 'green', grad: 'linear-gradient(135deg, #22c55e, #15803d)' },
-  inventory: { icon: 'mdi-warehouse', color: 'amber-darken-2', grad: 'linear-gradient(135deg, #f59e0b, #b45309)' },
-  lab: { icon: 'mdi-test-tube', color: 'purple', grad: 'linear-gradient(135deg, #a855f7, #7e22ce)' },
-  homecare: { icon: 'mdi-home-heart', color: 'pink', grad: 'linear-gradient(135deg, #ec4899, #be185d)' },
-  radiology_center: { icon: 'mdi-xray-box', color: 'indigo', grad: 'linear-gradient(135deg, #6366f1, #4338ca)' },
+  hospital: { label: 'Hospital', icon: 'mdi-hospital-building', color: 'red', hex: '#ef4444', grad: 'linear-gradient(135deg, #ef4444, #b91c1c)' },
+  clinic: { label: 'Clinic', icon: 'mdi-stethoscope', color: 'teal', hex: '#14b8a6', grad: 'linear-gradient(135deg, #14b8a6, #0d9488)' },
+  pharmacy: { label: 'Pharmacy', icon: 'mdi-pill', color: 'green', hex: '#22c55e', grad: 'linear-gradient(135deg, #22c55e, #15803d)' },
+  inventory: { label: 'Inventory / Warehouse', icon: 'mdi-warehouse', color: 'amber-darken-2', hex: '#f59e0b', grad: 'linear-gradient(135deg, #f59e0b, #b45309)' },
+  lab: { label: 'Laboratory', icon: 'mdi-test-tube', color: 'purple', hex: '#a855f7', grad: 'linear-gradient(135deg, #a855f7, #7e22ce)' },
+  homecare: { label: 'Homecare', icon: 'mdi-home-heart', color: 'pink', hex: '#ec4899', grad: 'linear-gradient(135deg, #ec4899, #be185d)' },
+  radiology_center: { label: 'Radiology Centre', icon: 'mdi-xray-box', color: 'indigo', hex: '#6366f1', grad: 'linear-gradient(135deg, #6366f1, #4338ca)' },
+}
+
+/** Fallback accent for an unknown / missing facility type. */
+const DEFAULT_ACCENT = '#2f6dff'
+
+/** `#rrggbb` → `rgba(r, g, b, alpha)`. Keeps the badge tints in one place. */
+function tint(hex, alpha) {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
 
 function typeIcon(type) {
@@ -226,6 +250,20 @@ function typeColor(type) {
 }
 function typeGrad(type) {
   return TENANT_META[type]?.grad || 'linear-gradient(135deg, #2f6dff, #143ce1)'
+}
+/** Human-readable facility type, e.g. `inventory` → "Inventory / Warehouse". */
+function typeLabel(type) {
+  if (TENANT_META[type]?.label) return TENANT_META[type].label
+  return type ? type.replace(/_/g, ' ') : 'Facility'
+}
+/** Accent-coloured badge styling (text, translucent fill, soft border). */
+function typeBadgeStyle(type) {
+  const hex = TENANT_META[type]?.hex || DEFAULT_ACCENT
+  return {
+    color: hex,
+    background: tint(hex, 0.12),
+    borderColor: tint(hex, 0.32),
+  }
 }
 
 function formatKES(val) {
@@ -700,6 +738,108 @@ function getHomePathForUser() {
   flex-grow: 1;
   display: flex;
   flex-direction: column;
+}
+.tenant-card__name {
+  letter-spacing: -0.2px;
+}
+
+/* ── Facility type badge ── */
+.tenant-type-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.tenant-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: center;
+  min-width: 0;
+  max-width: 100%;
+  padding: 3px 11px 3px 9px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.5;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.25s, border-color 0.25s, transform 0.2s;
+}
+.tenant-type__icon {
+  flex-shrink: 0;
+  opacity: 0.95;
+}
+.tenant-type__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tenant-card:hover .tenant-type {
+  transform: translateX(2px);
+}
+
+/* ── Live module indicator ── */
+.tenant-live {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background 0.25s, color 0.25s;
+}
+.tenant-live__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+/* Active: green, softly haloed, dot blinks and a ring pings outward */
+.tenant-live--on {
+  color: #22c55e;
+  background: rgba(34, 197, 94, 0.14);
+}
+.tenant-live--on .tenant-live__dot {
+  animation: live-blink 1.8s ease-in-out infinite;
+}
+.tenant-live--on::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  opacity: 0;
+  animation: live-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+/* Inactive: muted and deliberately static, so it never reads as "live" */
+.tenant-live--off {
+  color: rgba(var(--v-theme-on-surface), 0.38);
+  background: rgba(var(--v-theme-on-surface), 0.07);
+}
+@keyframes live-blink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.3; }
+}
+@keyframes live-ping {
+  0%   { transform: scale(0.75); opacity: 0.85; }
+  70%  { transform: scale(1.7);  opacity: 0; }
+  100% { transform: scale(1.8);  opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tenant-live--on .tenant-live__dot,
+  .tenant-live--on::after {
+    animation: none;
+  }
+  .tenant-live--on::after {
+    opacity: 0.45;
+    transform: scale(1);
+  }
 }
 .tenant-stats {
   display: flex;

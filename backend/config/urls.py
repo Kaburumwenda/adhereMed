@@ -55,5 +55,7 @@ urlpatterns = [
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
 ]
 
-if settings.DEBUG:
+if settings.DEBUG and not getattr(settings, 'USE_S3', False):
+    # Only serve media from disk when it is actually stored on disk. With S3
+    # enabled MEDIA_URL is an absolute bucket URL and this route is meaningless.
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

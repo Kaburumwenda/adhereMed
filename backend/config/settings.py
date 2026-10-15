@@ -252,6 +252,9 @@ USE_TZ = True
 # ──────────────────────────────────────────────
 # Static & Media  (local dev or AWS S3)
 # ──────────────────────────────────────────────
+# Set USE_S3=True (in .env) to store BOTH static and media on S3. Required
+# bucket permissions are s3:PutObject, s3:GetObject and s3:ListBucket on the
+# bucket — see docs/notes in config/storage_backends.py.
 USE_S3 = config('USE_S3', default=False, cast=bool)
 
 if USE_S3:
@@ -311,7 +314,10 @@ if USE_S3:
         },
         # static files — public, no auth needed
         'staticfiles': {
-            'BACKEND': 'storages.backends.s3boto3.S3StaticStorage',
+            # Tolerant variant: collectstatic calls storage.exists() for every
+            # file, and the deployment IAM user gets 403 (not 404) from
+            # HeadObject. See config/storage_backends.py.
+            'BACKEND': 'config.storage_backends.TolerantS3StaticStorage',
             'OPTIONS': {
                 'location': STATIC_LOCATION,
                 'querystring_auth': False,
@@ -323,9 +329,15 @@ if USE_S3:
     }
 else:
     STATIC_URL  = 'static/'
-    STATIC_ROOT = BASE_DIR / 'staticfiles'
     MEDIA_URL   = 'media/'
-    MEDIA_ROOT  = BASE_DIR / 'media'
+
+# Local roots are defined in BOTH modes:
+#   * local mode      — collectstatic output and served media live here;
+#   * S3 mode         — kept for `collectstatic` when a local mirror is wanted,
+#                       for the DEBUG-only media route in config/urls.py, and
+#                       for tooling that expects settings.MEDIA_ROOT to exist.
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+MEDIA_ROOT  = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -343,4 +355,17 @@ CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 # Eager mode for local dev/testing without a broker (override via env)
 CELERY_TASK_ALWAYS_EAGER = config('CELERY_TASK_ALWAYS_EAGER', default=False, cast=bool)
 CELERY_TASK_EAGER_PROPAGATES = True
+# Publishing a task must fail fast. Tenant provisioning falls back to a
+# background thread when the broker is unreachable, and without these bounds
+# the publish attempt blocks on the Redis connect retry loop for ~2 minutes —
+# which would put the delay straight back into the tenant-creation request we
+# just took it out of.
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    'socket_connect_timeout': 3,
+    'socket_timeout': 3,
+    'retry_on_timeout': False,
+    'max_retries': 1,
+}
+CELERY_BROKER_CONNECTION_RETRY = False
+CELERY_TASK_PUBLISH_RETRY = False
 
