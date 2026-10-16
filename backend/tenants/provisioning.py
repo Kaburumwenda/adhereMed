@@ -266,16 +266,41 @@ def _broker_reachable(timeout=1.0) -> bool:
         return False
 
 
+def _worker_alive(timeout=1.0) -> bool:
+    """Return True if at least one Celery **worker** answers a ping.
+
+    A reachable broker is not enough. If no worker is consuming the default
+    queue, ``apply_async`` still succeeds and the task sits in Redis forever —
+    the tenant stays ``pending`` and the UI shows "Queued" indefinitely
+    (exactly the production symptom this guards against). ``control.ping``
+    round-trips to the workers, so it detects that case.
+
+    ``limit=1`` makes the broadcast return as soon as the first worker replies
+    instead of always blocking for the full ``timeout``.
+    """
+    try:
+        from config.celery import app as celery_app
+        replies = celery_app.control.ping(timeout=timeout, limit=1)
+        return bool(replies)
+    except Exception:
+        logger.warning(
+            'Celery worker ping failed; assuming no worker is available',
+            exc_info=True,
+        )
+        return False
+
+
 def dispatch_provisioning(tenant_id) -> str:
     """Kick off provisioning in the background. Returns how it was dispatched.
 
-    Prefers Celery (a real worker pool runs in production); falls back to a
-    daemon thread so a missing/unreachable broker never blocks tenant creation.
-    Either way the tenant is already persisted and marked ``pending``, so a
-    lost dispatch is recoverable via the retry endpoint or the
-    ``provision_tenants`` sweeper command.
+    Prefers Celery **only when a worker is actually listening** (a reachable
+    broker alone is not enough — see ``_worker_alive``); otherwise falls back to
+    a daemon thread so provisioning runs even when no worker is deployed. Either
+    way the tenant is already persisted and marked ``pending``, so a lost
+    dispatch is recoverable via the retry endpoint or the ``provision_tenants``
+    sweeper command.
     """
-    if _broker_reachable():
+    if _broker_reachable() and _worker_alive():
         try:
             from .tasks import provision_tenant_task
             # retry=False keeps a flaky broker from blocking on kombu's
@@ -287,6 +312,11 @@ def dispatch_provisioning(tenant_id) -> str:
                 'Celery dispatch failed for tenant %s; falling back to a thread',
                 tenant_id, exc_info=True,
             )
+    else:
+        logger.info(
+            'No Celery worker available for tenant %s; provisioning in a thread',
+            tenant_id,
+        )
 
     try:
         import threading

@@ -16,6 +16,13 @@ class UserSerializer(serializers.ModelSerializer):
     organization_id = serializers.SerializerMethodField()
     organization_name = serializers.SerializerMethodField()
     is_org_admin = serializers.SerializerMethodField()
+    # ── Branding ──
+    # Surfaced here (rather than only on /tenants/me/) so the frontend can tint
+    # its chrome on the very first paint: auth.restore() awaits /auth/me/ before
+    # any route is rendered.
+    brand_primary = serializers.SerializerMethodField()
+    brand_secondary = serializers.SerializerMethodField()
+    brand_accent = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -25,8 +32,29 @@ class UserSerializer(serializers.ModelSerializer):
             'is_active', 'date_joined', 'pin',
             'branch_id', 'branch_name', 'is_tenant_admin', 'billing', 'tenant_logo',
             'organization_id', 'organization_name', 'is_org_admin',
+            'brand_primary', 'brand_secondary', 'brand_accent',
         ]
         read_only_fields = ['date_joined', 'pin']
+
+    def _tenant_brand(self, obj, field):
+        """Brand colour for the user's own tenant, or '' when unavailable.
+
+        The public schema has no tenant, and super-admin accounts have none
+        either — both must degrade to '' so the frontend applies its defaults.
+        """
+        tenant = getattr(obj, 'tenant', None)
+        if tenant is None or getattr(tenant, 'schema_name', 'public') == 'public':
+            return ''
+        return getattr(tenant, field, '') or ''
+
+    def get_brand_primary(self, obj):
+        return self._tenant_brand(obj, 'brand_primary')
+
+    def get_brand_secondary(self, obj):
+        return self._tenant_brand(obj, 'brand_secondary')
+
+    def get_brand_accent(self, obj):
+        return self._tenant_brand(obj, 'brand_accent')
 
     def get_branch_id(self, obj):
         try:

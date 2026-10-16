@@ -1,331 +1,400 @@
 <template>
-  <v-container fluid class="pa-3 pa-md-5">
-    <!-- Header -->
-    <div class="d-flex flex-wrap align-center justify-space-between mb-4">
+  <v-container fluid class="pa-3 pa-md-5 ims-dash">
+    <!-- ═══════════════ COMPACT HEADER ═══════════════ -->
+    <div class="d-flex flex-wrap align-center justify-space-between mb-3">
       <div>
-        <h1 class="text-h5 text-md-h4 font-weight-bold mb-1">
-          Welcome back, {{ auth.user?.first_name || 'there' }}
-        </h1>
+        <h1 class="text-h5 text-md-h4 font-weight-bold mb-0">Warehouse Operations</h1>
         <div class="text-body-2 text-medium-emphasis">
-          {{ today }} · {{ auth.tenantName || 'Inventory' }} · {{ branchStore.currentBranch ? branchStore.currentBranch.name : 'All Branches' }} · live warehouse overview
+          {{ today }}
+          <span class="ml-1">· {{ auth.tenantName || 'Inventory' }}</span>
+          <span v-if="branchLabel"> · {{ branchLabel }}</span>
         </div>
       </div>
-      <div class="d-flex align-center mt-2 mt-md-0">
+      <div class="d-flex flex-wrap align-center ga-2 mt-2 mt-md-0">
+        <v-btn icon="mdi-refresh" variant="tonal" color="primary" size="small" title="Refresh" :loading="loading" @click="load" />
         <v-btn
-          variant="tonal" color="primary" rounded="lg" class="text-none mr-2"
-          prepend-icon="mdi-clipboard-check" :to="{ path: '/ims/inventory/stock-take' }"
           v-if="canAccessRoute(auth.role, '/ims/inventory/stock-take')"
-        >
-          New Stock Take
-        </v-btn>
-        <v-btn icon="mdi-refresh" variant="text" :loading="loading" @click="load" />
+          variant="outlined" rounded="lg" class="text-none"
+          prepend-icon="mdi-clipboard-check-outline" to="/ims/inventory/stock-take"
+        >New Stock Take</v-btn>
+        <v-btn
+          v-if="canAccessRoute(auth.role, '/ims/inventory/stocks/new')"
+          color="primary" rounded="lg" class="text-none"
+          prepend-icon="mdi-plus" to="/ims/inventory/stocks/new"
+        >Add Stock Item</v-btn>
       </div>
     </div>
 
-    <!-- KPI tiles -->
+    <!-- ═══════════════ KPI STRIP ═══════════════ -->
     <v-row dense>
-      <v-col v-for="k in kpis" :key="k.title" cols="6" md="4" lg="2">
-        <v-card rounded="lg" class="pa-3 h-100">
+      <v-col v-for="k in kpis" :key="k.key" cols="6" md="4" lg="2">
+        <component
+          :is="linkOr(k.to)"
+          :to="k.to || undefined"
+          class="ims-kpi h-100"
+          :class="[`ims-kpi-t-${k.key}`, k.to ? 'ims-kpi-link' : '']"
+        >
           <div class="d-flex align-center justify-space-between mb-2">
-            <v-avatar size="36" :color="k.color" variant="tonal">
-              <v-icon size="20">{{ k.icon }}</v-icon>
-            </v-avatar>
-            <v-chip v-if="k.chip" size="x-small" :color="k.chipColor" variant="tonal">{{ k.chip }}</v-chip>
+            <div class="ims-kpi-icon">
+              <v-icon size="18">{{ k.icon }}</v-icon>
+            </div>
+            <v-chip
+              v-if="k.chip"
+              size="x-small"
+              :color="k.chipColor"
+              variant="tonal"
+              class="font-weight-bold"
+            >{{ k.chip }}</v-chip>
           </div>
-          <div class="text-caption text-medium-emphasis text-truncate">{{ k.title }}</div>
-          <div class="text-h6 text-md-h5 font-weight-bold mt-1">{{ k.value }}</div>
-        </v-card>
+          <div class="ims-kpi-label">{{ k.title }}</div>
+          <div class="ims-kpi-value">{{ k.value }}</div>
+          <div v-if="k.hint" class="ims-kpi-foot">{{ k.hint }}</div>
+          <div v-if="k.share != null" class="ims-kpi-bars mt-2">
+            <span :style="{ width: k.share + '%' }" />
+          </div>
+        </component>
       </v-col>
     </v-row>
 
-    <!-- Stock flow trend + stock health -->
-    <v-row class="mt-1">
+    <!-- ═══════════════ OPS PULSE ═══════════════
+         Derived observations rather than another row of raw counts: each tile
+         says what the number means and links to the screen that acts on it. -->
+    <div class="ims-pulse my-3">
+      <div class="ims-pulse-head">
+        <v-icon size="17">mdi-pulse</v-icon>
+        <span>Operational pulse</span>
+        <span class="ims-pulse-window">last {{ trendDays }} days</span>
+      </div>
+      <div class="ims-pulse-grid">
+        <component
+          :is="linkOr(p.to)"
+          :to="p.to || undefined"
+          v-for="p in pulse"
+          :key="p.label"
+          class="ims-pulse-tile"
+          :class="{ 'ims-pulse-link': !!p.to }"
+          :style="{ '--pulse-tone': p.tone }"
+        >
+          <div class="ims-pulse-icon"><v-icon size="17">{{ p.icon }}</v-icon></div>
+          <div style="min-width:0">
+            <div class="ims-pulse-label">{{ p.label }}</div>
+            <div class="ims-pulse-value">{{ p.value }}</div>
+            <div class="ims-pulse-hint">{{ p.hint }}</div>
+          </div>
+        </component>
+      </div>
+    </div>
+
+    <!-- ═══════════════ FLOW + HEALTH ═══════════════ -->
+    <v-row dense>
       <v-col cols="12" lg="8">
-        <v-card rounded="lg" class="pa-4 h-100">
-          <div class="d-flex align-center justify-space-between mb-2">
+        <v-card rounded="lg" border class="pa-4 h-100 ims-panel">
+          <div class="d-flex flex-wrap align-center justify-space-between ga-2 mb-3">
             <div>
-              <h3 class="text-h6 font-weight-bold">Stock Flow — Last {{ trendDays }} Days</h3>
-              <div class="text-caption text-medium-emphasis">Inflow vs outflow units across all warehouses</div>
+              <h3 class="ims-panel-title">Stock flow</h3>
+              <div class="text-caption text-medium-emphasis">Inflow vs outflow across all warehouses</div>
             </div>
             <div class="d-flex align-center ga-2">
-              <div class="text-center px-2 py-1 rounded-lg" style="background: rgba(34,197,94,0.1)">
-                <div class="text-caption text-medium-emphasis" style="font-size: 10px">In</div>
-                <div class="text-subtitle-1 font-weight-bold text-success">{{ flowKpis.total_in }}</div>
+              <div class="ims-flowstat ims-flowstat-in">
+                <span class="ims-flowstat-label">In</span>
+                <span class="ims-flowstat-value">{{ num(flowKpis.total_in) }}</span>
               </div>
-              <div class="text-center px-2 py-1 rounded-lg" style="background: rgba(239,68,68,0.1)">
-                <div class="text-caption text-medium-emphasis" style="font-size: 10px">Out</div>
-                <div class="text-subtitle-1 font-weight-bold text-error">{{ flowKpis.total_out }}</div>
+              <div class="ims-flowstat ims-flowstat-out">
+                <span class="ims-flowstat-label">Out</span>
+                <span class="ims-flowstat-value">{{ num(flowKpis.total_out) }}</span>
               </div>
-              <div class="text-center px-2 py-1 rounded-lg" style="background: rgba(0,191,255,0.1)">
-                <div class="text-caption text-medium-emphasis" style="font-size: 10px">Transferred</div>
-                <div class="text-subtitle-1 font-weight-bold text-info">{{ flowKpis.total_transfer }}</div>
+              <div class="ims-flowstat ims-flowstat-net">
+                <span class="ims-flowstat-label">Net</span>
+                <span class="ims-flowstat-value">{{ netChange > 0 ? '+' : '' }}{{ num(netChange) }}</span>
               </div>
             </div>
           </div>
-          <!-- Legend -->
-          <div class="d-flex align-center ga-4 mb-1">
-            <div class="d-flex align-center">
-              <span class="legend-dot" style="background:#22c55e"></span>
-              <span class="text-caption text-medium-emphasis ml-1">Inflow</span>
-            </div>
-            <div class="d-flex align-center">
-              <span class="legend-dot" style="background:#ef4444"></span>
-              <span class="text-caption text-medium-emphasis ml-1">Outflow</span>
-            </div>
-            <div class="text-caption text-medium-emphasis ml-auto" style="font-size: 11px">Hover for details</div>
-          </div>
-          <StockFlowChart
-            :inflow="inflowValues"
-            :outflow="outflowValues"
-            :labels="trendLabels"
-            :height="220"
+
+          <EmptyState
+            v-if="!inflowValues.length"
+            icon="mdi-chart-timeline-variant"
+            title="No stock movement in this period"
+            message="Movements appear here once goods are received, sold or transferred."
           />
+          <template v-else>
+            <div class="d-flex align-center ga-4 mb-1">
+              <div class="d-flex align-center">
+                <span class="ims-legend-dot" style="background:#22c55e" />
+                <span class="text-caption text-medium-emphasis ml-1">Inflow</span>
+              </div>
+              <div class="d-flex align-center">
+                <span class="ims-legend-dot" style="background:#ef4444" />
+                <span class="text-caption text-medium-emphasis ml-1">Outflow</span>
+              </div>
+              <span class="text-caption text-medium-emphasis ml-auto" style="font-size: 11px">
+                {{ trendLabels.length }} active day{{ trendLabels.length === 1 ? '' : 's' }}
+              </span>
+            </div>
+            <StockFlowChart
+              :inflow="inflowValues"
+              :outflow="outflowValues"
+              :labels="trendLabels"
+              :height="220"
+            />
+          </template>
         </v-card>
       </v-col>
 
       <v-col cols="12" lg="4">
-        <v-card rounded="lg" class="pa-4 h-100">
-          <h3 class="text-h6 font-weight-bold mb-3">Stock Health</h3>
-          <div class="d-flex align-center justify-center mb-3">
-            <DonutRing
-              :segments="[
-                { value: stockHealth.healthy, color: '#22c55e', label: 'Healthy' },
-                { value: stockHealth.low, color: '#f59e0b', label: 'Low' },
-                { value: stockHealth.out, color: '#ef4444', label: 'Out' }
-              ]"
-              :size="180"
-            >
+        <v-card rounded="lg" border class="pa-4 h-100 ims-panel">
+          <div class="d-flex align-center justify-space-between mb-3">
+            <div>
+              <h3 class="ims-panel-title">Stock health</h3>
+              <div class="text-caption text-medium-emphasis">Availability by item</div>
+            </div>
+            <v-chip size="small" :color="healthChipColor" variant="tonal" class="font-weight-bold">
+              {{ healthPct }}% healthy
+            </v-chip>
+          </div>
+
+          <div class="d-flex justify-center mb-3">
+            <DonutRing :segments="healthSegments" :size="176" :thickness="16">
               <div class="text-center">
-                <div class="text-h5 font-weight-bold">{{ kpis[0]?.value }}</div>
+                <div class="text-h5 font-weight-bold">{{ num(totalSkus) }}</div>
                 <div class="text-caption text-medium-emphasis">SKUs</div>
               </div>
             </DonutRing>
           </div>
-          <div class="d-flex justify-space-around">
-            <div class="text-center">
-              <v-chip size="small" color="success" variant="tonal">{{ stockHealth.healthy }}</v-chip>
-              <div class="text-caption text-medium-emphasis mt-1">Healthy</div>
-            </div>
-            <div class="text-center">
-              <v-chip size="small" color="warning" variant="tonal">{{ stockHealth.low }}</v-chip>
-              <div class="text-caption text-medium-emphasis mt-1">Low</div>
-            </div>
-            <div class="text-center">
-              <v-chip size="small" color="error" variant="tonal">{{ stockHealth.out }}</v-chip>
-              <div class="text-caption text-medium-emphasis mt-1">Out</div>
-            </div>
+
+          <div v-for="h in healthLegend" :key="h.label" class="ims-legend">
+            <span class="ims-legend-dot" :style="{ background: h.color }" />
+            <span class="text-body-2 flex-grow-1">{{ h.label }}</span>
+            <span class="text-body-2 font-weight-bold">{{ h.count }}</span>
+            <span class="text-caption text-medium-emphasis ims-legend-pct">{{ h.pct }}%</span>
           </div>
+
+          <v-btn
+            block
+            variant="tonal"
+            color="primary"
+            rounded="lg"
+            class="text-none mt-3"
+            prepend-icon="mdi-chart-line"
+            to="/ims/inventory/stock-analysis"
+          >Open stock analysis</v-btn>
         </v-card>
       </v-col>
     </v-row>
 
-    <!-- Top value items + recent movements -->
-    <v-row>
+    <!-- ═══════════════ VALUE + MOVEMENTS ═══════════════ -->
+    <v-row dense class="mt-1">
       <v-col cols="12" lg="6">
-        <v-card rounded="lg" class="pa-4 h-100">
+        <v-card rounded="lg" border class="pa-4 h-100 ims-panel">
           <div class="d-flex align-center justify-space-between mb-3">
-            <h3 class="text-h6 font-weight-bold">Top Items by Stock Value</h3>
-            <v-btn variant="text" size="small" class="text-none" to="/ims/inventory/stock-analysis" append-icon="mdi-arrow-right">Analysis</v-btn>
+            <div>
+              <h3 class="ims-panel-title">Top items by stock value</h3>
+              <div class="text-caption text-medium-emphasis">Capital tied up, valued at cost</div>
+            </div>
+            <v-btn
+              variant="text" size="small" class="text-none" color="primary"
+              to="/ims/inventory/stock-analysis" append-icon="mdi-arrow-right"
+            >Analysis</v-btn>
           </div>
           <EmptyState v-if="!topValueItems.length" icon="mdi-package-variant-closed" title="No stock yet" />
           <div v-else>
             <div v-for="(p, i) in topValueItems" :key="p.name" class="mb-3">
-              <div class="d-flex justify-space-between text-body-2 mb-1">
-                <span class="text-truncate">
-                  <span class="text-medium-emphasis mr-2">{{ i + 1 }}.</span>{{ p.name }}
-                  <span class="text-caption text-medium-emphasis ml-1">{{ p.qty }} {{ p.unit || 'units' }}</span>
+              <div class="d-flex justify-space-between align-center text-body-2 mb-1">
+                <span class="text-truncate d-flex align-center" style="gap:8px; min-width:0">
+                  <span class="ims-rank">{{ i + 1 }}</span>
+                  <span class="text-truncate">{{ p.name }}</span>
+                  <span class="text-caption text-medium-emphasis ims-nowrap">{{ p.qty }} {{ p.unit || 'units' }}</span>
                 </span>
-                <span class="font-weight-medium">{{ formatMoney(p.value) }}</span>
+                <span class="font-weight-bold ims-nowrap ml-2">{{ formatMoney(p.value) }}</span>
               </div>
-              <v-progress-linear :model-value="p.pct" :color="barColors[i % barColors.length]" height="8" rounded />
+              <div class="ims-bar-track">
+                <span :style="{ width: p.pct + '%', background: p.color }" />
+              </div>
             </div>
           </div>
         </v-card>
       </v-col>
 
       <v-col cols="12" lg="6">
-        <v-card rounded="lg" class="pa-4 h-100">
+        <v-card rounded="lg" border class="pa-4 h-100 ims-panel">
           <div class="d-flex align-center justify-space-between mb-3">
-            <h3 class="text-h6 font-weight-bold">Recent Stock Movements</h3>
-            <v-btn variant="text" size="small" class="text-none" to="/ims/inventory/stock-movements" append-icon="mdi-arrow-right">Ledger</v-btn>
+            <div>
+              <h3 class="ims-panel-title">Recent stock movements</h3>
+              <div class="text-caption text-medium-emphasis">Latest postings to the ledger</div>
+            </div>
+            <v-btn
+              variant="text" size="small" class="text-none" color="primary"
+              to="/ims/inventory/stock-movements" append-icon="mdi-arrow-right"
+            >Ledger</v-btn>
           </div>
           <EmptyState v-if="!recentMovements.length" icon="mdi-swap-vertical" title="No movements recorded yet" />
-          <v-table v-else density="compact">
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th>Source</th>
-                <th class="text-right">Qty</th>
-                <th>When</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="m in recentMovements" :key="m.id">
-                <td class="text-truncate" style="max-width:150px">{{ m.stock_name }}</td>
-                <td class="text-caption">{{ m.source }}</td>
-                <td class="text-right font-weight-medium" :class="m.direction === 'inflow' ? 'text-success' : m.direction === 'outflow' ? 'text-error' : 'text-info'">
-                  {{ m.direction === 'outflow' ? '' : '+' }}{{ m.quantity_change }}
-                </td>
-                <td class="text-caption text-medium-emphasis">{{ formatRelative(m.timestamp) }}</td>
-              </tr>
-            </tbody>
-          </v-table>
+          <div v-else class="d-flex flex-column">
+            <div v-for="m in recentMovements.slice(0, 7)" :key="m.id" class="ims-movement">
+              <span class="ims-movement-dot" :class="`ims-mv-${m.direction}`">
+                <v-icon size="14">{{ movementIcon(m.direction) }}</v-icon>
+              </span>
+              <div class="ims-row-main">
+                <div class="ims-row-title text-truncate">{{ m.stock_name }}</div>
+                <div class="ims-row-sub text-truncate">{{ m.source }} · {{ formatRelative(m.timestamp) }}</div>
+              </div>
+              <span class="ims-movement-qty" :class="`ims-mv-text-${m.direction}`">
+                {{ m.direction === 'outflow' ? '' : '+' }}{{ num(m.quantity_change) }}
+              </span>
+            </div>
+          </div>
         </v-card>
       </v-col>
     </v-row>
 
-    <!-- Alerts row: low stock + expiring + open POs -->
-    <v-row>
-      <v-col cols="12" md="4">
-        <v-card rounded="lg" class="pa-4 h-100" border>
-          <div class="d-flex align-center mb-3">
-            <v-avatar color="warning" variant="tonal" size="32" class="mr-2"><v-icon size="20">mdi-alert</v-icon></v-avatar>
-            <h3 class="text-subtitle-1 font-weight-bold">Low / Out of Stock</h3>
-            <v-spacer />
-            <v-chip size="x-small" color="warning" variant="tonal">{{ lowStock.length }}</v-chip>
+    <!-- ═══════════════ NEEDS ATTENTION ═══════════════ -->
+    <v-row dense class="mt-1">
+      <v-col v-for="q in queues" :key="q.key" cols="12" md="4">
+        <v-card rounded="lg" border class="h-100 ims-panel ims-queue" :class="`ims-queue-${q.key}`">
+          <div class="ims-queue-head">
+            <div class="ims-queue-icon">
+              <v-icon size="18">{{ q.icon }}</v-icon>
+            </div>
+            <div style="min-width:0">
+              <div class="ims-panel-title">{{ q.title }}</div>
+              <div class="text-caption text-medium-emphasis">{{ q.sub }}</div>
+            </div>
+            <span class="ims-queue-count">{{ q.count }}</span>
           </div>
-          <EmptyState v-if="!lowStock.length" icon="mdi-check-circle" title="All items stocked" />
-          <v-list v-else density="compact" class="bg-transparent pa-0">
-            <v-list-item v-for="s in lowStock.slice(0, 5)" :key="s.id" :to="`/ims/inventory/stocks/${s.id}/edit`" class="px-0">
-              <v-list-item-title class="text-body-2">{{ s.medication_name }}</v-list-item-title>
-              <v-list-item-subtitle class="text-caption">
-                {{ s.total_quantity }} on hand · reorder at {{ s.reorder_level }} · buy {{ s.reorder_quantity }}
-              </v-list-item-subtitle>
-            </v-list-item>
-          </v-list>
-        </v-card>
-      </v-col>
 
-      <v-col cols="12" md="4">
-        <v-card rounded="lg" class="pa-4 h-100" border>
-          <div class="d-flex align-center mb-3">
-            <v-avatar color="error" variant="tonal" size="32" class="mr-2"><v-icon size="20">mdi-clock-alert</v-icon></v-avatar>
-            <h3 class="text-subtitle-1 font-weight-bold">Expiring Batches</h3>
-            <v-spacer />
-            <v-chip size="x-small" color="error" variant="tonal">{{ expiring.length }}</v-chip>
+          <div class="ims-queue-body">
+            <EmptyState v-if="!q.items.length" :icon="q.emptyIcon" :title="q.emptyTitle" />
+            <div v-else class="d-flex flex-column ga-1">
+              <component
+                :is="linkOr(q.linkOf ? q.linkOf(item) : null)"
+                :to="q.linkOf ? q.linkOf(item) : undefined"
+                v-for="(item, idx) in q.items.slice(0, 4)"
+                :key="idx"
+                class="ims-row"
+                :class="{ 'ims-row-link': !!q.linkOf }"
+              >
+                <div class="ims-row-main">
+                  <div class="ims-row-title text-truncate">{{ q.titleOf(item) }}</div>
+                  <div class="ims-row-sub text-truncate">{{ q.subOf(item) }}</div>
+                </div>
+                <span v-if="q.badgeOf" class="ims-row-badge">{{ q.badgeOf(item) }}</span>
+              </component>
+              <NuxtLink v-if="q.items.length > 4" :to="q.moreTo" class="ims-row-more">
+                +{{ q.items.length - 4 }} more
+                <v-icon size="13">mdi-arrow-right</v-icon>
+              </NuxtLink>
+            </div>
           </div>
-          <EmptyState v-if="!expiring.length" icon="mdi-check-circle" title="No batches expiring soon" />
-          <v-list v-else density="compact" class="bg-transparent pa-0">
-            <v-list-item v-for="(b, i) in expiring.slice(0, 5)" :key="i" :to="`/ims/inventory/stocks/${b.stockId}/edit`" class="px-0">
-              <v-list-item-title class="text-body-2">{{ b.name }}</v-list-item-title>
-              <v-list-item-subtitle class="text-caption">
-                Batch {{ b.batch_number || '—' }} · expires {{ formatDate(b.expiry_date) }} · {{ b.qty }} left
-              </v-list-item-subtitle>
-            </v-list-item>
-          </v-list>
-        </v-card>
-      </v-col>
-
-      <v-col cols="12" md="4">
-        <v-card rounded="lg" class="pa-4 h-100" border>
-          <div class="d-flex align-center mb-3">
-            <v-avatar color="info" variant="tonal" size="32" class="mr-2"><v-icon size="20">mdi-cart-arrow-down</v-icon></v-avatar>
-            <h3 class="text-subtitle-1 font-weight-bold">Open Purchase Orders</h3>
-            <v-spacer />
-            <v-chip size="x-small" color="info" variant="tonal">{{ openPOs.length }}</v-chip>
-          </div>
-          <EmptyState v-if="!openPOs.length" icon="mdi-check-circle" title="No open purchase orders" />
-          <v-list v-else density="compact" class="bg-transparent pa-0">
-            <v-list-item v-for="o in openPOs.slice(0, 5)" :key="o.id" :to="`/ims/purchase-orders/${o.id}`" class="px-0">
-              <v-list-item-title class="text-body-2">{{ o.po_number || `PO #${o.id}` }}</v-list-item-title>
-              <v-list-item-subtitle class="text-caption">
-                {{ o.supplier_name || 'Supplier' }} · {{ formatMoney(o.total_cost) }}
-                <v-chip v-if="o.status" size="x-small" variant="tonal" class="ml-1">{{ o.status }}</v-chip>
-              </v-list-item-subtitle>
-            </v-list-item>
-          </v-list>
         </v-card>
       </v-col>
     </v-row>
 
-    <!-- In-transit transfers + active stock takes -->
-    <v-row>
+    <!-- ═══════════════ TRANSFERS + STOCK TAKES ═══════════════ -->
+    <v-row dense class="mt-1">
       <v-col cols="12" md="6">
-        <v-card rounded="lg" class="pa-4 h-100" border>
-          <div class="d-flex align-center mb-3">
-            <v-avatar color="deep-purple" variant="tonal" size="32" class="mr-2"><v-icon size="20">mdi-truck-delivery-outline</v-icon></v-avatar>
-            <h3 class="text-subtitle-1 font-weight-bold">Warehouse Transfers</h3>
-            <v-spacer />
-            <v-btn variant="text" size="small" class="text-none" to="/ims/inventory/transfers" append-icon="mdi-arrow-right">All</v-btn>
+        <v-card rounded="lg" border class="pa-4 h-100 ims-panel">
+          <div class="d-flex align-center justify-space-between mb-3">
+            <div class="d-flex align-center" style="gap:10px">
+              <div class="ims-panel-icon" style="--panel-tone:#7c3aed">
+                <v-icon size="17">mdi-truck-delivery-outline</v-icon>
+              </div>
+              <h3 class="ims-panel-title">Warehouse transfers</h3>
+            </div>
+            <v-btn variant="text" size="small" class="text-none" color="primary" to="/ims/inventory/transfers" append-icon="mdi-arrow-right">All</v-btn>
           </div>
           <EmptyState v-if="!recentTransfers.length" icon="mdi-truck-delivery" title="No transfers yet" />
-          <v-table v-else density="compact">
+          <table v-else class="ims-table">
             <thead>
-              <tr>
-                <th>Ref</th>
-                <th>Route</th>
-                <th>Status</th>
-              </tr>
+              <tr><th>Ref</th><th>Route</th><th>Status</th></tr>
             </thead>
             <tbody>
               <tr v-for="tr in recentTransfers" :key="tr.id">
                 <td class="font-weight-medium">{{ tr.reference }}</td>
-                <td class="text-truncate" style="max-width:160px">{{ tr.source_branch_name }} → {{ tr.dest_branch_name }}</td>
+                <td class="text-truncate" style="max-width:180px">
+                  {{ tr.source_branch_name }}
+                  <v-icon size="12" class="mx-1">mdi-arrow-right</v-icon>
+                  {{ tr.dest_branch_name }}
+                </td>
                 <td><StatusChip v-if="tr.status" :status="tr.status" /></td>
               </tr>
             </tbody>
-          </v-table>
+          </table>
         </v-card>
       </v-col>
 
       <v-col cols="12" md="6">
-        <v-card rounded="lg" class="pa-4 h-100" border>
-          <div class="d-flex align-center mb-3">
-            <v-avatar color="teal" variant="tonal" size="32" class="mr-2"><v-icon size="20">mdi-clipboard-list-outline</v-icon></v-avatar>
-            <h3 class="text-subtitle-1 font-weight-bold">Stock Takes</h3>
-            <v-spacer />
-            <v-btn variant="text" size="small" class="text-none" to="/ims/inventory/stock-take" append-icon="mdi-arrow-right">All</v-btn>
+        <v-card rounded="lg" border class="pa-4 h-100 ims-panel">
+          <div class="d-flex align-center justify-space-between mb-3">
+            <div class="d-flex align-center" style="gap:10px">
+              <div class="ims-panel-icon" style="--panel-tone:#0d9488">
+                <v-icon size="17">mdi-clipboard-list-outline</v-icon>
+              </div>
+              <h3 class="ims-panel-title">Stock takes</h3>
+            </div>
+            <v-btn variant="text" size="small" class="text-none" color="primary" to="/ims/inventory/stock-take" append-icon="mdi-arrow-right">All</v-btn>
           </div>
           <EmptyState v-if="!recentCounts.length" icon="mdi-clipboard-check-outline" title="No stock takes yet" />
-          <v-table v-else density="compact">
+          <table v-else class="ims-table">
             <thead>
-              <tr>
-                <th>Ref</th>
-                <th>Name</th>
-                <th class="text-right">Variance</th>
-                <th>Status</th>
-              </tr>
+              <tr><th>Ref</th><th>Name</th><th class="text-right">Variance</th><th>Status</th></tr>
             </thead>
             <tbody>
               <tr v-for="c in recentCounts" :key="c.id">
                 <td class="font-weight-medium">{{ c.reference }}</td>
-                <td class="text-truncate" style="max-width:140px">{{ c.name }}</td>
-                <td class="text-right" :class="(c.total_variance || 0) < 0 ? 'text-error' : 'text-success'">{{ c.total_variance ?? 0 }}</td>
+                <td class="text-truncate" style="max-width:150px">{{ c.name }}</td>
+                <td class="text-right font-weight-bold" :class="varianceTone(c)">{{ varianceLabel(c) }}</td>
                 <td><StatusChip v-if="c.status" :status="c.status" /></td>
               </tr>
             </tbody>
-          </v-table>
+          </table>
         </v-card>
       </v-col>
     </v-row>
 
-    <!-- Quick actions -->
-    <v-card rounded="lg" class="pa-4 mt-2">
-      <h3 class="text-subtitle-1 font-weight-bold mb-3">Quick Actions</h3>
-      <v-row dense>
-        <v-col v-for="a in actions" :key="a.label" cols="6" sm="4" md="3" lg="2">
-          <v-btn block variant="tonal" rounded="lg" class="text-none justify-start" :prepend-icon="a.icon" :to="a.to" :color="a.color">
-            {{ a.label }}
-          </v-btn>
-        </v-col>
-      </v-row>
+    <!-- ═══════════════ QUICK ACTIONS ═══════════════ -->
+    <v-card rounded="lg" border class="pa-4 mt-3 ims-panel">
+      <h3 class="ims-panel-title mb-3">Quick actions</h3>
+      <div class="ims-actions">
+        <NuxtLink
+          v-for="a in actions"
+          :key="a.label"
+          :to="a.to"
+          class="ims-action"
+          :style="{ '--act-tone': a.tone }"
+        >
+          <v-icon size="19">{{ a.icon }}</v-icon>
+          <span class="text-truncate">{{ a.label }}</span>
+        </NuxtLink>
+      </div>
     </v-card>
   </v-container>
 </template>
 
 <script setup>
+import { NuxtLink } from '#components'
 import { useAuthStore } from '~/stores/auth'
 import { useBranchStore } from '~/stores/branch'
 import { formatMoney, formatDate } from '~/utils/format'
 import { canAccessRoute } from '~/utils/permissions'
+import { useBranding } from '~/composables/useBranding'
 
 const auth = useAuthStore()
 const branchStore = useBranchStore()
 const { $api } = useNuxtApp()
 
+/**
+ * `<component :is>` needs a component *object*. The string `'NuxtLink'` is NOT
+ * resolved by Nuxt's auto-import (it silently renders an inert custom element
+ * named NUXTLINK), so pass the imported component instead.
+ */
+const linkOr = (to) => (to ? NuxtLink : 'div')
+
+// Tenant palette configured at /ims/organization/branding. Same CSS-var bridge
+// the inventory list / detail / form pages use, so the IMS screens match.
+const brand = useBranding()
+
 const today = new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
 const loading = ref(false)
 const trendDays = 30
+const expiryWindow = 90
 
 const analytics = ref(null)
 const stocks = ref([])
@@ -342,30 +411,207 @@ const recentTransfers = ref([])
 const recentCounts = ref([])
 
 const stockHealth = reactive({ healthy: 0, low: 0, out: 0 })
-const barColors = ['primary', 'info', 'success', 'warning', 'purple', 'teal']
+const barColors = ['#2563eb', '#0d9488', '#16a34a', '#d97706', '#7c3aed', '#0ea5e9']
+
+const branchLabel = computed(() =>
+  branchStore.currentBranch ? branchStore.currentBranch.name : 'All warehouses')
 
 const unitsOnHand = computed(() => stocks.value.reduce((s, x) => s + (Number(x.total_quantity) || 0), 0))
 
-const kpis = computed(() => [
-  { title: 'Total SKUs', value: analytics.value?.total_items ?? stocks.value.length, icon: 'mdi-package-variant-closed', color: 'primary', chip: null, chipColor: null },
-  { title: 'Stock Value (Cost)', value: formatMoney(analytics.value?.total_cost_value ?? 0), icon: 'mdi-cash-multiple', color: 'success', chip: analytics.value?.potential_profit ? `+${formatMoney(analytics.value.potential_profit)}` : null, chipColor: 'success' },
-  { title: 'Units on Hand', value: unitsOnHand.value, icon: 'mdi-scale-balance', color: 'info', chip: null, chipColor: null },
-  { title: 'Low Stock', value: analytics.value?.low_stock_count ?? 0, icon: 'mdi-alert', color: 'warning', chip: null, chipColor: null },
-  { title: 'Out of Stock', value: analytics.value?.out_of_stock ?? 0, icon: 'mdi-package-variant-remove', color: 'error', chip: null, chipColor: null },
-  { title: 'Expiring ≤30 Days', value: analytics.value?.expiring_30_days ?? 0, icon: 'mdi-clock-alert', color: 'deep-orange', chip: analytics.value?.expired_batches ? `${analytics.value.expired_batches} expired` : null, chipColor: 'error' },
+/** 1,234 — explicit locale so grouping can't drift between renders. */
+function num(v) {
+  return Number(v || 0).toLocaleString('en-US')
+}
+
+// ── KPI strip ────────────────────────────────────────────────────────────
+const kpis = computed(() => {
+  const a = analytics.value || {}
+  const total = Math.max(stocks.value.length, 1)
+  return [
+    {
+      key: 'skus', title: 'Total SKUs', icon: 'mdi-package-variant-closed',
+      value: num(a.total_items ?? stocks.value.length),
+      hint: `${num(stocks.value.filter(s => s.is_active !== false).length)} active`,
+      chip: null, share: null,
+      to: '/ims/inventory'
+    },
+    {
+      key: 'value', title: 'Stock value (cost)', icon: 'mdi-cash-multiple',
+      value: formatMoney(a.total_cost_value ?? 0),
+      hint: a.potential_profit ? `${formatMoney(a.potential_profit)} profit potential` : 'Capital tied up',
+      chip: null, share: null
+    },
+    {
+      key: 'units', title: 'Units on hand', icon: 'mdi-scale-balance',
+      value: num(unitsOnHand.value),
+      hint: `across ${num(stocks.value.length)} line items`,
+      chip: null, share: null
+    },
+    {
+      key: 'low', title: 'Low stock', icon: 'mdi-alert-outline',
+      value: num(a.low_stock_count ?? stockHealth.low),
+      hint: 'below reorder level',
+      chip: null, share: Math.round((stockHealth.low / total) * 100),
+      to: '/ims/inventory'
+    },
+    {
+      key: 'out', title: 'Out of stock', icon: 'mdi-package-variant-remove',
+      value: num(a.out_of_stock ?? stockHealth.out),
+      hint: 'unavailable to sell',
+      chip: null, share: Math.round((stockHealth.out / total) * 100),
+      to: '/ims/inventory'
+    },
+    {
+      key: 'expiring', title: `Expiring ≤${expiryWindow}d`, icon: 'mdi-clock-alert-outline',
+      // Deliberately the 90-day list, not analytics.expiring_30_days — the
+      // label says 90d and the two windows would otherwise disagree.
+      value: num(expiring.value.length),
+      hint: a.expired_batches ? `${a.expired_batches} already expired` : 'within the window',
+      chip: a.expired_batches ? `${a.expired_batches} expired` : null,
+      chipColor: 'error', share: null
+    }
+  ]
+})
+
+// ── Hero health ──────────────────────────────────────────────────────────
+const totalSkus = computed(() => stockHealth.healthy + stockHealth.low + stockHealth.out)
+const healthPct = computed(() =>
+  totalSkus.value ? Math.round((stockHealth.healthy / totalSkus.value) * 100) : 0)
+const healthChipColor = computed(() =>
+  healthPct.value >= 85 ? 'success' : healthPct.value >= 60 ? 'warning' : 'error')
+
+const health = computed(() => {
+  if (!totalSkus.value) return { tone: 'ok', label: 'No stock loaded', icon: 'mdi-information-outline' }
+  if (healthPct.value >= 85) return { tone: 'ok', label: `Healthy · ${healthPct.value}%`, icon: 'mdi-check-circle' }
+  if (healthPct.value >= 60) return { tone: 'low', label: `Needs review · ${healthPct.value}%`, icon: 'mdi-alert' }
+  return { tone: 'out', label: `Critical · ${healthPct.value}%`, icon: 'mdi-alert-octagon' }
+})
+
+const healthSegments = computed(() => [
+  { value: stockHealth.healthy, color: '#22c55e', label: 'Healthy' },
+  { value: stockHealth.low, color: '#f59e0b', label: 'Low' },
+  { value: stockHealth.out, color: '#ef4444', label: 'Out' }
+])
+
+const healthLegend = computed(() => {
+  const t = Math.max(totalSkus.value, 1)
+  const pct = n => `${Math.round((n / t) * 100)}%`
+  return [
+    { label: 'Healthy', count: stockHealth.healthy, color: '#22c55e', pct: pct(stockHealth.healthy) },
+    { label: 'Low stock', count: stockHealth.low, color: '#f59e0b', pct: pct(stockHealth.low) },
+    { label: 'Out of stock', count: stockHealth.out, color: '#ef4444', pct: pct(stockHealth.out) }
+  ]
+})
+
+// ── Net flow ─────────────────────────────────────────────────────────────
+const netChange = computed(() =>
+  Number(flowKpis.net_change ?? (Number(flowKpis.total_in || 0) - Number(flowKpis.total_out || 0))))
+
+// ── Ops pulse ────────────────────────────────────────────────────────────
+// Shortfall = units needed to lift every flagged item back over its reorder
+// level (an out-of-stock item is short a full reorder quantity).
+const shortfall = computed(() => {
+  let units = 0
+  for (const s of lowStock.value) {
+    const q = Number(s.total_quantity || 0)
+    if (q <= 0) units += Number(s.reorder_quantity || s.reorder_level || 0)
+    else units += Math.max(0, Number(s.reorder_level || 0) - q)
+  }
+  return units
+})
+
+const expiringUnits = computed(() => expiring.value.reduce((s, b) => s + (Number(b.qty) || 0), 0))
+const expiringValue = computed(() =>
+  expiring.value.reduce((s, b) => s + (Number(b.qty) || 0) * (Number(b.cost_price) || 0), 0))
+
+const pulse = computed(() => [
+  {
+    icon: health.value.icon,
+    tone: healthPct.value >= 85 ? '#16a34a' : healthPct.value >= 60 ? '#d97706' : '#dc2626',
+    label: 'Availability',
+    value: `${healthPct.value}%`,
+    hint: `${num(stockHealth.healthy)} of ${num(totalSkus.value)} SKUs at healthy levels`,
+    to: '/ims/inventory/stock-analysis'
+  },
+  {
+    icon: 'mdi-cart-arrow-down',
+    tone: stockHealth.low + stockHealth.out ? '#d97706' : '#16a34a',
+    label: 'Replenishment',
+    value: num(stockHealth.low + stockHealth.out),
+    hint: stockHealth.low + stockHealth.out
+      ? `${num(shortfall.value)} units short of reorder level`
+      : 'every item above its reorder level',
+    to: stockHealth.low + stockHealth.out ? '/ims/inventory' : null
+  },
+  {
+    icon: 'mdi-timer-sand',
+    tone: expiring.value.length ? '#dc2626' : '#16a34a',
+    label: `Expiring ≤${expiryWindow}d`,
+    value: num(expiringUnits.value),
+    hint: expiring.value.length
+      ? `${num(expiring.value.length)} batch${expiring.value.length === 1 ? '' : 'es'} · ${formatMoney(expiringValue.value)} at risk`
+      : 'no batches approaching expiry',
+    to: expiring.value.length ? '/ims/inventory' : null
+  },
+  {
+    icon: netChange.value >= 0 ? 'mdi-trending-up' : 'mdi-trending-down',
+    tone: netChange.value >= 0 ? '#2563eb' : '#dc2626',
+    label: 'Net movement',
+    value: `${netChange.value > 0 ? '+' : ''}${num(netChange.value)}`,
+    hint: `${num(flowKpis.total_in)} in · ${num(flowKpis.total_out)} out`,
+    to: '/ims/inventory/stock-movements'
+  }
+])
+
+// ── Attention queues ─────────────────────────────────────────────────────
+const queues = computed(() => [
+  {
+    key: 'low', title: 'Low / out of stock', sub: 'Below reorder level',
+    icon: 'mdi-alert-outline', count: lowStock.value.length,
+    emptyIcon: 'mdi-check-circle', emptyTitle: 'All items stocked',
+    items: lowStock.value,
+    moreTo: '/ims/inventory',
+    titleOf: s => s.medication_name,
+    subOf: s => `${num(s.total_quantity)} on hand · reorder at ${num(s.reorder_level)}`,
+    linkOf: s => `/ims/inventory/stocks/${s.id}/edit`,
+    badgeOf: s => (Number(s.total_quantity || 0) <= 0 ? 'OUT' : 'LOW')
+  },
+  {
+    key: 'expiring', title: 'Expiring batches', sub: `Within ${expiryWindow} days`,
+    icon: 'mdi-clock-alert-outline', count: expiring.value.length,
+    emptyIcon: 'mdi-check-circle', emptyTitle: 'No batches expiring soon',
+    items: expiring.value,
+    moreTo: '/ims/inventory',
+    titleOf: b => b.name,
+    subOf: b => `Batch ${b.batch_number || '—'} · expires ${formatDate(b.expiry_date)}`,
+    linkOf: b => `/ims/inventory/stocks/${b.stockId}/edit`,
+    badgeOf: b => `${num(b.qty)} left`
+  },
+  {
+    key: 'po', title: 'Open purchase orders', sub: 'Draft, sent or partially received',
+    icon: 'mdi-cart-arrow-down', count: openPOs.value.length,
+    emptyIcon: 'mdi-check-circle', emptyTitle: 'No open purchase orders',
+    items: openPOs.value,
+    moreTo: '/ims/purchase-orders',
+    titleOf: o => o.po_number || `PO #${o.id}`,
+    subOf: o => `${o.supplier_name || 'Supplier'} · ${formatMoney(o.total_cost)}`,
+    linkOf: o => `/ims/purchase-orders/${o.id}`,
+    badgeOf: o => o.status || ''
+  }
 ])
 
 const actions = computed(() => [
-  { icon: 'mdi-plus-circle', label: 'Add Stock Item', to: '/ims/inventory/stocks/new', color: 'primary' },
-  { icon: 'mdi-clipboard-list-outline', label: 'Stock Take', to: '/ims/inventory/stock-take', color: 'teal' },
-  { icon: 'mdi-cart', label: 'Purchase Orders', to: '/ims/purchase-orders', color: 'warning' },
-  { icon: 'mdi-truck-delivery-outline', label: 'Transfers', to: '/ims/inventory/transfers', color: 'deep-purple' },
-  { icon: 'mdi-swap-vertical-bold', label: 'Movements', to: '/ims/inventory/stock-movements', color: 'info' },
-  { icon: 'mdi-chart-line', label: 'Stock Analysis', to: '/ims/inventory/stock-analysis', color: 'success' },
-  { icon: 'mdi-file-excel', label: 'Excel Tools', to: '/ims/inventory/excel', color: 'green-darken-2' },
-  { icon: 'mdi-clipboard-text', label: 'Reports', to: '/ims/reports', color: 'indigo' },
+  { icon: 'mdi-plus-circle', label: 'Add Stock Item', to: '/ims/inventory/stocks/new', tone: '#2563eb' },
+  { icon: 'mdi-clipboard-list-outline', label: 'Stock Take', to: '/ims/inventory/stock-take', tone: '#0d9488' },
+  { icon: 'mdi-cart', label: 'Purchase Orders', to: '/ims/purchase-orders', tone: '#d97706' },
+  { icon: 'mdi-truck-delivery-outline', label: 'Transfers', to: '/ims/inventory/transfers', tone: '#7c3aed' },
+  { icon: 'mdi-swap-vertical-bold', label: 'Movements', to: '/ims/inventory/stock-movements', tone: '#0ea5e9' },
+  { icon: 'mdi-chart-line', label: 'Stock Analysis', to: '/ims/inventory/stock-analysis', tone: '#16a34a' },
+  { icon: 'mdi-file-excel', label: 'Excel Tools', to: '/ims/inventory/excel', tone: '#15803d' },
+  { icon: 'mdi-file-chart', label: 'Reports', to: '/ims/reports', tone: '#4f46e5' }
 ].filter(a => canAccessRoute(auth.role, a.to)))
 
+// ── Helpers ──────────────────────────────────────────────────────────────
 function formatRelative(v) {
   if (!v) return ''
   const d = new Date(v)
@@ -374,6 +620,23 @@ function formatRelative(v) {
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
   return d.toLocaleDateString()
+}
+
+function movementIcon(direction) {
+  if (direction === 'inflow') return 'mdi-arrow-down'
+  if (direction === 'outflow') return 'mdi-arrow-up'
+  return 'mdi-swap-horizontal'
+}
+
+// `>=` cannot appear in a template binding, so the comparison lives here.
+function varianceTone(c) {
+  const v = Number(c.total_variance || 0)
+  if (v === 0) return 'text-medium-emphasis'
+  return v < 0 ? 'text-error' : 'text-success'
+}
+function varianceLabel(c) {
+  const v = Number(c.total_variance || 0)
+  return v > 0 ? `+${num(v)}` : num(v)
 }
 
 async function load() {
@@ -416,7 +679,7 @@ async function load() {
   lowStock.value = lowList.sort((a, b) => (Number(a.total_quantity) || 0) - (Number(b.total_quantity) || 0))
 
   // Expiring batches (next 90 days, from stock batches)
-  const soon = new Date(); soon.setDate(soon.getDate() + 90)
+  const soon = new Date(); soon.setDate(soon.getDate() + expiryWindow)
   const expList = []
   for (const s of stocks.value) {
     for (const b of (s.batches || [])) {
@@ -424,6 +687,7 @@ async function load() {
         expList.push({
           stockId: s.id, name: s.medication_name, batch_number: b.batch_number,
           expiry_date: b.expiry_date, qty: b.quantity_remaining,
+          cost_price: s.cost_price,
         })
       }
     }
@@ -442,7 +706,11 @@ async function load() {
     .sort((a, b) => b.value - a.value)
     .slice(0, 6)
   const maxVal = byValue[0]?.value || 1
-  topValueItems.value = byValue.map(p => ({ ...p, pct: (p.value / maxVal) * 100 }))
+  topValueItems.value = byValue.map((p, i) => ({
+    ...p,
+    pct: (p.value / maxVal) * 100,
+    color: barColors[i % barColors.length]
+  }))
 
   // Stock flow trend
   if (mv) {
@@ -474,7 +742,13 @@ async function load() {
   loading.value = false
 }
 
-onMounted(load)
+onMounted(() => {
+  // Deep-linking straight to /ims means nothing has fetched the tenant palette
+  // yet (useBranding caches in shared state, so this is a no-op when the
+  // inventory list already loaded it).
+  brand.load()
+  load()
+})
 
 watch(() => branchStore.currentBranchId, () => {
   load()
@@ -482,10 +756,373 @@ watch(() => branchStore.currentBranchId, () => {
 </script>
 
 <style scoped>
-.legend-dot {
-  width: 10px;
-  height: 10px;
+.ims-dash { max-width: 1600px; margin: 0 auto; }
+.ims-nowrap { white-space: nowrap; }
+
+/* ═══════════════ KPI cards ═══════════════
+   Tone travels via `color`, so the top rail, the icon chip and the mini share
+   bar can all derive from currentColor. */
+.ims-kpi {
+  position: relative;
+  overflow: hidden;
+  display: block;
+  border-radius: 14px;
+  padding: 14px 16px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  background: rgb(var(--v-theme-surface));
+  color: inherit;
+  text-decoration: none;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.ims-kpi::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: currentColor;
+  opacity: 0.85;
+}
+.ims-kpi:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(15, 23, 42, 0.1); }
+.ims-kpi-link { cursor: pointer; }
+.ims-kpi-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+.ims-kpi-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+  line-height: 1.3;
+}
+.ims-kpi-value {
+  font-size: 21px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.4px;
+  margin-top: 1px;
+}
+.ims-kpi-foot {
+  font-size: 11px;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+  line-height: 1.3;
+  margin-top: 2px;
+}
+.ims-kpi-bars { height: 4px; border-radius: 999px; background: rgba(15, 23, 42, 0.07); overflow: hidden; }
+.ims-kpi-bars span { display: block; height: 100%; border-radius: 999px; background: currentColor; }
+
+/* Per-KPI hues. The `t-` infix keeps these distinct from `.ims-kpi-value`,
+   which is the inner value *text* class — without it every KPI number picks up
+   the green tone rule. */
+.ims-kpi-t-skus { color: #2563eb; }
+.ims-kpi-t-value { color: #16a34a; }
+.ims-kpi-t-units { color: #0d9488; }
+.ims-kpi-t-low { color: #d97706; }
+.ims-kpi-t-out { color: #dc2626; }
+.ims-kpi-t-expiring { color: #7c3aed; }
+
+/* ═══════════════ Ops pulse ═══════════════ */
+.ims-pulse {
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgb(var(--v-theme-surface));
+  overflow: hidden;
+}
+.ims-pulse-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.07);
+}
+.ims-pulse-window {
+  margin-left: auto;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: none;
+  color: rgba(var(--v-theme-on-surface), 0.45);
+}
+.ims-pulse-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.ims-pulse-tile {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  color: inherit;
+  text-decoration: none;
+  border-left: 1px solid rgba(15, 23, 42, 0.07);
+  transition: background 0.16s ease;
+}
+.ims-pulse-tile:first-child { border-left: none; }
+.ims-pulse-link { cursor: pointer; }
+.ims-pulse-link:hover { background: rgba(var(--v-theme-primary), 0.045); }
+.ims-pulse-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--pulse-tone, #2563eb);
+  background: color-mix(in srgb, var(--pulse-tone, #2563eb) 14%, transparent);
+}
+.ims-pulse-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+}
+.ims-pulse-value {
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.4px;
+  color: var(--pulse-tone, #2563eb);
+}
+.ims-pulse-hint {
+  font-size: 11.5px;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+  line-height: 1.35;
+  margin-top: 1px;
+}
+
+/* ═══════════════ Panels ═══════════════ */
+.ims-panel { transition: box-shadow 0.18s ease; }
+.ims-panel:hover { box-shadow: 0 6px 20px rgba(15, 23, 42, 0.07); }
+.ims-panel-title {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.1px;
+}
+.ims-panel-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--panel-tone, #2563eb);
+  background: color-mix(in srgb, var(--panel-tone, #2563eb) 14%, transparent);
+}
+
+/* Flow stats */
+.ims-flowstat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 66px;
+  padding: 5px 10px;
+  border-radius: 10px;
+  line-height: 1.2;
+}
+.ims-flowstat-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+.ims-flowstat-value { font-size: 15px; font-weight: 800; }
+.ims-flowstat-in { background: rgba(34, 197, 94, 0.12); color: #15803d; }
+.ims-flowstat-out { background: rgba(239, 68, 68, 0.12); color: #b91c1c; }
+.ims-flowstat-net { background: rgba(14, 165, 233, 0.12); color: #0369a1; }
+
+/* Shared legend */
+.ims-legend { display: flex; align-items: center; gap: 8px; padding: 5px 0; }
+.ims-legend-dot {
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   display: inline-block;
+  flex-shrink: 0;
+}
+.ims-legend-pct { min-width: 34px; text-align: right; }
+
+/* Ranked bars */
+.ims-rank {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10.5px;
+  font-weight: 800;
+  flex-shrink: 0;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+  background: rgba(var(--v-theme-on-surface), 0.06);
+}
+.ims-bar-track { height: 7px; border-radius: 999px; background: rgba(15, 23, 42, 0.07); overflow: hidden; }
+.ims-bar-track span { display: block; height: 100%; border-radius: 999px; }
+
+/* ═══════════════ Attention queues ═══════════════ */
+.ims-queue { position: relative; overflow: hidden; border-color: rgba(15, 23, 42, 0.08); }
+.ims-queue::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--queue-tone, #2563eb);
+}
+.ims-queue-low { --queue-tone: #d97706; }
+.ims-queue-expiring { --queue-tone: #dc2626; }
+.ims-queue-po { --queue-tone: #4f46e5; }
+
+.ims-queue-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.07);
+}
+.ims-queue-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--queue-tone, #2563eb);
+  background: color-mix(in srgb, var(--queue-tone, #2563eb) 14%, transparent);
+}
+.ims-queue-count {
+  margin-left: auto;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--queue-tone, #2563eb);
+  background: color-mix(in srgb, var(--queue-tone, #2563eb) 13%, transparent);
+}
+.ims-queue-body { padding: 12px 16px 16px; }
+
+/* Generic list row — used by the queues. */
+.ims-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  color: inherit;
+  text-decoration: none;
+  transition: background 0.14s ease;
+}
+.ims-row-link { cursor: pointer; }
+.ims-row-link:hover { background: rgba(var(--v-theme-primary), 0.06); }
+.ims-row-main { min-width: 0; flex: 1 1 auto; }
+.ims-row-title { font-size: 13.5px; font-weight: 600; line-height: 1.3; }
+.ims-row-sub { font-size: 11.5px; color: rgba(var(--v-theme-on-surface), 0.6); line-height: 1.3; }
+.ims-row-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: var(--queue-tone, #2563eb);
+  background: color-mix(in srgb, var(--queue-tone, #2563eb) 13%, transparent);
+}
+.ims-row-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgb(var(--v-theme-primary));
+  text-decoration: none;
+  padding: 2px 10px;
+}
+.ims-row-more:hover { text-decoration: underline; }
+
+/* Movements */
+.ims-movement {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 7px 4px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.055);
+}
+.ims-movement:last-child { border-bottom: none; }
+.ims-movement-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.ims-mv-inflow { background: rgba(34, 197, 94, 0.14); color: #15803d; }
+.ims-mv-outflow { background: rgba(239, 68, 68, 0.14); color: #b91c1c; }
+.ims-mv-transfer { background: rgba(14, 165, 233, 0.14); color: #0369a1; }
+.ims-movement-qty { font-size: 13.5px; font-weight: 800; white-space: nowrap; }
+.ims-mv-text-inflow { color: #15803d; }
+.ims-mv-text-outflow { color: #b91c1c; }
+.ims-mv-text-transfer { color: #0369a1; }
+
+/* ═══════════════ Compact tables ═══════════════ */
+.ims-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; }
+.ims-table th {
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.1);
+  white-space: nowrap;
+}
+.ims-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  white-space: nowrap;
+}
+.ims-table tbody tr:last-child td { border-bottom: none; }
+.ims-table tbody tr { transition: background 0.14s ease; }
+.ims-table tbody tr:hover { background: rgba(var(--v-theme-primary), 0.045); }
+
+/* ═══════════════ Quick actions ═══════════════ */
+.ims-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(175px, 1fr)); gap: 10px; }
+.ims-action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgb(var(--v-theme-surface));
+  color: rgba(var(--v-theme-on-surface), 0.87);
+  font-size: 13.5px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+.ims-action :deep(.v-icon) { color: var(--act-tone, #2563eb); flex-shrink: 0; }
+.ims-action:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--act-tone, #2563eb) 45%, transparent);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.09);
 }
 </style>

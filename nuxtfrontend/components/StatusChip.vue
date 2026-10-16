@@ -46,6 +46,13 @@ const map = {
   shipped: { color: 'info', icon: 'mdi-truck' },
   received: { color: 'success', icon: 'mdi-package-check' },
   fulfilled: { color: 'success', icon: 'mdi-package-variant-closed-check' },
+  // Procurement
+  sent: { color: 'info', icon: 'mdi-send-check' },
+  awarded: { color: 'success', icon: 'mdi-trophy-outline' },
+  dismissed: { color: 'grey', icon: 'mdi-close-circle-outline' },
+  in_transit: { color: 'info', icon: 'mdi-truck-fast-outline' },
+  on_time: { color: 'success', icon: 'mdi-truck-check-outline' },
+  late: { color: 'error', icon: 'mdi-truck-alert' },
   returned: { color: 'error', icon: 'mdi-undo-variant' },
   partial: { color: 'warning', icon: 'mdi-progress-alert' },
   quoted: { color: 'info', icon: 'mdi-cash' },

@@ -1,56 +1,60 @@
 <template>
-  <v-container fluid class="pa-4 pa-md-6">
-    <!-- ═════════ Header Row ═════════ -->
+  <v-container fluid class="pa-3 pa-md-5 clinic-dash">
+    <!-- ═════════ Compact Header ═════════ -->
     <div class="d-flex flex-wrap align-center justify-space-between mb-4">
       <div>
-        <h1 class="text-h5 text-md-h4 font-weight-bold mb-1">
-          Welcome back, {{ auth.user?.first_name || 'there' }}
-          <v-icon color="amber" size="28">mdi-hand-wave</v-icon>
-        </h1>
+        <h1 class="text-h5 text-md-h4 font-weight-bold mb-0">Clinic Overview</h1>
         <div class="text-body-2 text-medium-emphasis">
-          {{ todayStr }} · {{ auth.tenantName || 'Clinic' }} live overview
+          {{ todayStr }} · {{ auth.tenantName || 'Clinic' }}
         </div>
       </div>
-      <div class="d-flex align-center ga-2">
+      <div class="d-flex align-center ga-2 mt-2 mt-md-0">
         <v-btn-toggle v-model="rangeKey" mandatory density="compact" variant="outlined" divided rounded="lg">
           <v-btn v-for="r in rangeOptions" :key="r.key" :value="r.key" size="small" class="text-none px-3">
             {{ r.label }}
           </v-btn>
         </v-btn-toggle>
-        <v-btn icon="mdi-refresh" variant="text" :loading="loading" @click="load" />
+        <v-btn icon="mdi-refresh" variant="tonal" color="primary" size="small" title="Refresh" :loading="loading" @click="load" />
       </div>
     </div>
 
     <!-- ═════════ KPI Tiles ═════════ -->
-    <v-row dense class="mb-2">
+    <v-row dense class="mb-3">
       <v-col v-for="k in kpis" :key="k.title" cols="6" md="4" lg="3">
-        <v-card rounded="lg" variant="outlined" class="kpi-card pa-4 h-100">
+        <component
+          :is="k.to ? 'router-link' : 'div'"
+          :to="k.to || undefined"
+          class="clinic-kpi h-100"
+          :class="{ 'clinic-kpi-link': !!k.to }"
+          :style="{ '--kpi-tone': k.varColor || '#1976d2' }"
+        >
           <div class="d-flex align-start justify-space-between mb-2">
             <div>
-              <div class="text-caption text-medium-emphasis font-weight-medium">{{ k.title }}</div>
-              <div class="text-h4 font-weight-bold" :class="`text-${k.color}`">{{ k.value }}</div>
+              <div class="clinic-kpi-label">{{ k.title }}</div>
+              <div class="clinic-kpi-value">{{ k.value }}</div>
             </div>
-            <v-avatar :color="k.color + '-lighten-5'" variant="tonal" size="40">
-              <v-icon :color="k.color" size="22">{{ k.icon }}</v-icon>
-            </v-avatar>
+            <div class="clinic-kpi-icon"><v-icon size="20">{{ k.icon }}</v-icon></div>
           </div>
           <div v-if="k.sub" class="d-flex align-center ga-1">
             <v-icon size="14" :color="k.subColor || 'grey'">{{ k.subIcon || 'mdi-circle-medium' }}</v-icon>
             <span class="text-caption text-medium-emphasis">{{ k.sub }}</span>
           </div>
-        </v-card>
+        </component>
       </v-col>
     </v-row>
 
     <!-- ═════════ Charts Row ═════════ -->
-    <v-row dense class="mb-2">
+    <v-row dense class="mb-3">
       <!-- Appointments trend chart -->
       <v-col cols="12" lg="8">
-        <v-card rounded="lg" variant="outlined" class="chart-card pa-4 h-100">
+        <div class="clinic-panel pa-4 h-100">
           <div class="d-flex align-center justify-space-between mb-3">
-            <div>
-              <span class="text-subtitle-1 font-weight-bold">Appointments & Consultations</span>
-              <div class="text-caption text-medium-emphasis">Daily activity for the last 7 days</div>
+            <div class="d-flex align-center ga-2">
+              <div class="clinic-panel-icon clinic-panel-icon-blue"><v-icon size="18">mdi-chart-bar</v-icon></div>
+              <div>
+                <span class="clinic-panel-title">Appointments &amp; Consultations</span>
+                <div class="clinic-panel-sub">Daily activity for the last 7 days</div>
+              </div>
             </div>
             <div class="d-flex align-center ga-3">
               <div class="d-flex align-center ga-1">
@@ -107,15 +111,17 @@
           <div v-else class="d-flex justify-center align-center" style="height: 280px">
             <v-progress-circular indeterminate color="primary" />
           </div>
-        </v-card>
+        </div>
       </v-col>
 
       <!-- Appointment status donut -->
       <v-col cols="12" lg="4">
-        <v-card rounded="lg" variant="outlined" class="chart-card pa-4 h-100">
+        <div class="clinic-panel pa-4 h-100">
           <div class="d-flex align-center justify-space-between mb-3">
-            <span class="text-subtitle-1 font-weight-bold">Appointment Status</span>
-            <v-icon size="18" color="medium-emphasis">mdi-chart-donut</v-icon>
+            <div class="d-flex align-center ga-2">
+              <div class="clinic-panel-icon clinic-panel-icon-purple"><v-icon size="18">mdi-chart-donut</v-icon></div>
+              <span class="clinic-panel-title">Appointment Status</span>
+            </div>
           </div>
           <div class="d-flex justify-center mb-2">
             <DonutRing v-if="apptStatusSegments.length" :segments="apptStatusSegments" :size="180" :thickness="18">
@@ -133,19 +139,22 @@
               <span class="text-caption font-weight-bold">{{ s.value }}</span>
             </div>
           </div>
-        </v-card>
+        </div>
       </v-col>
     </v-row>
 
     <!-- ═════════ Revenue + Lab Status ═════════ -->
-    <v-row dense class="mb-2">
+    <v-row dense class="mb-3">
       <!-- Revenue overview -->
       <v-col cols="12" lg="8">
-        <v-card rounded="lg" variant="outlined" class="chart-card pa-4 h-100">
+        <div class="clinic-panel pa-4 h-100">
           <div class="d-flex align-center justify-space-between mb-3">
-            <div>
-              <span class="text-subtitle-1 font-weight-bold">Revenue Overview</span>
-              <div class="text-caption text-medium-emphasis">Invoice totals, collected, and outstanding</div>
+            <div class="d-flex align-center ga-2">
+              <div class="clinic-panel-icon clinic-panel-icon-green"><v-icon size="18">mdi-cash-multiple</v-icon></div>
+              <div>
+                <span class="clinic-panel-title">Revenue Overview</span>
+                <div class="clinic-panel-sub">Invoice totals, collected, and outstanding</div>
+              </div>
             </div>
             <v-chip size="small" variant="tonal" color="success" class="font-weight-bold">
               {{ formatMoney(totalAmount - outstandingAmount, 'KES') }}
@@ -187,15 +196,17 @@
               </div>
             </div>
           </div>
-        </v-card>
+        </div>
       </v-col>
 
       <!-- Lab + Prescription status -->
       <v-col cols="12" lg="4">
-        <v-card rounded="lg" variant="outlined" class="chart-card pa-4 h-100">
+        <div class="clinic-panel pa-4 h-100">
           <div class="d-flex align-center justify-space-between mb-3">
-            <span class="text-subtitle-1 font-weight-bold">Lab & Prescriptions</span>
-            <v-icon size="18" color="medium-emphasis">mdi-flask</v-icon>
+            <div class="d-flex align-center ga-2">
+              <div class="clinic-panel-icon clinic-panel-icon-amber"><v-icon size="18">mdi-flask</v-icon></div>
+              <span class="clinic-panel-title">Lab &amp; Prescriptions</span>
+            </div>
           </div>
           <!-- Lab status -->
           <div class="mb-3">
@@ -222,21 +233,19 @@
               </v-chip>
             </div>
           </div>
-        </v-card>
+        </div>
       </v-col>
     </v-row>
 
     <!-- ═════════ Lists Row ═════════ -->
-    <v-row dense class="mb-2">
+    <v-row dense class="mb-3">
       <!-- Today's Appointments -->
       <v-col cols="12" lg="6">
-        <v-card rounded="lg" variant="outlined" class="list-card pa-4 h-100">
+        <div class="clinic-panel pa-4 h-100">
           <div class="d-flex align-center justify-space-between mb-3">
             <div class="d-flex align-center ga-2">
-              <v-avatar color="primary-lighten-5" variant="tonal" size="36">
-                <v-icon color="primary">mdi-calendar-clock</v-icon>
-              </v-avatar>
-              <span class="text-subtitle-1 font-weight-bold">Today's Appointments</span>
+              <div class="clinic-panel-icon clinic-panel-icon-blue"><v-icon size="18">mdi-calendar-clock</v-icon></div>
+              <span class="clinic-panel-title">Today's Appointments</span>
             </div>
             <v-chip size="small" variant="tonal" color="primary" class="font-weight-bold">
               {{ todayAppointments.length }}
@@ -262,18 +271,16 @@
           <EmptyState v-else icon="mdi-calendar-check" icon-color="grey-lighten-1" title="No appointments today"
             message="There are no appointments scheduled for today."
           />
-        </v-card>
+        </div>
       </v-col>
 
       <!-- Recent Patients -->
       <v-col cols="12" lg="6">
-        <v-card rounded="lg" variant="outlined" class="list-card pa-4 h-100">
+        <div class="clinic-panel pa-4 h-100">
           <div class="d-flex align-center justify-space-between mb-3">
             <div class="d-flex align-center ga-2">
-              <v-avatar color="teal-lighten-5" variant="tonal" size="36">
-                <v-icon color="teal">mdi-account-plus</v-icon>
-              </v-avatar>
-              <span class="text-subtitle-1 font-weight-bold">Recent Patients</span>
+              <div class="clinic-panel-icon clinic-panel-icon-teal"><v-icon size="18">mdi-account-plus</v-icon></div>
+              <span class="clinic-panel-title">Recent Patients</span>
             </div>
             <v-btn size="small" variant="text" class="text-none" append-icon="mdi-arrow-right"
               @click="navigateTo('/clinics/patients')">View all</v-btn>
@@ -293,7 +300,7 @@
           </div>
           <EmptyState v-else icon="mdi-account-search" icon-color="grey-lighten-1" title="No patients yet"
             message="Newly registered patients will appear here." />
-        </v-card>
+        </div>
       </v-col>
     </v-row>
 
@@ -301,36 +308,36 @@
     <v-row dense>
       <!-- Quick Actions -->
       <v-col cols="12" lg="8">
-        <v-card rounded="lg" variant="outlined" class="action-card pa-4 h-100">
+        <div class="clinic-panel pa-4 h-100">
           <div class="d-flex align-center justify-space-between mb-3">
-            <span class="text-subtitle-1 font-weight-bold">Quick Actions</span>
-            <v-icon size="18" color="medium-emphasis">mdi-lightning-bolt</v-icon>
+            <div class="d-flex align-center ga-2">
+              <div class="clinic-panel-icon clinic-panel-icon-orange"><v-icon size="18">mdi-lightning-bolt</v-icon></div>
+              <span class="clinic-panel-title">Quick Actions</span>
+            </div>
           </div>
           <v-row dense>
             <v-col v-for="a in actions" :key="a.label" cols="6" sm="4" md="3">
-              <v-card variant="tonal" rounded="lg" class="action-tile pa-3 h-100" :color="a.color + '-lighten-5'"
+              <v-card variant="outlined" rounded="lg" class="action-tile pa-3 h-100"
                 :to="a.to" hover>
                 <div class="d-flex flex-column align-center text-center ga-1">
                   <v-avatar :color="a.color" variant="tonal" size="40">
                     <v-icon :color="a.color">{{ a.icon }}</v-icon>
                   </v-avatar>
-                  <span class="text-caption font-weight-medium">{{ a.label }}</span>
+                  <span class="text-caption font-weight-medium" :class="`text-${a.color}`">{{ a.label }}</span>
                 </div>
               </v-card>
             </v-col>
           </v-row>
-        </v-card>
+        </div>
       </v-col>
 
       <!-- Open Escalations -->
       <v-col cols="12" lg="4">
-        <v-card rounded="lg" variant="outlined" class="alerts-card pa-4 h-100">
+        <div class="clinic-panel pa-4 h-100">
           <div class="d-flex align-center justify-space-between mb-3">
             <div class="d-flex align-center ga-2">
-              <v-avatar color="error-lighten-5" variant="tonal" size="36">
-                <v-icon color="error">mdi-bell-alert</v-icon>
-              </v-avatar>
-              <span class="text-subtitle-1 font-weight-bold">Open Escalations</span>
+              <div class="clinic-panel-icon clinic-panel-icon-red"><v-icon size="18">mdi-bell-alert</v-icon></div>
+              <span class="clinic-panel-title">Open Escalations</span>
             </div>
             <v-chip v-if="openEscalations.length" size="small" variant="flat" color="error" class="font-weight-bold">
               {{ openEscalations.length }} open
@@ -351,7 +358,7 @@
           </div>
           <EmptyState v-else icon="mdi-check-circle" icon-color="success" title="No open escalations"
             message="All clear — no active alerts." />
-        </v-card>
+        </div>
       </v-col>
     </v-row>
 
@@ -422,36 +429,44 @@ async function fetchCount(endpoint, params = {}) {
 // ── KPIs ──────────────────────────────────────────────────────
 const kpis = computed(() => [
   {
-    title: 'Total Patients', value: totalCounts.patients, icon: 'mdi-account-multiple', color: 'primary',
+    title: 'Total Patients', value: totalCounts.patients, icon: 'mdi-account-multiple', color: 'primary', varColor: '#1976d2',
     sub: `${todayCounts.appointments} appts today`, subIcon: 'mdi-calendar', subColor: 'info',
+    to: '/clinics/patients',
   },
   {
-    title: "Today's Appointments", value: todayCounts.appointments, icon: 'mdi-calendar-clock', color: 'info',
+    title: "Today's Appointments", value: todayCounts.appointments, icon: 'mdi-calendar-clock', color: 'info', varColor: '#0288d1',
     sub: `${todayAppointments.value.filter(a => a.status === 'scheduled').length} scheduled`, subIcon: 'mdi-clock-outline', subColor: 'grey',
+    to: '/clinics/appointments',
   },
   {
-    title: 'Consultations', value: todayCounts.consultations, icon: 'mdi-medical-bag', color: 'success',
+    title: 'Consultations', value: todayCounts.consultations, icon: 'mdi-medical-bag', color: 'success', varColor: '#2e7d32',
     sub: `${totalCounts.consultations} total`, subIcon: 'mdi-history', subColor: 'grey',
+    to: '/clinics/consultations',
   },
   {
-    title: 'Triage Entries', value: todayCounts.triage, icon: 'mdi-heart-pulse', color: 'red',
+    title: 'Triage Entries', value: todayCounts.triage, icon: 'mdi-heart-pulse', color: 'red', varColor: '#c62828',
     sub: `${totalCounts.triage} total`, subIcon: 'mdi-history', subColor: 'grey',
+    to: '/clinics/triage',
   },
   {
-    title: 'Open Escalations', value: openEscalations.value.length, icon: 'mdi-bell-alert', color: 'error',
+    title: 'Open Escalations', value: openEscalations.value.length, icon: 'mdi-bell-alert', color: 'error', varColor: '#d32f2f',
     sub: `${criticalEscalations.value.length} critical`, subIcon: 'mdi-alert-octagon', subColor: 'error',
+    to: '/clinics/alerts',
   },
   {
-    title: 'Lab Orders', value: todayCounts.labOrders, icon: 'mdi-flask', color: 'amber',
+    title: 'Lab Orders', value: todayCounts.labOrders, icon: 'mdi-flask', color: 'amber', varColor: '#f57c00',
     sub: `${pendingLabOrders.value.length} pending`, subIcon: 'mdi-clock-alert', subColor: 'warning',
+    to: '/clinics/lab-orders',
   },
   {
-    title: 'Outstanding', value: formatMoney(outstandingAmount.value, 'KES'), icon: 'mdi-cash-off', color: 'deep-orange',
+    title: 'Outstanding', value: formatMoney(outstandingAmount.value, 'KES'), icon: 'mdi-cash-off', color: 'deep-orange', varColor: '#bf360c',
     sub: `${overdueInvoices.value.length} overdue invoices`, subIcon: 'mdi-alert', subColor: 'error',
+    to: '/clinics/invoices',
   },
   {
-    title: 'Departments', value: allDepartments.value.length, icon: 'mdi-domain', color: 'indigo',
+    title: 'Departments', value: allDepartments.value.length, icon: 'mdi-domain', color: 'indigo', varColor: '#303f9f',
     sub: `${activeDepartments.value.length} active`, subIcon: 'mdi-check-circle', subColor: 'success',
+    to: '/clinics/departments',
   },
 ])
 
@@ -703,14 +718,89 @@ onMounted(load)
 </script>
 
 <style scoped>
-.kpi-card { border: 1px solid rgba(var(--v-theme-on-surface), 0.06); transition: box-shadow 0.2s; }
-.kpi-card:hover { box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); }
+/* ═══════════════ KPI cards ═══════════════ */
+.clinic-kpi {
+  position: relative;
+  overflow: hidden;
+  display: block;
+  border-radius: 14px;
+  padding: 16px 18px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  background: rgb(var(--v-theme-surface));
+  color: inherit;
+  text-decoration: none;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.clinic-kpi::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--kpi-tone, #1976d2);
+  opacity: 0.85;
+}
+.clinic-kpi:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(15, 23, 42, 0.1); }
+.clinic-kpi-link { cursor: pointer; }
+.clinic-kpi-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--kpi-tone, #1976d2);
+  background: color-mix(in srgb, var(--kpi-tone, #1976d2) 14%, transparent);
+}
+.clinic-kpi-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+  line-height: 1.3;
+}
+.clinic-kpi-value {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.3;
+  margin-top: 2px;
+}
 
-.chart-card { border: 1px solid rgba(var(--v-theme-on-surface), 0.06); }
-.list-card { border: 1px solid rgba(var(--v-theme-on-surface), 0.06); }
-.action-card { border: 1px solid rgba(var(--v-theme-on-surface), 0.06); }
-.alerts-card { border: 1px solid rgba(var(--v-theme-on-surface), 0.06); }
+/* ═══════════════ Panels (cards) ═══════════════ */
+.clinic-panel {
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  background: rgb(var(--v-theme-surface));
+}
+.clinic-panel-title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.1px;
+}
+.clinic-panel-sub {
+  font-size: 11.5px;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+  margin-top: 1px;
+}
+.clinic-panel-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.clinic-panel-icon-blue { background: rgba(25, 118, 210, 0.12); color: #1565c0; }
+.clinic-panel-icon-purple { background: rgba(156, 39, 176, 0.12); color: #7b1fa2; }
+.clinic-panel-icon-green { background: rgba(46, 125, 50, 0.12); color: #2e7d32; }
+.clinic-panel-icon-amber { background: rgba(245, 124, 0, 0.12); color: #ef6c00; }
+.clinic-panel-icon-teal { background: rgba(0, 137, 123, 0.12); color: #00897b; }
+.clinic-panel-icon-orange { background: rgba(245, 124, 0, 0.12); color: #ef6c00; }
+.clinic-panel-icon-red { background: rgba(211, 47, 47, 0.12); color: #c62828; }
+.clinic-panel-icon :deep(.v-icon) { color: inherit; }
 
+/* ═══════════════ Misc ═══════════════ */
 .flex-1 { flex: 1; }
 .flex-shrink-0 { flex-shrink: 0; }
 

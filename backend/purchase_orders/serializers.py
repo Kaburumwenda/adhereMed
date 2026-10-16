@@ -279,6 +279,8 @@ def _sync_shipping_expense(purchase_order):
 class PurchaseOrderSerializer(serializers.ModelSerializer):
     supplier_name = serializers.CharField(source='supplier.name', read_only=True)
     ordered_by_name = serializers.CharField(source='ordered_by.full_name', read_only=True)
+    approved_by_name = serializers.CharField(source='approved_by.full_name', read_only=True, default=None)
+    rejected_by_name = serializers.CharField(source='rejected_by.full_name', read_only=True, default=None)
     grns = GoodsReceivedNoteSerializer(many=True, read_only=True)
     po_number = serializers.CharField(required=False, allow_blank=True)
     proof_image_url = serializers.SerializerMethodField()
@@ -292,10 +294,16 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             'order_date', 'expected_delivery', 'notes',
             'branch', 'grns', 'created_at',
             'proof_image', 'proof_image_url',
+            'approved_by', 'approved_by_name', 'approved_at',
+            'rejected_by', 'rejected_by_name', 'rejected_at',
+            'rejection_reason',
         ]
         read_only_fields = [
             'id', 'order_date', 'created_at', 'total_cost',
             'ordered_by_name', 'supplier_name', 'grns',
+            'approved_by', 'approved_by_name', 'approved_at',
+            'rejected_by', 'rejected_by_name', 'rejected_at',
+            'rejection_reason',
         ]
 
     def get_proof_image_url(self, obj):

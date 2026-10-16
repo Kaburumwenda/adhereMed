@@ -97,6 +97,13 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
+    /** Update the tenant logo URL in the cached user object (sidebar refresh). */
+    updateTenantLogo(logoUrl) {
+      if (!this.user) return
+      this.user = { ...this.user, tenant_logo: logoUrl }
+      writeJSON(KEYS.user, this.user)
+    },
+
     async restore() {
       if (this.initialized) return
       this.initialized = true

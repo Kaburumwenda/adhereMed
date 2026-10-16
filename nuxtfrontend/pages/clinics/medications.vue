@@ -553,7 +553,7 @@ const { $api } = useNuxtApp()
 
 const req = [v => !!v || 'Required']
 
-const view = ref('grid')
+const view = ref('table')
 const categoryFilter = ref(null)
 const formFilter = ref(null)
 const statusFilter = ref(null)

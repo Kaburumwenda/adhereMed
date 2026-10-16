@@ -488,6 +488,7 @@ def ensure_tenant_schema(request, pk):
     except Tenant.DoesNotExist:
         return Response({"detail": "Tenant not found."}, status=status.HTTP_404_NOT_FOUND)
 
+    from django.db import connection
     from tenants.provisioning import provision_tenant, schema_exists
 
     connection.set_schema_to_public()
@@ -1280,6 +1281,7 @@ def system_health(request):
     # ── 7. Service statuses ────────────────────────────────────────
     services = []
     # Redis / Celery
+    broker_ok = False
     try:
         import redis
         from django.conf import settings
@@ -1287,20 +1289,53 @@ def system_health(request):
         if broker_url:
             r = redis.from_url(broker_url, socket_connect_timeout=2)
             r.ping()
+            broker_ok = True
             services.append({'name': 'Redis (Celery Broker)', 'status': 'healthy', 'detail': broker_url})
         else:
             services.append({'name': 'Redis (Celery Broker)', 'status': 'not_configured', 'detail': ''})
     except Exception as e:
         services.append({'name': 'Redis (Celery Broker)', 'status': 'unreachable', 'detail': str(e)[:100]})
 
-    # Celery eager mode (dev)
+    # Celery — a reachable broker is *not* enough: without a live worker,
+    # tasks queue forever (this is what left new tenants stuck on "Queued").
     from django.conf import settings
     eager = getattr(settings, 'CELERY_TASK_ALWAYS_EAGER', False)
-    services.append({
-        'name': 'Celery',
-        'status': 'eager' if eager else 'configured',
-        'detail': 'Tasks run synchronously (dev mode)' if eager else 'Async task queue ready',
-    })
+    if eager:
+        services.append({
+            'name': 'Celery',
+            'status': 'eager',
+            'detail': 'Tasks run synchronously (dev mode)',
+        })
+    elif not broker_ok:
+        # Don't pay kombu's connect-retry cost; the broker row already says why.
+        services.append({
+            'name': 'Celery',
+            'status': 'unreachable',
+            'detail': 'Broker unreachable, so worker liveness cannot be checked.',
+        })
+    else:
+        workers = []
+        try:
+            from config.celery import app as celery_app
+            for reply in celery_app.control.ping(timeout=2.0, limit=1):
+                workers.extend(reply.keys())
+        except Exception as exc:
+            workers = []
+            logger.warning('Celery worker ping failed: %s', exc)
+        if workers:
+            services.append({
+                'name': 'Celery',
+                'status': 'healthy',
+                'detail': f"Worker online: {', '.join(sorted(set(workers)))}",
+            })
+        else:
+            services.append({
+                'name': 'Celery',
+                'status': 'no_worker',
+                'detail': ('Broker reachable but no Celery worker responded — background '
+                           'jobs (tenant provisioning, reminders, billing) will queue forever. '
+                           'Start one with: celery -A config worker -l info'),
+            })
 
     # Email backend
     email_backend = getattr(settings, 'EMAIL_BACKEND', '')
@@ -1331,6 +1366,12 @@ def system_health(request):
         if svc['status'] == 'unreachable':
             score -= 10
             issues.append(f"{svc['name']} unreachable")
+        elif svc['status'] == 'no_worker':
+            score -= 15
+            issues.append(
+                "Celery worker offline — background jobs (tenant provisioning, "
+                "reminders, billing) will not run"
+            )
     score = max(0, score)
 
     health['score'] = score

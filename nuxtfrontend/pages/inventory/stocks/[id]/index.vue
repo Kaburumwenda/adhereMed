@@ -1,33 +1,65 @@
 <template>
   <v-container fluid class="pa-3 pa-md-5 sid-shell">
-    <!-- Header -->
-    <div class="d-flex flex-wrap align-center justify-space-between mb-4">
-      <div class="d-flex align-center" style="gap:14px">
-        <v-avatar color="primary" variant="tonal" rounded="lg" size="56">
-          <v-icon size="30">mdi-pill</v-icon>
-        </v-avatar>
-        <div>
-          <div class="d-flex align-center flex-wrap ga-2">
-            <h1 class="text-h5 font-weight-bold mb-0">{{ stock.medication_name || 'Stock item' }}</h1>
-            <v-chip v-if="stock.medication_id" size="small" variant="tonal" color="primary">{{ stock.medication_id }}</v-chip>
-            <v-chip v-if="account.low_stock" size="small" variant="tonal" color="error" prepend-icon="mdi-alert">Low stock</v-chip>
+    <!-- ═══════════════ HERO ═══════════════
+         Tinted with the tenant palette from /ims/organization/branding —
+         see `heroTheme` in the script. Mirrors the inventory list header so
+         moving between the list and an item feels continuous. -->
+    <div class="sid-hero mb-4" :style="heroTheme">
+      <span class="sid-hero-glow" />
+      <span class="sid-hero-glow sid-hero-glow-2" />
+
+      <div class="d-flex flex-wrap align-center justify-space-between ga-3">
+        <div class="d-flex align-center" style="gap:16px">
+          <div class="sid-hero-icon">
+            <v-icon size="30">mdi-pill</v-icon>
           </div>
-          <div class="d-flex align-center flex-wrap ga-2 mt-1">
-            <v-chip v-if="stock.category_name" size="x-small" variant="tonal" prepend-icon="mdi-shape">{{ stock.category_name }}</v-chip>
-            <v-chip v-if="stock.classification_name" size="x-small" variant="tonal" color="primary" prepend-icon="mdi-label-multiple-outline">{{ stock.classification_name }}</v-chip>
-            <v-chip v-if="stock.unit_name" size="x-small" variant="tonal" prepend-icon="mdi-ruler">{{ stock.unit_name }}</v-chip>
-            <v-chip v-if="stock.items_per_unit > 0" size="x-small" variant="tonal" color="info" prepend-icon="mdi-package-variant">{{ stock.items_per_unit }} per {{ stock.unit_name || 'unit' }}</v-chip>
-            <v-chip v-if="stock.branch_name" size="x-small" variant="tonal" prepend-icon="mdi-store">{{ stock.branch_name }}</v-chip>
-            <v-chip v-if="stock.barcode" size="x-small" variant="tonal" prepend-icon="mdi-barcode">{{ stock.barcode }}</v-chip>
-            <v-chip v-if="stock.prescription_required && stock.prescription_required !== 'none'" size="x-small" variant="tonal" color="purple" prepend-icon="mdi-script-text">Rx {{ stock.prescription_required }}</v-chip>
+          <div style="min-width:0">
+            <div class="sid-eyebrow">
+              <v-icon size="11">mdi-circle</v-icon>
+              STOCK ITEM
+            </div>
+            <h1 class="sid-title">{{ stock.medication_name || 'Stock item' }}</h1>
+            <div class="sid-hero-chips">
+              <span class="sid-hero-chip sid-hero-chip-health" :class="`sid-health-${stockHealth.key}`">
+                <v-icon size="13">{{ stockHealth.icon }}</v-icon>
+                {{ stockHealth.label }}
+              </span>
+              <span v-if="stock.medication_id" class="sid-hero-chip">{{ stock.medication_id }}</span>
+              <span v-if="stock.category_name" class="sid-hero-chip">{{ stock.category_name }}</span>
+              <span v-if="stock.classification_name" class="sid-hero-chip">{{ stock.classification_name }}</span>
+              <span v-if="stock.branch_name" class="sid-hero-chip">{{ stock.branch_name }}</span>
+              <span v-if="stock.unit_name" class="sid-hero-chip">{{ stock.unit_name }}</span>
+              <span v-if="stock.barcode" class="sid-hero-chip">#{{ stock.barcode }}</span>
+              <span v-if="stock.prescription_required && stock.prescription_required !== 'none'" class="sid-hero-chip">
+                Rx {{ stock.prescription_required }}
+              </span>
+            </div>
           </div>
         </div>
-      </div>
-      <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
-        <v-btn variant="text" prepend-icon="mdi-arrow-left" rounded="lg" class="text-none" to="/inventory">Back</v-btn>
-        <v-btn variant="tonal" prepend-icon="mdi-refresh" rounded="lg" class="text-none" :loading="loading" @click="load">Refresh</v-btn>
-        <v-btn variant="tonal" prepend-icon="mdi-file-pdf-box" rounded="lg" class="text-none" :loading="pdfLoading" @click="downloadPdf">Report (PDF)</v-btn>
-        <v-btn color="primary" variant="flat" prepend-icon="mdi-pencil" rounded="lg" class="text-none" :to="`/inventory/stocks/${id}/edit`">Edit</v-btn>
+
+        <div class="d-flex flex-wrap align-center ga-2">
+          <v-btn
+            icon="mdi-refresh"
+            variant="text"
+            size="small"
+            class="sid-hero-iconbtn"
+            title="Refresh"
+            :loading="loading"
+            @click="load"
+          />
+          <v-btn
+            variant="flat" elevation="0" rounded="lg" class="text-none sid-hero-btn-glass"
+            prepend-icon="mdi-arrow-left" to="/inventory"
+          >Back</v-btn>
+          <v-btn
+            variant="flat" elevation="0" rounded="lg" class="text-none sid-hero-btn-glass"
+            prepend-icon="mdi-file-pdf-box" :loading="pdfLoading" @click="downloadPdf"
+          >Report (PDF)</v-btn>
+          <v-btn
+            variant="flat" elevation="0" rounded="lg" class="text-none sid-hero-btn-strong"
+            prepend-icon="mdi-pencil" :to="`/inventory/stocks/${id}/edit`"
+          >Edit</v-btn>
+        </div>
       </div>
     </div>
 
@@ -36,61 +68,64 @@
     </div>
 
     <template v-else>
-      <!-- Date filter bar -->
-      <v-card flat rounded="xl" border class="pa-3 mb-4">
+      <!-- ═══════════════ PERIOD BAR ═══════════════ -->
+      <v-card flat rounded="xl" border class="pa-3 mb-3 sid-period">
         <div class="d-flex align-center flex-wrap ga-2">
-          <v-icon color="primary">mdi-calendar-range</v-icon>
-          <div class="text-subtitle-2 font-weight-bold mr-2">Period</div>
+          <div class="sid-period-icon">
+            <v-icon size="18">mdi-calendar-range</v-icon>
+          </div>
+          <div class="mr-2">
+            <div class="text-caption text-medium-emphasis" style="line-height:1.1">Reporting period</div>
+            <div class="text-body-2 font-weight-bold">{{ periodLabel }}</div>
+          </div>
           <v-select
             v-model="datePreset" :items="dateOptions" item-title="label" item-value="value"
             variant="solo-filled" density="comfortable" hide-details flat rounded="lg"
-            bg-color="surface" style="max-width: 190px"
+            bg-color="surface" style="max-width: 180px"
             @update:model-value="onPeriodChange"
           />
           <template v-if="datePreset === 'custom'">
             <v-text-field
               v-model="dateFrom" type="date" label="From"
               variant="solo-filled" density="comfortable" hide-details flat rounded="lg"
-              bg-color="surface" style="max-width: 170px"
+              bg-color="surface" style="max-width: 165px"
               @update:model-value="onPeriodChange"
             />
             <v-text-field
               v-model="dateTo" type="date" label="To"
               variant="solo-filled" density="comfortable" hide-details flat rounded="lg"
-              bg-color="surface" style="max-width: 170px"
+              bg-color="surface" style="max-width: 165px"
               @update:model-value="onPeriodChange"
             />
           </template>
-          <v-chip size="small" variant="tonal" color="primary" prepend-icon="mdi-calendar">
-            {{ periodLabel }}
-          </v-chip>
           <v-spacer />
-          <div class="text-caption text-medium-emphasis">
+          <div class="text-caption text-medium-emphasis d-none d-lg-block">
             Opening stock, sales stats and analytics follow this period
           </div>
         </div>
       </v-card>
-      <!-- Account stock stat cards -->
+
+      <!-- ═══════════════ ACCOUNT STOCK KPIs ═══════════════ -->
       <v-row dense class="mb-4">
         <v-col cols="6" md="2" v-for="k in accountCards" :key="k.label">
-          <v-card rounded="lg" elevation="0" class="pa-3 sid-kpi" :class="`sid-kpi-${k.key}`">
+          <div class="sid-kpi h-100" :class="`sid-kpi-${k.key}`">
             <div class="d-flex align-center" style="gap:10px">
-              <v-avatar :color="k.color" variant="tonal" rounded="lg" size="38">
-                <v-icon size="19">{{ k.icon }}</v-icon>
-              </v-avatar>
-              <div>
-                <div class="text-caption text-medium-emphasis text-uppercase">{{ k.label }}</div>
-                <div class="text-h6 font-weight-bold">{{ k.value }}</div>
-                <div v-if="k.sub" class="text-caption text-medium-emphasis">{{ k.sub }}</div>
+              <div class="sid-kpi-icon">
+                <v-icon size="18">{{ k.icon }}</v-icon>
+              </div>
+              <div style="min-width:0">
+                <div class="sid-kpi-label">{{ k.label }}</div>
+                <div class="sid-kpi-value">{{ k.value.toLocaleString?.() ?? k.value }}</div>
+                <div v-if="k.sub" class="sid-kpi-sub">{{ k.sub }}</div>
               </div>
             </div>
-          </v-card>
+          </div>
         </v-col>
       </v-row>
 
-      <!-- Tabs -->
-      <v-card flat rounded="xl" border>
-        <v-tabs v-model="tab" color="primary" density="comfortable">
+      <!-- ═══════════════ TABS ═══════════════ -->
+      <v-card flat rounded="xl" border class="sid-tabcard">
+        <v-tabs v-model="tab" color="primary" density="comfortable" class="sid-tabs">
           <v-tab value="overview" class="text-none"><v-icon start size="18">mdi-view-dashboard-outline</v-icon>Overview</v-tab>
           <v-tab value="batches" class="text-none"><v-icon start size="18">mdi-package-variant-closed</v-icon>Batches</v-tab>
           <v-tab value="transactions" class="text-none"><v-icon start size="18">mdi-swap-vertical</v-icon>Transactions</v-tab>
@@ -99,7 +134,7 @@
         </v-tabs>
         <v-divider />
 
-        <v-tabs-window v-model="tab" class="pa-4 pa-md-5">
+        <v-tabs-window v-model="tab" class="pa-4 pa-md-5 sid-panels">
           <!-- ── OVERVIEW ─────────────────────────────────────────────── -->
           <v-tabs-window-item value="overview">
             <!-- Item Details -->
@@ -462,9 +497,25 @@
 
 <script setup>
 import { formatMoney } from '~/utils/format'
+import { useBranding } from '~/composables/useBranding'
 
 const route = useRoute()
 const { $api } = useNuxtApp()
+
+// Tenant palette configured at /ims/organization/branding. Exposed to the hero
+// through custom properties so the stylesheet stays declarative. The third
+// gradient stop is the accent mixed toward the primary — a raw accent is often
+// near-white and would leave the buttons white-on-pale.
+const brand = useBranding()
+const heroTheme = computed(() => ({
+  '--hero-deep': brand.secondary.value,
+  '--hero-main': brand.primary.value,
+  '--hero-accent': brand.gradientStops.value[2],
+  '--hero-ink': brand.ink.value,
+  '--hero-glow': brand.tint('primary', 0.3),
+  '--hero-glow-2': brand.tint('accent', 0.2),
+  '--hero-shadow': brand.shadow.value
+}))
 
 const id = computed(() => route.params.id)
 const loading = ref(true)
@@ -525,6 +576,16 @@ const accountCards = computed(() => [
 
 const periodStart = ref('')
 const periodEnd = ref('')
+
+// Single at-a-glance signal for the hero: is this item safe to sell from?
+// Distinct from the "Reorder level" KPI card, which reports the threshold.
+const stockHealth = computed(() => {
+  const on = Number(account.value.on_hand || 0)
+  const reorder = Number(account.value.reorder_level || 0)
+  if (on <= 0) return { key: 'out', label: 'Out of stock', icon: 'mdi-close-circle' }
+  if (reorder > 0 && on <= reorder) return { key: 'low', label: 'Low stock', icon: 'mdi-alert' }
+  return { key: 'ok', label: 'In stock', icon: 'mdi-check-circle' }
+})
 
 const periodLabel = computed(() => {
   const fmt = d => new Date(d).toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -692,50 +753,295 @@ async function downloadPdf() {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  // Deep-linking straight to an item means nothing has fetched the tenant
+  // palette yet (useBranding caches in shared state, so this is a no-op when
+  // the inventory list already loaded it).
+  brand.load()
+  load()
+})
 </script>
 
 <style scoped>
 .sid-shell { max-width: 1500px; margin: 0 auto; }
-.sid-kpi { border-left: 4px solid transparent; }
-.sid-kpi-opening { border-left-color: #6366f1; }
-.sid-kpi-onhand { border-left-color: #0d9488; }
-.sid-kpi-committed { border-left-color: #f59e0b; }
-.sid-kpi-available { border-left-color: #16a34a; }
-.sid-kpi-sold { border-left-color: #0ea5e9; }
-.sid-kpi-reorder { border-left-color: #dc2626; }
 
-.table-wrap { overflow-x: auto; }
-.inv-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+/* ─────────────── Hero ───────────────
+   Colours come from the tenant palette (see `heroTheme`); the var() fallbacks
+   mirror BRAND_DEFAULTS in utils/branding.js. */
+.sid-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  padding: 20px 22px;
+  color: #fff;
+  background: linear-gradient(
+    120deg,
+    var(--hero-deep, #143ce1) 0%,
+    var(--hero-main, #2f6dff) 52%,
+    var(--hero-accent, #37d6ff) 100%
+  );
+  box-shadow: var(--hero-shadow, 0 14px 34px rgba(47, 109, 255, 0.24));
+}
+.sid-hero-glow {
+  position: absolute;
+  width: 340px;
+  height: 340px;
+  border-radius: 50%;
+  right: -110px;
+  top: -170px;
+  background: radial-gradient(circle, var(--hero-glow, rgba(255, 255, 255, 0.28)), transparent 68%);
+  pointer-events: none;
+}
+.sid-hero-glow-2 {
+  right: auto;
+  left: -140px;
+  top: auto;
+  bottom: -220px;
+  width: 300px;
+  height: 300px;
+  background: radial-gradient(circle, var(--hero-glow-2, rgba(55, 214, 255, 0.24)), transparent 70%);
+}
+.sid-hero-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  backdrop-filter: blur(6px);
+  flex-shrink: 0;
+}
+.sid-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.78);
+}
+.sid-title {
+  font-size: 25px;
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  margin: 2px 0 6px;
+  overflow-wrap: anywhere;
+}
+
+/* Metadata chips sit *on* the gradient, so they get a translucent white
+   treatment instead of Vuetify tonal colours (which wash out). */
+.sid-hero-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.sid-hero-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(4px);
+  white-space: nowrap;
+}
+.sid-hero-chip-health {
+  font-weight: 700;
+}
+/* Health pill keeps a solid tint so it reads as a status, not a label. */
+.sid-health-ok { background: rgba(34, 197, 94, 0.9); border-color: rgba(255, 255, 255, 0.5); }
+.sid-health-low { background: rgba(245, 158, 11, 0.95); border-color: rgba(255, 255, 255, 0.5); }
+.sid-health-out { background: rgba(239, 68, 68, 0.95); border-color: rgba(255, 255, 255, 0.5); }
+
+.sid-hero-iconbtn { color: #fff !important; opacity: 0.9; }
+
+/* Hero action buttons — three high-contrast tiers. A saturated brand gradient
+   washes out tonal/primary fills, so each tier carries its own fill. */
+.sid-hero-btn-strong {
+  background: #ffffff !important;
+  color: var(--hero-ink, #143ce1) !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.1px;
+  border: 1px solid rgba(255, 255, 255, 0.95) !important;
+  box-shadow: 0 6px 18px rgba(6, 44, 40, 0.28) !important;
+}
+.sid-hero-btn-strong:hover {
+  background: #ffffff !important;
+  filter: brightness(0.94);
+  box-shadow: 0 9px 24px rgba(6, 44, 40, 0.34) !important;
+}
+.sid-hero-btn-strong :deep(.v-icon) { color: var(--hero-ink, #143ce1) !important; opacity: 1 !important; }
+
+.sid-hero-btn-glass {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  border: 1px solid rgba(255, 255, 255, 0.34) !important;
+  backdrop-filter: blur(6px);
+}
+.sid-hero-btn-glass:hover {
+  background: rgba(255, 255, 255, 0.26) !important;
+  border-color: rgba(255, 255, 255, 0.6) !important;
+}
+.sid-hero-btn-glass :deep(.v-icon) { color: #ffffff !important; opacity: 1 !important; }
+
+/* ─────────────── Period bar ─────────────── */
+.sid-period-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: rgb(var(--v-theme-primary));
+  background: rgba(var(--v-theme-primary), 0.12);
+}
+
+/* ─────────────── KPI cards ───────────────
+   Tone is carried by `color` so the top accent bar and icon chip can both use
+   currentColor / a tint of it. */
+.sid-kpi {
+  position: relative;
+  overflow: hidden;
+  border-radius: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  background: rgb(var(--v-theme-surface));
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.sid-kpi::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: currentColor;
+  opacity: 0.85;
+}
+.sid-kpi:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.1);
+}
+.sid-kpi-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: currentColor;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+.sid-kpi-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+  line-height: 1.3;
+}
+.sid-kpi-value {
+  font-size: 19px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.3px;
+}
+.sid-kpi-sub {
+  font-size: 11px;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+  line-height: 1.3;
+}
+
+.sid-kpi-opening { color: #6366f1; }
+.sid-kpi-onhand { color: #0d9488; }
+.sid-kpi-committed { color: #f59e0b; }
+.sid-kpi-available { color: #16a34a; }
+.sid-kpi-sold { color: #0ea5e9; }
+.sid-kpi-reorder { color: #dc2626; }
+
+/* ─────────────── Tab shell ─────────────── */
+.sid-tabcard { overflow: hidden; }
+.sid-tabs :deep(.v-tab) { font-weight: 600; }
+
+/* Inner content cards get one consistent treatment instead of the default
+   heavy outlined look, so the tab content reads as panels on a page. */
+.sid-panels :deep(.v-card) {
+  border-radius: 14px !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+  transition: box-shadow 0.18s ease;
+}
+.sid-panels :deep(.v-card:hover) { box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06); }
+
+/* ─────────────── Tables ─────────────── */
+.table-wrap {
+  overflow-x: auto;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+}
+.inv-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; }
 .inv-table th {
-  text-align: left; padding: 10px 10px; white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  padding: 10px;
+  white-space: nowrap;
+  background: rgb(var(--v-theme-surface));
   border-bottom: 2px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.5px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
   color: rgba(var(--v-theme-on-surface), 0.6);
 }
-.inv-table td { padding: 9px 10px; border-bottom: 1px solid rgba(var(--v-border-color), 0.4); white-space: nowrap; }
-.inv-table tbody tr:hover { background: rgba(99, 102, 241, 0.04); }
-.row-num { width: 44px; color: rgba(var(--v-theme-on-surface), 0.45); }
+.inv-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid rgba(var(--v-border-color), 0.35);
+  white-space: nowrap;
+}
+.inv-table tbody tr:last-child td { border-bottom: none; }
+.inv-table tbody tr { transition: background 0.14s ease; }
+.inv-table tbody tr:hover { background: rgba(var(--v-theme-primary), 0.045); }
+.row-num { width: 44px; color: rgba(var(--v-theme-on-surface), 0.45); text-align: right; }
 
 .sid-mini-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .sid-mini-table th {
-  text-align: left; padding: 6px 8px; font-size: 10.5px; text-transform: uppercase;
+  text-align: left;
+  padding: 6px 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
   color: rgba(var(--v-theme-on-surface), 0.55);
   border-bottom: 1px solid rgba(var(--v-border-color), 0.5);
 }
-.sid-mini-table td { padding: 7px 8px; border-bottom: 1px solid rgba(var(--v-border-color), 0.3); }
-.sid-mini-table tbody tr:hover { background: rgba(99, 102, 241, 0.04); }
+.sid-mini-table td { padding: 7px 8px; border-bottom: 1px solid rgba(var(--v-border-color), 0.25); }
+.sid-mini-table tbody tr:last-child td { border-bottom: none; }
+.sid-mini-table tbody tr:hover { background: rgba(var(--v-theme-primary), 0.045); }
 
+/* ─────────────── Detail grid ─────────────── */
 .detail-label {
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 10.5px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.55px;
   color: rgba(var(--v-theme-on-surface), 0.5);
-  margin-bottom: 2px;
+  margin-bottom: 3px;
 }
 .detail-value {
   font-size: 14px;
   line-height: 1.4;
+  overflow-wrap: anywhere;
 }
+/* Give each detail cell its own rhythm rather than one dense block of rows. */
+.sid-panels :deep(.detail-value) { min-height: 22px; }
 </style>

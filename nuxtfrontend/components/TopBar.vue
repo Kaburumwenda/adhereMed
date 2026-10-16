@@ -169,6 +169,7 @@ import { useAuthStore } from '~/stores/auth'
 import { useThemeStore } from '~/stores/theme'
 import { useBranchStore } from '~/stores/branch'
 import { ADMIN_ROLES } from '~/utils/permissions'
+import { AppConstants } from '~/utils/constants'
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 
 defineProps({
@@ -189,7 +190,21 @@ const notifications = ref([])
 const unreadCount = ref(0)
 let notifPollTimer = null
 
+// Notifications live in the tenant schema. A superadmin/platform session runs
+// in the `public` schema, which has no notifications tables, so polling there
+// is meaningless (the API used to answer 500). Mirrors the guard used by
+// stores/branch.js.
+function hasTenantContext() {
+  if (typeof window === 'undefined') return false
+  return !!localStorage.getItem(AppConstants.storageKeys.tenantSchema)
+}
+
 async function loadNotifications() {
+  if (!hasTenantContext()) {
+    notifications.value = []
+    unreadCount.value = 0
+    return
+  }
   try {
     const { data } = await $api.get('/notifications/', { params: { page_size: 20 } })
     notifications.value = data?.results || data || []
@@ -262,6 +277,7 @@ function updateClock() {
 updateClock()
 onMounted(() => {
   clockTimer = setInterval(updateClock, 1000)
+  if (!hasTenantContext()) return
   loadNotifications()
   notifPollTimer = setInterval(loadNotifications, 60000) // poll every 60s
 })

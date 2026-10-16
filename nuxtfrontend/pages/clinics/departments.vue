@@ -330,7 +330,7 @@ const staffR = useResource('/auth/staff/')
 
 const req = [v => !!v || 'Required']
 
-const view = ref('grid')
+const view = ref('table')
 const statusFilter = ref(null)
 const headFilter = ref(null)
 

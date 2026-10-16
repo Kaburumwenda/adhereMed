@@ -14,14 +14,13 @@
       <v-img
         v-if="tenantLogo"
         :src="tenantLogo"
-        cover
-        rounded="lg"
+        contain
         :width="38"
         :height="38"
-        style="border-radius: 11px; object-fit: cover; box-shadow: 0 3px 10px rgba(15,118,110,0.18)"
+        style="object-fit: contain;"
       />
       <BrandLogo v-else :size="38" />
-      <div v-if="!rail || mobile" class="ml-3 brand-tenant">
+      <div v-if="!rail || mobile" class="brand-tenant" style="margin-left:5px">
         <div class="brand-tenant-name text-truncate" :title="tenantName || 'AdhereMed'">
           {{ tenantName || 'AdhereMed' }}
         </div>
@@ -35,10 +34,8 @@
       <template v-for="(section, sIdx) in sections" :key="sIdx">
         <v-list-subheader
           v-if="section.label && (!rail || mobile)"
-          class="text-caption font-weight-bold"
-          style="letter-spacing:1.2px;"
+          class="nav-section-header"
         >
-          <v-icon size="6" color="primary" class="mr-2">mdi-circle</v-icon>
           {{ section.label }}
         </v-list-subheader>
         <v-divider v-else-if="section.label && rail && !mobile" class="my-2 mx-4" />
@@ -148,5 +145,31 @@ function formatRole(r) {
   color: #0F766E;
   line-height: 1.2;
   letter-spacing: 0.2px;
+}
+
+/* Premium section headers */
+.nav-section-header {
+  font-size: 0.6875rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 1.5px !important;
+  text-transform: uppercase;
+  color: rgba(var(--v-theme-on-surface), 0.4) !important;
+  padding-top: 20px;
+  padding-bottom: 8px;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+.nav-section-header:first-child {
+  padding-top: 8px;
+}
+
+/* Premium list items */
+:deep(.v-list-item) {
+  border-radius: 8px !important;
+  margin: 2px 8px;
+  min-height: 40px;
+}
+:deep(.v-list-item--active) {
+  font-weight: 600;
 }
 </style>

@@ -4,6 +4,7 @@ import os
 from datetime import datetime
 
 from django.http import HttpResponse
+from django.utils import timezone
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.generics import GenericAPIView
@@ -30,6 +31,7 @@ from .serializers import (
     GoodsReceivedNoteSerializer,
     revert_received_items,
 )
+from .serializers import _sync_received_items, _sync_shipping_expense
 
 
 class PurchaseOrderViewSet(BranchScopedMixin, viewsets.ModelViewSet):
@@ -88,6 +90,311 @@ class PurchaseOrderViewSet(BranchScopedMixin, viewsets.ModelViewSet):
             'status': po.status,
             'items': preview,
             'has_consumed': any(p['consumed'] > 0 for p in preview),
+        })
+
+    @action(detail=True, methods=['post'])
+    def approve(self, request, pk=None):
+        """Approve (release) a draft purchase order.
+
+        Requires the caller's current password for confirmation.
+        Sets status to 'sent', records who approved and when.
+        """
+        from django.contrib.auth import authenticate
+
+        po = self.get_object()
+        password = request.data.get('password', '')
+        if not password:
+            return Response({'detail': 'Password is required.'}, status=400)
+        user = authenticate(email=request.user.email, password=password)
+        if not user:
+            return Response({'detail': 'Incorrect password.'}, status=400)
+        po.status = PurchaseOrder.Status.SENT
+        po.approved_by = request.user
+        po.approved_at = timezone.now()
+        po.save(update_fields=['status', 'approved_by', 'approved_at'])
+        return Response({
+            'detail': 'Purchase order approved and released.',
+            'approved_by': request.user.full_name,
+            'approved_at': po.approved_at.isoformat(),
+        })
+
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        """Reject a draft purchase order.
+
+        Requires the caller's current password for confirmation and a reason.
+        Sets status to 'cancelled', records who rejected, when, and why.
+        """
+        from django.contrib.auth import authenticate
+
+        po = self.get_object()
+        password = request.data.get('password', '')
+        reason = (request.data.get('reason') or '').strip()
+        if not password:
+            return Response({'detail': 'Password is required.'}, status=400)
+        if not reason:
+            return Response({'detail': 'A rejection reason is required.'}, status=400)
+        user = authenticate(email=request.user.email, password=password)
+        if not user:
+            return Response({'detail': 'Incorrect password.'}, status=400)
+        po.status = PurchaseOrder.Status.CANCELLED
+        po.rejected_by = request.user
+        po.rejected_at = timezone.now()
+        po.rejection_reason = reason
+        po.save(update_fields=['status', 'rejected_by', 'rejected_at', 'rejection_reason'])
+        return Response({
+            'detail': 'Purchase order rejected.',
+            'rejected_by': request.user.full_name,
+            'rejected_at': po.rejected_at.isoformat(),
+            'reason': reason,
+        })
+
+    @action(detail=True, methods=['post'])
+    def confirm_receive(self, request, pk=None):
+        """Confirm receipt of a purchase order with password verification.
+
+        Requires the caller's current password. Sets status to 'received' and
+        triggers stock sync (same as setting status=received via PATCH, but
+        with an explicit password challenge).
+        """
+        from django.contrib.auth import authenticate
+
+        po = self.get_object()
+        password = request.data.get('password', '')
+        if not password:
+            return Response({'detail': 'Password is required.'}, status=400)
+        user = authenticate(email=request.user.email, password=password)
+        if not user:
+            return Response({'detail': 'Incorrect password.'}, status=400)
+        po.status = PurchaseOrder.Status.RECEIVED
+        po.save(update_fields=['status'])
+        _sync_received_items(po)
+        po.refresh_from_db()
+        _sync_shipping_expense(po)
+        return Response({
+            'detail': 'Purchase order marked as received.',
+            'received_by': request.user.full_name,
+            'received_at': timezone.now().isoformat(),
+        })
+
+    @action(detail=True, methods=['post'])
+    def confirm_partial(self, request, pk=None):
+        """Partially receive a purchase order with password verification.
+
+        Accepts:
+            password — caller's current password (required)
+            items — [{medication_stock_id, received_qty}, ...]  per line item
+            notes — optional notes for the GRN
+
+        For each item with received_qty > 0:
+          - Creates a StockBatch entry for the received quantity
+          - Updates the PO item's 'received_qty' and '_synced' flags
+          - Updates stock cost/selling prices (same as full receive)
+
+        Sets PO status to 'received' if all items are fully received,
+        otherwise 'partial'. Creates a GoodsReceivedNote record.
+        """
+        import uuid as _uuid
+        from datetime import date, timedelta
+        from django.contrib.auth import authenticate
+        from inventory.models import MedicationStock, StockBatch
+
+        po = self.get_object()
+        password = request.data.get('password', '')
+        if not password:
+            return Response({'detail': 'Password is required.'}, status=400)
+        user = authenticate(email=request.user.email, password=password)
+        if not user:
+            return Response({'detail': 'Incorrect password.'}, status=400)
+
+        if po.status not in (PurchaseOrder.Status.SENT, PurchaseOrder.Status.PARTIAL, PurchaseOrder.Status.DRAFT):
+            return Response(
+                {'detail': f'Only sent or partial purchase orders can be received (current status: {po.status}).'},
+                status=400,
+            )
+
+        received_items = request.data.get('items', [])
+        if not received_items or not isinstance(received_items, list):
+            return Response({'detail': 'A list of received items is required.'}, status=400)
+
+        grn_notes = request.data.get('notes', '')
+
+        # Build a map: medication_stock_id -> received_qty from the request
+        recv_map = {}
+        for ri in received_items:
+            sid = ri.get('medication_stock_id')
+            rq = int(ri.get('received_qty') or 0)
+            if sid and rq > 0:
+                recv_map[int(sid)] = rq
+
+        if not recv_map:
+            return Response({'detail': 'No items with a positive received quantity were provided.'}, status=400)
+
+        default_expiry = date.today() + timedelta(days=365)
+        updated_items = []
+        grn_lines = []
+        all_fully_received = True
+
+        for it in (po.items or []):
+            sid = it.get('medication_stock_id')
+            ordered_qty = int(it.get('qty') or 0)
+            prev_received = int(it.get('received_qty') or 0)
+
+            if sid in recv_map and not it.get('_synced'):
+                recv_qty = recv_map[sid]
+                try:
+                    stock = MedicationStock.objects.get(pk=sid)
+                except MedicationStock.DoesNotExist:
+                    updated_items.append(it)
+                    all_fully_received = False
+                    continue
+
+                unit_cost = _to_decimal(it.get('unit_cost'))
+                expiry = it.get('expiry_date') or default_expiry.isoformat()
+                batch_number = it.get('batch_number') or f"PO-{po.po_number}-{stock.pk}"
+
+                # Snapshot previous prices
+                it['_prev_cost_price'] = float(stock.cost_price or 0)
+                it['_prev_selling_price'] = float(stock.selling_price or 0)
+                it['_prev_discount_percent'] = float(stock.discount_percent or 0)
+                it['_prev_tax_percent'] = float(stock.tax_percent or 0)
+
+                StockBatch.objects.create(
+                    stock=stock,
+                    batch_number=f"{batch_number}-P{po.grns.count() + 1}",
+                    quantity_received=recv_qty,
+                    quantity_remaining=recv_qty,
+                    cost_price_per_unit=unit_cost,
+                    expiry_date=expiry,
+                    supplier=po.supplier,
+                )
+
+                # Update stock prices
+                changed = []
+                if unit_cost > 0 and stock.cost_price != unit_cost:
+                    stock.cost_price = unit_cost
+                    changed.append('cost_price')
+                unit_selling = _to_decimal(it.get('unit_selling_price'))
+                if unit_selling > 0 and stock.selling_price != unit_selling:
+                    stock.selling_price = unit_selling
+                    changed.append('selling_price')
+                discount = _to_decimal(it.get('discount_percent'))
+                if discount >= 0 and stock.discount_percent != discount:
+                    stock.discount_percent = discount
+                    changed.append('discount_percent')
+                tax_pct = _to_decimal(it.get('tax_percent'))
+                if tax_pct >= 0 and stock.tax_percent != tax_pct:
+                    stock.tax_percent = tax_pct
+                    changed.append('tax_percent')
+                if changed:
+                    changed.append('updated_at')
+                    stock.save(update_fields=changed)
+
+                total_received = prev_received + recv_qty
+                it['received_qty'] = total_received
+                it['_synced'] = True
+                it['batch_number'] = f"{batch_number}-P{po.grns.count() + 1}"
+                it['expiry_date'] = expiry
+
+                grn_lines.append({
+                    'medication_stock_id': sid,
+                    'name': it.get('name', ''),
+                    'ordered_qty': ordered_qty,
+                    'received_qty': recv_qty,
+                    'unit_cost': float(unit_cost),
+                    'batch_number': f"{batch_number}-P{po.grns.count() + 1}",
+                    'expiry_date': expiry,
+                })
+
+                if total_received < ordered_qty:
+                    all_fully_received = False
+            else:
+                # Item not being received now — check if previously received
+                if prev_received < ordered_qty:
+                    all_fully_received = False
+
+            updated_items.append(it)
+
+        po.items = updated_items
+        po.status = PurchaseOrder.Status.RECEIVED if all_fully_received else PurchaseOrder.Status.PARTIAL
+        po.save(update_fields=['items', 'status'])
+
+        # Create GRN
+        grn_number = f'GRN-{_uuid.uuid4().hex[:8].upper()}'
+        GoodsReceivedNote.objects.create(
+            purchase_order=po,
+            grn_number=grn_number,
+            received_by=request.user,
+            items_received=grn_lines,
+            notes=grn_notes,
+        )
+
+        _sync_shipping_expense(po)
+
+        return Response({
+            'detail': f'Purchase order {"fully received" if all_fully_received else "partially received"}.',
+            'status': po.status,
+            'grn_number': grn_number,
+            'received_by': request.user.full_name,
+            'received_at': timezone.now().isoformat(),
+            'items': grn_lines,
+        })
+
+    @action(detail=True, methods=['post'])
+    def confirm_return(self, request, pk=None):
+        """Return a previously received PO with password verification.
+
+        Reverses stock and prices. Pass {"password": "...", "force": true}
+        to allow reverting even if some stock was already used.
+        """
+        from django.contrib.auth import authenticate
+
+        po = self.get_object()
+        password = request.data.get('password', '')
+        if not password:
+            return Response({'detail': 'Password is required.'}, status=400)
+        user = authenticate(email=request.user.email, password=password)
+        if not user:
+            return Response({'detail': 'Incorrect password.'}, status=400)
+        if po.status not in (PurchaseOrder.Status.RECEIVED, PurchaseOrder.Status.PARTIAL):
+            return Response(
+                {'detail': f'Only received purchase orders can be returned (current status: {po.status}).'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        force = bool(request.data.get('force'))
+        try:
+            result = revert_received_items(po, force=force)
+        except ValueError as exc:
+            payload = exc.args[0] if exc.args else {'message': str(exc)}
+            if isinstance(payload, dict):
+                payload['needs_force'] = True
+                return Response(payload, status=status.HTTP_409_CONFLICT)
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        po.refresh_from_db()
+        data = self.get_serializer(po).data
+        return Response({**result, 'purchase_order': data})
+
+    @action(detail=True, methods=['post'])
+    def confirm_cancel(self, request, pk=None):
+        """Cancel a purchase order with password verification.
+
+        Requires the caller's current password. Sets status to 'cancelled'.
+        """
+        from django.contrib.auth import authenticate
+
+        po = self.get_object()
+        password = request.data.get('password', '')
+        if not password:
+            return Response({'detail': 'Password is required.'}, status=400)
+        user = authenticate(email=request.user.email, password=password)
+        if not user:
+            return Response({'detail': 'Incorrect password.'}, status=400)
+        po.status = PurchaseOrder.Status.CANCELLED
+        po.save(update_fields=['status'])
+        return Response({
+            'detail': 'Purchase order cancelled.',
+            'cancelled_by': request.user.full_name,
+            'cancelled_at': timezone.now().isoformat(),
         })
 
     @action(detail=True, methods=['post'])

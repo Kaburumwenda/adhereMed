@@ -106,6 +106,12 @@ export function getNavSections(role, tenantType, t = (x) => x) {
         // Lab & Diagnostics
         { icon: 'mdi-microscope', label: 'Lab Orders', path: '/clinics/lab-orders' },
         { icon: 'mdi-image', label: 'Radiology', path: '/radiology' },
+    ]
+    if (['doctor', 'clinical_officer', 'dentist'].includes(role)) {
+      clinicItems.splice(3, 0, { icon: 'mdi-percent', label: 'My Commission', path: '/clinics/billing/commission' })
+    }
+
+    const clinicCareItems = [
         // Emergency / triage + ward observation
         { icon: 'mdi-heart-pulse', label: 'Triage', path: '/clinics/triage' },
         { icon: 'mdi-bed', label: 'Wards', path: '/clinics/wards' },
@@ -115,37 +121,21 @@ export function getNavSections(role, tenantType, t = (x) => x) {
         { icon: 'mdi-heart-pulse', label: 'Vitals', path: '/clinics/vitals' },
         { icon: 'mdi-account-multiple-check', label: 'Caregivers', path: '/clinics/caregivers' },
         { icon: 'mdi-bell-alert', label: 'Escalations', path: '/clinics/escalations' },
-        // Billing & Insurance
-        { icon: 'mdi-receipt-text', label: 'Billing', path: '/clinics/invoices' },
-        {
-          icon: 'mdi-bank', label: 'Accounts', path: '/clinics/accounts',
-          children: [
-            { icon: 'mdi-view-dashboard-outline', label: 'Overview', path: '/clinics/accounts' },
-            { icon: 'mdi-cash-fast', label: 'Receivables', path: '/clinics/accounts?tab=receivables' },
-            { icon: 'mdi-cash-clock', label: 'Payables', path: '/clinics/accounts?tab=payables' },
-            { icon: 'mdi-swap-vertical', label: 'Transactions', path: '/clinics/accounts?tab=transactions' },
-            { icon: 'mdi-chart-box', label: 'Profit and Loss', path: '/clinics/accounts?tab=pnl' }
-          ]
-        },
-      {
-          icon: 'mdi-cash-minus', label: 'Expenses', path: '/clinics/expenses',
-          children: [
-            { icon: 'mdi-format-list-bulleted', label: 'View Expenses', path: '/clinics/expenses' },
-            { icon: 'mdi-plus-circle', label: 'New Expense', path: '/clinics/expenses/new' },
-            { icon: 'mdi-shape', label: 'Categories', path: '/clinics/expenses/categories' }
-          ]
-        },
+    ]
+
+    const clinicAdminItems = [
         // Administration & Reporting
         { icon: 'mdi-domain', label: 'Departments', path: '/clinics/departments' },
         { icon: 'mdi-chart-arc', label: 'Analytics', path: '/clinics/analytics' },
-        { icon: 'mdi-people', label: 'Staff', path: '/clinics/staff' },
+        { icon: 'mdi-account-group-outline', label: 'Staff', path: '/clinics/staff' },
         // Data Protection & Compliance + Audit logs
         {
           icon: 'mdi-shield-check', label: 'Compliance',
           children: [
             { icon: 'mdi-account-key', label: 'Patient Consents', path: '/clinics/consents' },
             { icon: 'mdi-share-variant', label: 'Data Sharing', path: '/clinics/data-sharing' },
-            { icon: 'mdi-history', label: 'Audit Log', path: '/clinics/audit' }
+            { icon: 'mdi-history', label: 'Audit Log', path: '/clinics/audit' },
+            { icon: 'mdi-database-plus', label: 'Demo Data', path: '/clinics/seed-data' }
           ]
         },
         // Emergency & Notifications
@@ -153,18 +143,21 @@ export function getNavSections(role, tenantType, t = (x) => x) {
         { icon: 'mdi-chat', label: 'Messages', path: '/clinics/messages' },
         // Doctors directory
         { icon: 'mdi-stethoscope', label: 'Doctors', path: '/clinics/doctors' },
+        // Settings
+        { icon: 'mdi-cog', label: 'Settings', path: '/clinics/settings' },
     ]
+
+    // Doctors see a focused clinical sidebar — strip admin items
     if (['doctor', 'clinical_officer', 'dentist'].includes(role)) {
-      clinicItems.splice(3, 0, { icon: 'mdi-percent', label: 'My Commission', path: '/clinics/billing/commission' })
-    }
-    // Doctors see a focused clinical sidebar — strip admin/finance/hr items
-    if (['doctor', 'clinical_officer', 'dentist'].includes(role)) {
-      const hiddenLabels = ['Patient Care', 'Caregivers', 'Billing', 'Accounts', 'Expenses', 'Departments', 'Analytics', 'Staff', 'Compliance', 'Doctors']
-      for (let i = clinicItems.length - 1; i >= 0; i--) {
-        if (hiddenLabels.includes(clinicItems[i].label)) clinicItems.splice(i, 1)
+      const hiddenLabels = ['Patient Care', 'Caregivers', 'Billing', 'Accounts', 'Expenses', 'Departments', 'Analytics', 'Staff', 'Compliance', 'Doctors', 'Settings']
+      for (let i = clinicAdminItems.length - 1; i >= 0; i--) {
+        if (hiddenLabels.includes(clinicAdminItems[i].label)) clinicAdminItems.splice(i, 1)
       }
     }
+
     sections.push({ label: 'CLINIC', items: clinicItems })
+    sections.push({ label: 'PATIENT CARE', items: clinicCareItems })
+    sections.push({ label: 'ADMINISTRATION', items: clinicAdminItems })
   }
 
   const pharmacyRoles = ['tenant_admin', 'pharmacy_admin', 'branch_admin', 'pharmacist', 'pharmacy_tech', 'cashier', 'admin']
@@ -349,12 +342,20 @@ export function getNavSections(role, tenantType, t = (x) => x) {
       {
         icon: 'mdi-cart-variant', label: 'Procurement', path: '/ims/purchase-orders',
         children: [
-          { icon: 'mdi-chart-box-outline', label: 'Dashboard', path: '/ims/purchase-orders/dashboard' },
+          { icon: 'mdi-chart-timeline-variant-shimmer', label: 'Command Center', path: '/ims/purchase-orders/command-center' },
+          { icon: 'mdi-clipboard-list-outline', label: 'Requisitions', path: '/ims/purchase-orders/requisitions' },
+          { icon: 'mdi-clipboard-check-outline', label: 'Approvals', path: '/ims/purchase-orders/approvals' },
           { icon: 'mdi-cart', label: 'Purchase Orders', path: '/ims/purchase-orders' },
-          { icon: 'mdi-file-document-multiple', label: 'RFQs', path: '/ims/purchase-orders/rfqs' },
+          { icon: 'mdi-file-document-multiple', label: 'RFQ & Tenders', path: '/ims/purchase-orders/rfqs' },
+          { icon: 'mdi-scale-balance', label: 'Quote Comparison', path: '/ims/purchase-orders/quote-comparison' },
           { icon: 'mdi-package-check', label: 'Goods Received', path: '/ims/purchase-orders/grns' },
-          { icon: 'mdi-cart-arrow-down', label: 'Reorder Suggestions', path: '/ims/purchase-orders/reorder-suggestions' },
+          { icon: 'mdi-undo-variant', label: 'Returns to Vendor', path: '/ims/purchase-orders/returns' },
+          { icon: 'mdi-truck-delivery-outline', label: 'Delivery Performance', path: '/ims/purchase-orders/delivery' },
           { icon: 'mdi-truck', label: 'Suppliers', path: '/ims/suppliers' },
+          { icon: 'mdi-trophy-outline', label: 'Supplier Scorecards', path: '/ims/purchase-orders/scorecards' },
+          { icon: 'mdi-tag-multiple-outline', label: 'Price Agreements', path: '/ims/purchase-orders/price-agreements' },
+          { icon: 'mdi-chart-donut-variant', label: 'Spend Analytics', path: '/ims/purchase-orders/spend' },
+          { icon: 'mdi-cart-arrow-down', label: 'Reorder Suggestions', path: '/ims/purchase-orders/reorder-suggestions' },
           { icon: 'mdi-star-circle', label: 'Supplier Evaluations', path: '/ims/evaluations' },
         ]
       },
@@ -374,6 +375,19 @@ export function getNavSections(role, tenantType, t = (x) => x) {
           { icon: 'mdi-shape', label: 'Category Analysis', path: '/ims/analytics/categories' },
           { icon: 'mdi-trophy', label: 'Product Analysis', path: '/ims/analytics/products' },
           { icon: 'mdi-clipboard-text', label: 'Reports', path: '/ims/reports' },
+        ]
+      },
+      {
+        icon: 'mdi-brain', label: 'BI Analysis', path: '/ims/analytics/bi',
+        children: [
+          { icon: 'mdi-view-dashboard-variant-outline', label: 'Executive Overview', path: '/ims/analytics/bi' },
+          { icon: 'mdi-view-dashboard-outline', label: 'KPI Dashboards', path: '/ims/analytics/bi/dashboards' },
+          { icon: 'mdi-magnify-scan', label: 'Root-Cause Analysis', path: '/ims/analytics/bi/root-cause' },
+          { icon: 'mdi-chart-timeline-variant-shimmer', label: 'Forecasts & Trends', path: '/ims/analytics/bi/forecast' },
+          { icon: 'mdi-tune-variant', label: 'Optimization', path: '/ims/analytics/bi/optimization' },
+          { icon: 'mdi-robot', label: 'ML Models', path: '/ims/analytics/bi/models' },
+          { icon: 'mdi-file-chart', label: 'Operational Reports', path: '/ims/analytics/bi/reports' },
+          { icon: 'mdi-database-search', label: 'Data Explorer', path: '/ims/analytics/bi/explorer' },
         ]
       },
       {

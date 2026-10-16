@@ -184,9 +184,13 @@
 
 <script setup>
 import { useAuthStore } from '~/stores/auth'
+import { useBranding } from '~/composables/useBranding'
 
 const auth = useAuthStore()
 const { $api } = useNuxtApp()
+// The app tints its chrome with the palette below, so invalidate that cache
+// whenever a new palette is saved. See composables/useBranding.js.
+const brand = useBranding()
 
 const ADMIN_EDIT_ROLES = new Set([
   'super_admin', 'tenant_admin', 'clinic_admin', 'hospital_admin',
@@ -323,6 +327,13 @@ async function save() {
       secondary: brandSecondaryRaw.value,
       accent: brandAccentRaw.value,
     })
+    // Push the new palette to the rest of the app (heroes, panels, …).
+    brand.palette.value = {
+      primary: brandPrimaryRaw.value,
+      secondary: brandSecondaryRaw.value,
+      accent: brandAccentRaw.value,
+    }
+    brand.isLoaded.value = true
     snack.text = 'Brand colors saved successfully.'
     snack.color = 'success'
     snack.show = true

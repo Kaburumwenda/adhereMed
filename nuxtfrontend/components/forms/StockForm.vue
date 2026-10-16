@@ -9,6 +9,9 @@
     :initial="initial"
     :transform="transformPayload"
     max-width="90%"
+    hero
+    flat
+    :eyebrow="loadId ? 'Inventory · Edit item' : 'Inventory · New item'"
     @saved="onSaved"
   >
     <template #default="{ form }">
@@ -27,6 +30,7 @@
             <div class="stock-section__title">Item Details</div>
             <div class="stock-section__sub">Name, code, and classification</div>
           </div>
+          <span class="stock-section__step">01</span>
         </div>
         <v-row>
           <v-col cols="12">
@@ -220,8 +224,6 @@
         </v-row>
       </div>
 
-      <v-divider class="my-1" />
-
       <!-- ── Section 2 · Stock Levels ─────────────────────── -->
       <div class="stock-section">
         <div class="stock-section__header">
@@ -232,11 +234,12 @@
             <div class="stock-section__title">Stock Levels</div>
             <div class="stock-section__sub">Quantity and reorder thresholds</div>
           </div>
+          <span class="stock-section__step">02</span>
           <v-chip size="x-small" variant="tonal" color="teal" class="ml-auto" label>
             <v-icon start size="12">mdi-auto-fix</v-icon> Auto-calculated
           </v-chip>
         </div>
-        <v-card variant="flat" rounded="xl" class="pa-4 inner-card">
+        <div class="stock-subpanel">
           <v-row>
             <v-col cols="12" sm="4">
               <v-text-field v-model.number="form.quantity" :label="(loadId ? 'Current Stock Qty' : 'Initial Quantity') + ' *'" type="number" min="0" :rules="reqNum" :hint="loadId ? 'Edits create a Count Correction' : 'Stock on hand'" persistent-hint variant="outlined" density="comfortable" rounded="lg" :disabled="formDisabled" @update:model-value="recalc(form, $event)" />
@@ -264,10 +267,8 @@
               </v-text-field>
             </v-col>
           </v-row>
-        </v-card>
+        </div>
       </div>
-
-      <v-divider class="my-1" />
 
       <!-- ── Section 3 · Pricing ──────────────────────────── -->
       <div class="stock-section">
@@ -279,6 +280,7 @@
             <div class="stock-section__title">Pricing</div>
             <div class="stock-section__sub">Cost, selling price, and discounts</div>
           </div>
+          <span class="stock-section__step">03</span>
         </div>
         <v-row>
           <v-col cols="12" sm="3">
@@ -347,8 +349,6 @@
         </v-card>
       </div>
 
-      <v-divider class="my-1" />
-
       <!-- ── Section 4 · Batch & Expiry ───────────────────── -->
       <div class="stock-section">
         <div class="stock-section__header">
@@ -356,9 +356,10 @@
             <v-icon size="18" color="white">mdi-barcode</v-icon>
           </div>
           <div>
-            <div class="stock-section__title">Batch & Expiry</div>
+            <div class="stock-section__title">Batch &amp; Expiry</div>
             <div class="stock-section__sub">Tracking and shelf life</div>
           </div>
+          <span class="stock-section__step">04</span>
         </div>
         <v-row>
           <v-col cols="12" md="6">
@@ -378,8 +379,6 @@
         </v-row>
       </div>
 
-      <v-divider class="my-1" />
-
       <!-- ── Section 5 · Additional Details ───────────────── -->
       <div class="stock-section">
         <div class="stock-section__header">
@@ -390,6 +389,7 @@
             <div class="stock-section__title">Additional Details</div>
             <div class="stock-section__sub">Optional notes or description</div>
           </div>
+          <span class="stock-section__step">05</span>
         </div>
         <v-row>
           <v-col cols="12">
@@ -969,69 +969,115 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-/* ── Section Layout ─────────────────────────────────── */
+/* ═══════════════ Section panels ═══════════════
+   The form is rendered `flat` inside ResourceFormPage, so each section supplies
+   its own card. This keeps the five steps visually separated and lets a long
+   form read as a sequence rather than one undifferentiated block. */
 .stock-section {
-  padding: 20px 0 12px;
+  position: relative;
+  border-radius: 16px;
+  padding: 20px 22px 22px;
+  background: rgb(var(--v-theme-surface));
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.035);
 }
+.stock-section + .stock-section { margin-top: 16px; }
+
 .stock-section__header {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 20px;
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
 }
 .stock-section__icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.16);
 }
 .stock-section__title {
-  font-size: 0.95rem;
-  font-weight: 600;
+  font-size: 0.98rem;
+  font-weight: 700;
   line-height: 1.2;
+  letter-spacing: -0.1px;
 }
 .stock-section__sub {
   font-size: 0.78rem;
   opacity: 0.55;
   margin-top: 1px;
 }
+/* Faded step ordinal — a quiet progress cue that costs no vertical space. */
+.stock-section__step {
+  margin-left: auto;
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -1px;
+  color: rgba(var(--v-theme-on-surface), 0.09);
+  user-select: none;
+}
+/* When a trailing chip is present it already claims `margin-left:auto`, so the
+   ordinal must not push past it. */
+.stock-section__step + .v-chip { margin-left: 0 !important; }
 
-/* ── Stock-levels inner card ────────────────────────── */
-.inner-card {
-  background: rgba(var(--v-theme-surface-variant), 0.2);
-  border: 1px solid rgba(var(--v-theme-outline), 0.08);
+/* ═══════════════ Sub-panel ═══════════════
+   Soft inset well for the stock-level inputs. */
+.stock-subpanel {
+  border-radius: 13px;
+  padding: 16px 16px 6px;
+  background: rgba(var(--v-theme-surface-variant), 0.28);
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.06);
 }
 
-/* ── Profit Analysis Card ───────────────────────────── */
+/* ═══════════════ Profit analysis ═══════════════ */
 .profit-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08) !important;
   transition: box-shadow 0.2s ease;
 }
-.profit-card--success { border-left: 4px solid rgb(var(--v-theme-success)); }
-.profit-card--warning { border-left: 4px solid rgb(var(--v-theme-warning)); }
-.profit-card--error   { border-left: 4px solid rgb(var(--v-theme-error)); }
+.profit-card:hover { box-shadow: 0 10px 26px rgba(15, 23, 42, 0.09); }
+/* A tinted left rail keeps the health signal even though the card is tonal. */
+.profit-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: currentColor;
+  opacity: 0.9;
+}
+.profit-card--success { color: rgb(var(--v-theme-success)); }
+.profit-card--warning { color: rgb(var(--v-theme-warning)); }
+.profit-card--error { color: rgb(var(--v-theme-error)); }
 
 .profit-metric {
   padding: 6px 0;
 }
 .profit-metric__label {
-  font-size: 0.72rem;
-  font-weight: 500;
+  font-size: 0.7rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.4px;
-  opacity: 0.6;
-  margin-bottom: 4px;
+  letter-spacing: 0.55px;
+  opacity: 0.62;
+  margin-bottom: 5px;
 }
 .profit-metric__value {
-  font-size: 1.35rem;
-  font-weight: 700;
-  line-height: 1.3;
+  font-size: 1.45rem;
+  font-weight: 800;
+  line-height: 1.25;
+  letter-spacing: -0.4px;
+  /* Inherits the card's tone so the numbers themselves carry the health signal. */
+  color: currentColor;
 }
 .profit-metric__hint {
-  font-size: 0.75rem;
-  opacity: 0.55;
-  margin-top: 2px;
+  font-size: 0.74rem;
+  opacity: 0.58;
+  margin-top: 3px;
 }
 </style>

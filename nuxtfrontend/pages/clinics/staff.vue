@@ -190,7 +190,6 @@ const pageError = ref('')
 
 const roleOptions = [
   { title: 'Tenant Admin', value: 'tenant_admin' },
-  { title: 'Clinic Admin', value: 'clinic_admin' },
   { title: 'Doctor', value: 'doctor' },
   { title: 'Clinical Officer', value: 'clinical_officer' },
   { title: 'Dentist', value: 'dentist' },
@@ -202,6 +201,9 @@ const roleOptions = [
   { title: 'Pharmacist', value: 'pharmacist' },
   { title: 'Cashier', value: 'cashier' },
 ]
+
+// Roles that belong to clinic/hospital tenants (not inventory/warehouse)
+const _clinicRoleValues = new Set(roleOptions.map(r => r.value))
 
 const headers = [
   { title: 'Name', key: 'full_name' },
@@ -239,7 +241,9 @@ async function load() {
   try {
     const res = await $api.get('/auth/users/', { params: { page_size: 1000 } })
     const data = res.data
-    items.value = Array.isArray(data) ? data : (data?.results || [])
+    const all = Array.isArray(data) ? data : (data?.results || [])
+    // Only show users with clinic-relevant roles (exclude inventory/warehouse roles)
+    items.value = all.filter(u => _clinicRoleValues.has(u.role))
   } catch (e) {
     pageError.value = e?.response?.data?.detail || e?.message || 'Failed to load staff.'
     items.value = []

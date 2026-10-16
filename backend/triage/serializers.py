@@ -5,13 +5,14 @@ from .models import Triage
 
 class TriageSerializer(serializers.ModelSerializer):
     patient_name = serializers.CharField(source='patient.user.full_name', read_only=True)
+    patient_number = serializers.CharField(source='patient.patient_number', read_only=True, default='')
     nurse_name = serializers.CharField(source='nurse.full_name', read_only=True)
     doctor_name = serializers.CharField(source='doctor.full_name', read_only=True, default='')
 
     class Meta:
         model = Triage
         fields = [
-            'id', 'patient', 'patient_name',
+            'id', 'patient', 'patient_name', 'patient_number',
             'nurse', 'nurse_name',
             'doctor', 'doctor_name',
             'esi_level', 'suggested_esi', 'esi_override_reason',

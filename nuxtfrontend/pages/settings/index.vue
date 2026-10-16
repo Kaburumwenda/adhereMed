@@ -5,12 +5,12 @@
         <v-col cols="12" md="8">
           <div class="d-flex align-center">
             <v-avatar color="white" size="56" class="mr-4 elevation-2">
-              <v-icon color="indigo-darken-2" size="32">mdi-cog</v-icon>
+              <v-icon color="indigo-darken-2" size="32">{{ heroIcon }}</v-icon>
             </v-avatar>
             <div>
-              <div class="text-h5 text-md-h4 font-weight-bold">{{ isInventory ? 'Warehouse Settings' : 'Pharmacy Settings' }}</div>
+              <div class="text-h5 text-md-h4 font-weight-bold">{{ settingsTitle }}</div>
               <div class="text-body-2" style="opacity:0.9">
-                {{ isInventory ? 'Configure your warehouse profile, hours, delivery & insurance.' : 'Configure your pharmacy profile, hours, delivery & insurance.' }}
+                {{ settingsSubtitle }}
               </div>
             </div>
           </div>
@@ -24,7 +24,7 @@
 
     <v-card flat rounded="xl" border>
       <v-tabs v-model="tab" color="primary" align-tabs="start" show-arrows>
-        <v-tab value="profile" prepend-icon="mdi-store">{{ $t('settingsPage.profileTab') }}</v-tab>
+        <v-tab value="profile" :prepend-icon="heroIcon">{{ $t('settingsPage.profileTab') }}</v-tab>
         <v-tab value="hours" prepend-icon="mdi-clock">Operating hours</v-tab>
         <v-tab value="delivery" prepend-icon="mdi-truck-fast">Delivery &amp; services</v-tab>
         <v-tab value="insurance" prepend-icon="mdi-shield-check">{{ $t('settingsPage.insuranceTab') }}</v-tab>
@@ -40,14 +40,14 @@
                 <v-card variant="outlined" rounded="lg" class="pa-4">
                   <v-avatar size="120" color="grey-lighten-3" class="mb-3">
                     <v-img v-if="logoPreview" :src="logoPreview" cover />
-                    <v-icon v-else size="64" color="grey">mdi-store</v-icon>
+                    <v-icon v-else size="64" color="grey">{{ heroIcon }}</v-icon>
                   </v-avatar>
                   <div>
                     <v-file-input v-model="logoFile" accept="image/*" label="Upload logo"
                                   prepend-icon="mdi-image-plus" variant="outlined" density="compact"
                                   show-size hide-details @update:model-value="onLogoSelected" />
                     <v-btn class="mt-2" color="primary" variant="flat" size="small"
-                           :disabled="!logoFile || !profile.id" :loading="uploading"
+                           :disabled="!logoFile" :loading="uploading"
                            prepend-icon="mdi-upload" @click="uploadLogo">
                       Upload
                     </v-btn>
@@ -57,7 +57,7 @@
               <v-col cols="12" md="8">
                 <v-row dense>
                   <v-col cols="12">
-                    <v-text-field v-model="profile.name" :label="isInventory ? 'Organization name *' : 'Pharmacy name *'"
+                    <v-text-field v-model="profile.name" :label="orgNameLabel"
                                   variant="outlined" density="comfortable"
                                   :error-messages="errors.name" />
                   </v-col>
@@ -178,11 +178,41 @@
 import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
+import { useAuthStore } from '~/stores/auth'
 
 const { $api } = useNuxtApp()
 // Inventory tenants use their own /ims API namespace.
 const { isInventory, profile: profileApi } = useTenantEndpoints()
+
+// Tenant-type aware labels
+const auth = useAuthStore()
+const isClinic = computed(() => auth.tenantType === 'clinic')
+const isHospital = computed(() => auth.tenantType === 'hospital')
+const settingsTitle = computed(() => {
+  if (isInventory.value) return 'Warehouse Settings'
+  if (isClinic.value) return 'Clinic Settings'
+  if (isHospital.value) return 'Hospital Settings'
+  return 'Pharmacy Settings'
+})
+const settingsSubtitle = computed(() => {
+  if (isInventory.value) return 'Configure your warehouse profile, hours, delivery & insurance.'
+  if (isClinic.value) return 'Configure your clinic profile, hours, delivery & insurance.'
+  if (isHospital.value) return 'Configure your hospital profile, hours, delivery & insurance.'
+  return 'Configure your pharmacy profile, hours, delivery & insurance.'
+})
+const orgNameLabel = computed(() => {
+  if (isInventory.value) return 'Organization name *'
+  if (isClinic.value) return 'Clinic name *'
+  if (isHospital.value) return 'Hospital name *'
+  return 'Pharmacy name *'
+})
+const heroIcon = computed(() => {
+  if (isInventory.value) return 'mdi-warehouse'
+  if (isClinic.value) return 'mdi-hospital-building'
+  if (isHospital.value) return 'mdi-hospital-building'
+  return 'mdi-store'
+})
 
 const tab = ref('profile')
 const loading = ref(false)
@@ -229,7 +259,7 @@ async function loadProfile() {
       days.forEach(d => {
         if (h[d.key]) hours[d.key] = { open: !!h[d.key].open, from: h[d.key].from || '08:00', to: h[d.key].to || '18:00' }
       })
-      logoPreview.value = p.logo || null
+      logoPreview.value = p.logo_url || p.logo || null
     } else {
       Object.assign(profile, blankProfile())
     }
@@ -258,7 +288,7 @@ async function uploadLogo() {
       { headers: { 'Content-Type': 'multipart/form-data' } },
     )
     profile.logo = data.logo
-    logoPreview.value = data.logo
+    logoPreview.value = data.logo_url || data.logo || null
     logoFile.value = null
     notify('Logo updated')
   } catch (e) { notify(extractError(e) || 'Upload failed', 'error') }

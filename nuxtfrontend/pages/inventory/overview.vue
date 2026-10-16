@@ -1,309 +1,301 @@
 <template>
-  <v-container fluid class="pa-3 pa-md-5">
-    <!-- Header -->
-    <div class="d-flex flex-wrap align-center justify-space-between mb-4">
-      <div class="d-flex align-center" style="gap:14px">
-        <v-avatar color="teal" variant="tonal" rounded="lg" size="52">
-          <v-icon size="28">mdi-view-dashboard-outline</v-icon>
-        </v-avatar>
-        <div>
-          <h1 class="text-h5 text-md-h4 font-weight-bold mb-0">Inventory Overview</h1>
-          <div class="text-body-2 text-medium-emphasis">
-            Live snapshot of the whole warehouse — stock, expiry, procurement &amp; fulfilment
-            <span v-if="branchStore.currentBranch"> · {{ branchStore.currentBranch.name }}</span>
-          </div>
+  <v-container fluid class="pa-3 pa-md-5 iov-page">
+
+    <!-- ═══════════════ COMPACT HEADER ═══════════════ -->
+    <div class="d-flex flex-wrap align-center justify-space-between mb-3">
+      <div>
+        <h1 class="text-h5 text-md-h4 font-weight-bold mb-0">Inventory Overview</h1>
+        <div class="text-body-2 text-medium-emphasis">
+          Stock, expiry, procurement &amp; fulfilment at a glance
+          <span v-if="branchStore.currentBranch"> · {{ branchStore.currentBranch.name }}</span>
         </div>
       </div>
-      <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
+      <div class="d-flex flex-wrap align-center ga-2 mt-2 mt-md-0">
         <v-btn
-          variant="tonal" color="primary" prepend-icon="mdi-refresh"
-          rounded="lg" class="text-none" :loading="loading" @click="load"
-        >
-          Refresh
-        </v-btn>
+          icon="mdi-refresh"
+          variant="tonal"
+          color="primary"
+          size="small"
+          title="Refresh"
+          :loading="loading"
+          @click="load"
+        />
+        <v-btn
+          variant="tonal" color="primary" rounded="lg" class="text-none"
+          prepend-icon="mdi-package-variant" :to="p('/inventory')"
+        >Stock list</v-btn>
+        <v-btn
+          variant="tonal" color="primary" rounded="lg" class="text-none"
+          prepend-icon="mdi-clipboard-text-search-outline" :to="p('/inventory/stock-movements')"
+        >Movement ledger</v-btn>
       </div>
     </div>
 
-    <!-- Date filters -->
-    <v-card flat rounded="xl" border class="pa-3 mb-4">
-      <v-row dense align="center">
-        <v-col cols="12" md="4">
-          <v-chip-group v-model="datePreset" selected-class="text-primary" @update:model-value="applyPreset">
-            <v-chip v-for="p in presets" :key="p.value" :value="p.value" size="small" variant="tonal">
-              {{ p.label }}
-            </v-chip>
-          </v-chip-group>
-        </v-col>
-        <v-col cols="6" md="3">
-          <v-text-field
-            v-model="dateFrom"
-            type="date"
-            label="From"
-            density="compact"
-            variant="outlined"
-            hide-details
-            prepend-inner-icon="mdi-calendar-start"
-            @update:model-value="onCustomChange"
-          />
-        </v-col>
-        <v-col cols="6" md="3">
-          <v-text-field
-            v-model="dateTo"
-            type="date"
-            label="To"
-            density="compact"
-            variant="outlined"
-            hide-details
-            prepend-inner-icon="mdi-calendar-end"
-            @update:model-value="onCustomChange"
-          />
-        </v-col>
-        <v-col cols="12" md="2" class="text-right">
-          <v-btn
-            v-if="hasActiveRange"
-            size="small" variant="text" color="error" class="text-none"
-            prepend-icon="mdi-close" @click="clearRange"
-          >
-            Clear
-          </v-btn>
-        </v-col>
-      </v-row>
-    </v-card>
+    <!-- ═══════════════ DATE BAR ═══════════════ -->
+    <div class="iov-datebar mb-3">
+      <v-chip-group v-model="datePreset" selected-class="text-primary" @update:model-value="applyPreset" class="iov-date-chips">
+        <v-chip v-for="pr in presets" :key="pr.value" :value="pr.value" size="small" variant="tonal">
+          {{ pr.label }}
+        </v-chip>
+      </v-chip-group>
+      <div class="d-flex align-center ga-2">
+        <v-text-field
+          v-model="dateFrom"
+          type="date"
+          label="From"
+          density="compact"
+          variant="outlined"
+          hide-details
+          prepend-inner-icon="mdi-calendar-start"
+          class="iov-date-field"
+          @update:model-value="onCustomChange"
+        />
+        <v-text-field
+          v-model="dateTo"
+          type="date"
+          label="To"
+          density="compact"
+          variant="outlined"
+          hide-details
+          prepend-inner-icon="mdi-calendar-end"
+          class="iov-date-field"
+          @update:model-value="onCustomChange"
+        />
+        <v-btn
+          v-if="hasActiveRange"
+          size="small" variant="text" color="error" class="text-none"
+          prepend-icon="mdi-close" @click="clearRange"
+        >Clear</v-btn>
+      </div>
+    </div>
 
-    <!-- KPI strip -->
+    <!-- ═══════════════ KPI STRIP ═══════════════
+         Six focused, linkable metrics tone-railed by currentColor. -->
     <v-row dense class="mb-2">
-      <v-col v-for="k in kpis" :key="k.title" cols="6" md="3" lg="2">
-        <v-card rounded="lg" elevation="0" class="pa-3 h-100 kpi-card">
-          <div class="d-flex align-start justify-space-between">
-            <div>
-              <div class="text-caption text-medium-emphasis text-truncate">{{ k.title }}</div>
-              <div class="text-h6 font-weight-bold mt-1">{{ k.value }}</div>
-              <div v-if="k.sub" class="text-caption text-medium-emphasis mt-1">{{ k.sub }}</div>
+      <v-col v-for="k in kpis" :key="k.title" cols="6" md="4" xl="2">
+        <component
+          :is="linkOr(k.to)"
+          :to="k.to || undefined"
+          class="iov-kpi h-100"
+          :class="[`iov-kpi-t-${k.tone}`, k.to ? 'iov-kpi-link' : '']"
+        >
+          <div class="d-flex align-center justify-space-between mb-2">
+            <div class="iov-kpi-icon">
+              <v-icon size="18">{{ k.icon }}</v-icon>
             </div>
-            <v-avatar :color="k.color" variant="tonal" rounded="lg" size="40">
-              <v-icon size="20">{{ k.icon }}</v-icon>
-            </v-avatar>
+            <v-chip
+              v-if="k.chip"
+              size="x-small"
+              :color="k.chipColor || k.tone"
+              variant="tonal"
+              class="font-weight-bold"
+            >{{ k.chip }}</v-chip>
           </div>
-        </v-card>
+          <div class="iov-kpi-label">{{ k.title }}</div>
+          <div class="iov-kpi-value">{{ k.value }}</div>
+          <div v-if="k.hint" class="iov-kpi-foot">{{ k.hint }}</div>
+        </component>
       </v-col>
     </v-row>
 
-    <!-- Stock health -->
-    <v-row>
+    <!-- ═══════════════ HEALTH + EXPIRY + FULFILMENT ═══════════════ -->
+    <v-row dense class="mt-1">
+      <!-- Stock health -->
       <v-col cols="12" lg="4">
-        <v-card rounded="lg" class="pa-4 h-100" border>
-          <div class="d-flex align-center mb-3">
-            <v-avatar color="primary" variant="tonal" size="32" class="mr-2">
-              <v-icon size="20">mdi-package-variant-closed</v-icon>
-            </v-avatar>
-            <h3 class="text-subtitle-1 font-weight-bold">Stock Health</h3>
+        <v-card rounded="lg" border class="pa-4 h-100 iov-panel">
+          <div class="d-flex align-center justify-space-between mb-3">
+            <div class="d-flex align-center">
+              <div class="iov-panel-icon" style="--panel-tone:#2563eb">
+                <v-icon size="18">mdi-package-variant-closed</v-icon>
+              </div>
+              <div>
+                <div class="text-subtitle-2 font-weight-bold">Stock health</div>
+                <div class="text-caption text-medium-emphasis">Availability by item</div>
+              </div>
+            </div>
+            <v-chip size="small" :color="healthChipColor" variant="tonal" class="font-weight-bold">
+              {{ healthPct }}% healthy
+            </v-chip>
           </div>
-          <div class="d-flex align-center justify-center mb-4">
-            <DonutRing
-              :segments="[
-                { value: overview.stock.healthy ?? 0, color: '#22c55e', label: 'Healthy' },
-                { value: overview.stock.low_stock ?? 0, color: '#f59e0b', label: 'Low' },
-                { value: overview.stock.out_of_stock ?? 0, color: '#ef4444', label: 'Out' }
-              ]"
-              :size="170"
-            >
+
+          <div class="d-flex justify-center mb-3">
+            <DonutRing :segments="healthSegments" :size="176" :thickness="16">
               <div class="text-center">
                 <div class="text-h5 font-weight-bold">{{ overview.stock.total_items ?? 0 }}</div>
                 <div class="text-caption text-medium-emphasis">SKUs</div>
               </div>
             </DonutRing>
           </div>
-          <div class="d-flex justify-space-around">
-            <div class="text-center">
-              <v-chip size="small" color="success" variant="tonal">{{ overview.stock.healthy ?? 0 }}</v-chip>
-              <div class="text-caption text-medium-emphasis mt-1">Healthy</div>
-            </div>
-            <div class="text-center">
-              <v-chip size="small" color="warning" variant="tonal">{{ overview.stock.low_stock ?? 0 }}</v-chip>
-              <div class="text-caption text-medium-emphasis mt-1">Low</div>
-            </div>
-            <div class="text-center">
-              <v-chip size="small" color="error" variant="tonal">{{ overview.stock.out_of_stock ?? 0 }}</v-chip>
-              <div class="text-caption text-medium-emphasis mt-1">Out</div>
-            </div>
+
+          <div v-for="h in healthLegend" :key="h.label" class="iov-legend">
+            <span class="iov-legend-dot" :style="{ background: h.color }" />
+            <span class="text-body-2 flex-grow-1">{{ h.label }}</span>
+            <span class="text-body-2 font-weight-bold">{{ h.count }}</span>
+            <span class="text-caption text-medium-emphasis iov-legend-pct">{{ h.pct }}%</span>
           </div>
-          <v-divider class="my-4" />
-          <div class="d-flex justify-space-between text-body-2 mb-2">
-            <span class="text-medium-emphasis">Units on hand</span>
-            <span class="font-weight-bold">{{ (overview.stock.units_on_hand ?? 0).toLocaleString() }}</span>
+
+          <div class="iov-metric-row mt-2">
+            <span class="text-body-2 text-medium-emphasis">Units on hand</span>
+            <span class="text-body-2 font-weight-bold">{{ (overview.stock.units_on_hand ?? 0).toLocaleString() }}</span>
           </div>
+
           <v-btn
-            block variant="tonal" color="primary" rounded="lg" class="text-none mt-2"
+            block variant="tonal" color="primary" rounded="lg" class="text-none mt-3"
             prepend-icon="mdi-package-variant" :to="p('/inventory')"
-          >
-            Manage stock items
-          </v-btn>
+          >Manage stock items</v-btn>
         </v-card>
       </v-col>
 
-      <!-- Expiry -->
+      <!-- Expiry pipeline -->
       <v-col cols="12" md="6" lg="4">
-        <v-card rounded="lg" class="pa-4 h-100" border>
+        <v-card rounded="lg" border class="pa-4 h-100 iov-panel">
           <div class="d-flex align-center mb-3">
-            <v-avatar color="deep-orange" variant="tonal" size="32" class="mr-2">
-              <v-icon size="20">mdi-clock-alert-outline</v-icon>
-            </v-avatar>
-            <h3 class="text-subtitle-1 font-weight-bold">Expiry</h3>
+            <div class="iov-panel-icon" style="--panel-tone:#ea580c">
+              <v-icon size="18">mdi-clock-alert-outline</v-icon>
+            </div>
+            <div>
+              <div class="text-subtitle-2 font-weight-bold">Expiry pipeline</div>
+              <div class="text-caption text-medium-emphasis">Batches expiring or already expired</div>
+            </div>
           </div>
+
           <v-list density="comfortable" class="bg-transparent py-0">
-            <v-list-item :to="p('/inventory') + '?batchFilter=expiring'">
+            <v-list-item :to="p('/inventory') + '?batchFilter=expiring'" class="iov-list-item">
               <template #prepend>
-                <v-avatar color="deep-orange" variant="tonal" size="36">
-                  <v-icon size="18">mdi-clock-alert</v-icon>
-                </v-avatar>
+                <div class="iov-list-icon" style="--tone:#ea580c"><v-icon size="18">mdi-clock-alert</v-icon></div>
               </template>
-              <v-list-item-title class="font-weight-bold text-h6">
-                {{ overview.expiry.expiring_30 ?? 0 }}
-              </v-list-item-title>
+              <v-list-item-title class="font-weight-bold text-h6">{{ overview.expiry.expiring_30 ?? 0 }}</v-list-item-title>
               <v-list-item-subtitle>Expiring within 30 days</v-list-item-subtitle>
-              <template #append>
-                <v-icon size="18">mdi-chevron-right</v-icon>
-              </template>
+              <template #append><v-icon size="18">mdi-chevron-right</v-icon></template>
             </v-list-item>
             <v-divider inset />
-            <v-list-item>
+            <v-list-item class="iov-list-item">
               <template #prepend>
-                <v-avatar color="warning" variant="tonal" size="36">
-                  <v-icon size="18">mdi-calendar-alert</v-icon>
-                </v-avatar>
+                <div class="iov-list-icon" style="--tone:#f59e0b"><v-icon size="18">mdi-calendar-alert</v-icon></div>
               </template>
-              <v-list-item-title class="font-weight-bold text-h6">
-                {{ overview.expiry.expiring_90 ?? 0 }}
-              </v-list-item-title>
+              <v-list-item-title class="font-weight-bold text-h6">{{ overview.expiry.expiring_90 ?? 0 }}</v-list-item-title>
               <v-list-item-subtitle>Expiring within 90 days</v-list-item-subtitle>
             </v-list-item>
             <v-divider inset />
-            <v-list-item>
+            <v-list-item class="iov-list-item">
               <template #prepend>
-                <v-avatar color="error" variant="tonal" size="36">
-                  <v-icon size="18">mdi-alert-octagon</v-icon>
-                </v-avatar>
+                <div class="iov-list-icon" style="--tone:#ef4444"><v-icon size="18">mdi-alert-octagon</v-icon></div>
               </template>
-              <v-list-item-title class="font-weight-bold text-h6 text-error">
-                {{ overview.expiry.expired ?? 0 }}
-              </v-list-item-title>
+              <v-list-item-title class="font-weight-bold text-h6 text-error">{{ overview.expiry.expired ?? 0 }}</v-list-item-title>
               <v-list-item-subtitle>Expired batches</v-list-item-subtitle>
             </v-list-item>
           </v-list>
+
           <v-btn
             block variant="tonal" color="deep-orange" rounded="lg" class="text-none mt-3"
             prepend-icon="mdi-alert" :to="p('/alerts')"
-          >
-            Open stock alerts
-          </v-btn>
+          >Open stock alerts</v-btn>
         </v-card>
       </v-col>
 
-      <!-- Fulfilment -->
+      <!-- Outbound fulfilment -->
       <v-col cols="12" md="6" lg="4">
-        <v-card rounded="lg" class="pa-4 h-100" border>
+        <v-card rounded="lg" border class="pa-4 h-100 iov-panel">
           <div class="d-flex align-center mb-3">
-            <v-avatar color="indigo" variant="tonal" size="32" class="mr-2">
-              <v-icon size="20">mdi-truck-fast</v-icon>
-            </v-avatar>
-            <h3 class="text-subtitle-1 font-weight-bold">Outbound Fulfilment</h3>
+            <div class="iov-panel-icon" style="--panel-tone:#4f46e5">
+              <v-icon size="18">mdi-truck-fast</v-icon>
+            </div>
+            <div>
+              <div class="text-subtitle-2 font-weight-bold">Outbound fulfilment</div>
+              <div class="text-caption text-medium-emphasis">Pipeline of pending deliveries</div>
+            </div>
           </div>
+
           <v-list density="comfortable" class="bg-transparent py-0">
-            <v-list-item :to="p('/deliveries') + '?status=to_be_packed'">
+            <v-list-item :to="p('/deliveries') + '?status=to_be_packed'" class="iov-list-item">
               <template #prepend>
-                <v-avatar color="teal" variant="tonal" size="36">
-                  <v-icon size="18">mdi-package-variant-closed</v-icon>
-                </v-avatar>
+                <div class="iov-list-icon" style="--tone:#14b8a6"><v-icon size="18">mdi-package-variant-closed</v-icon></div>
               </template>
-              <v-list-item-title class="font-weight-bold text-h6">
-                {{ overview.deliveries.to_be_packed ?? 0 }}
-              </v-list-item-title>
+              <v-list-item-title class="font-weight-bold text-h6">{{ overview.deliveries.to_be_packed ?? 0 }}</v-list-item-title>
               <v-list-item-subtitle>To be packed</v-list-item-subtitle>
-              <template #append>
-                <v-icon size="18">mdi-chevron-right</v-icon>
-              </template>
+              <template #append><v-icon size="18">mdi-chevron-right</v-icon></template>
             </v-list-item>
             <v-divider inset />
-            <v-list-item :to="p('/deliveries') + '?status=to_be_shipped'">
+            <v-list-item :to="p('/deliveries') + '?status=to_be_shipped'" class="iov-list-item">
               <template #prepend>
-                <v-avatar color="cyan" variant="tonal" size="36">
-                  <v-icon size="18">mdi-package-up</v-icon>
-                </v-avatar>
+                <div class="iov-list-icon" style="--tone:#0891b2"><v-icon size="18">mdi-package-up</v-icon></div>
               </template>
-              <v-list-item-title class="font-weight-bold text-h6">
-                {{ overview.deliveries.to_be_shipped ?? 0 }}
-              </v-list-item-title>
+              <v-list-item-title class="font-weight-bold text-h6">{{ overview.deliveries.to_be_shipped ?? 0 }}</v-list-item-title>
               <v-list-item-subtitle>To be shipped / in transit</v-list-item-subtitle>
-              <template #append>
-                <v-icon size="18">mdi-chevron-right</v-icon>
-              </template>
+              <template #append><v-icon size="18">mdi-chevron-right</v-icon></template>
             </v-list-item>
           </v-list>
+
           <v-btn
             block variant="tonal" color="indigo" rounded="lg" class="text-none mt-3"
             prepend-icon="mdi-truck-outline" :to="p('/deliveries')"
-          >
-            Manage deliveries
-          </v-btn>
+          >Manage deliveries</v-btn>
         </v-card>
       </v-col>
     </v-row>
 
-    <!-- Procurement + Sales -->
-    <v-row class="mt-1">
+    <!-- ═══════════════ PROCUREMENT + SALES ═══════════════ -->
+    <v-row dense class="mt-1">
       <v-col cols="12" md="6">
-        <v-card rounded="lg" class="pa-4 h-100" border>
+        <v-card rounded="lg" border class="pa-4 h-100 iov-panel">
           <div class="d-flex align-center mb-3">
-            <v-avatar color="success" variant="tonal" size="32" class="mr-2">
-              <v-icon size="20">mdi-cart-arrow-down</v-icon>
-            </v-avatar>
-            <h3 class="text-subtitle-1 font-weight-bold">Inbound (Procurement)</h3>
+            <div class="iov-panel-icon" style="--panel-tone:#16a34a">
+              <v-icon size="18">mdi-cart-arrow-down</v-icon>
+            </div>
+            <div>
+              <div class="text-subtitle-2 font-weight-bold">Inbound (Procurement)</div>
+              <div class="text-caption text-medium-emphasis">Items received and open purchase orders</div>
+            </div>
           </div>
-          <v-row dense>
-            <v-col cols="6" sm="4">
+
+          <div class="iov-mini-grid">
+            <div class="iov-mini-tile">
               <div class="text-caption text-medium-emphasis">Items received</div>
               <div class="text-h5 font-weight-bold text-success">{{ (overview.procurement.items_received ?? 0).toLocaleString() }}</div>
-            </v-col>
-            <v-col cols="6" sm="4">
+            </div>
+            <div class="iov-mini-tile">
               <div class="text-caption text-medium-emphasis">Goods received notes</div>
               <div class="text-h5 font-weight-bold">{{ overview.procurement.received_grns ?? 0 }}</div>
-            </v-col>
-            <v-col cols="6" sm="4">
+            </div>
+            <div class="iov-mini-tile">
               <div class="text-caption text-medium-emphasis">Open POs</div>
               <div class="text-h5 font-weight-bold text-warning">{{ overview.procurement.open_purchase_orders ?? 0 }}</div>
-            </v-col>
-          </v-row>
+            </div>
+          </div>
+
           <v-btn
             block variant="tonal" color="success" rounded="lg" class="text-none mt-4"
             prepend-icon="mdi-cart" :to="p('/purchase-orders')"
-          >
-            Purchase orders
-          </v-btn>
+          >Purchase orders</v-btn>
         </v-card>
       </v-col>
 
       <v-col cols="12" md="6">
-        <v-card rounded="lg" class="pa-4 h-100" border>
+        <v-card rounded="lg" border class="pa-4 h-100 iov-panel">
           <div class="d-flex align-center mb-3">
-            <v-avatar color="purple" variant="tonal" size="32" class="mr-2">
-              <v-icon size="20">mdi-point-of-sale</v-icon>
-            </v-avatar>
-            <h3 class="text-subtitle-1 font-weight-bold">Sales (Outbound)</h3>
+            <div class="iov-panel-icon" style="--panel-tone:#9333ea">
+              <v-icon size="18">mdi-point-of-sale</v-icon>
+            </div>
+            <div>
+              <div class="text-subtitle-2 font-weight-bold">Sales (Outbound)</div>
+              <div class="text-caption text-medium-emphasis">Units sold and revenue in period</div>
+            </div>
           </div>
-          <v-row dense>
-            <v-col cols="6">
+
+          <div class="iov-mini-grid">
+            <div class="iov-mini-tile">
               <div class="text-caption text-medium-emphasis">Units sold</div>
               <div class="text-h5 font-weight-bold">{{ (overview.sales.units_sold ?? 0).toLocaleString() }}</div>
-            </v-col>
-            <v-col cols="6">
+            </div>
+            <div class="iov-mini-tile">
               <div class="text-caption text-medium-emphasis">Revenue</div>
               <div class="text-h5 font-weight-bold text-primary">{{ formatMoney(overview.sales.revenue ?? 0) }}</div>
-            </v-col>
-          </v-row>
+            </div>
+          </div>
 
           <div v-if="(overview.sales.recent || []).length" class="mt-4">
             <div class="text-caption text-medium-emphasis mb-2">Recent completed sales</div>
-            <v-table density="compact">
+            <v-table density="compact" class="iov-table">
               <thead>
                 <tr>
                   <th>Transaction</th>
@@ -324,31 +316,30 @@
           <v-btn
             block variant="tonal" color="purple" rounded="lg" class="text-none mt-4"
             prepend-icon="mdi-receipt-text-plus" :to="p('/pos/history')"
-          >
-            Sales history
-          </v-btn>
+          >Sales history</v-btn>
         </v-card>
       </v-col>
     </v-row>
 
-    <!-- Top moving + dead stock -->
-    <v-row class="mt-1">
+    <!-- ═══════════════ TOP MOVING + DEAD STOCK ═══════════════ -->
+    <v-row dense class="mt-1">
       <v-col cols="12" md="6">
-        <v-card rounded="lg" class="pa-4 h-100" border>
+        <v-card rounded="lg" border class="pa-4 h-100 iov-panel">
           <div class="d-flex align-center mb-3">
-            <v-avatar color="primary" variant="tonal" size="32" class="mr-2">
-              <v-icon size="20">mdi-trending-up</v-icon>
-            </v-avatar>
-            <h3 class="text-subtitle-1 font-weight-bold">Top Moving Items</h3>
+            <div class="iov-panel-icon" style="--panel-tone:#2563eb">
+              <v-icon size="18">mdi-trending-up</v-icon>
+            </div>
+            <div class="text-subtitle-2 font-weight-bold">Top moving items</div>
             <v-spacer />
-            <v-chip size="x-small" variant="tonal" color="primary">{{ overview.top_moving.length ?? 0 }}</v-chip>
+            <v-chip size="x-small" variant="tonal" color="primary" class="font-weight-bold">{{ overview.top_moving.length ?? 0 }}</v-chip>
           </div>
+
           <EmptyState
             v-if="!overview.top_moving.length"
             icon="mdi-trending-up" title="No movement yet"
             message="Items sold in the selected period will appear here."
           />
-          <v-table v-else density="compact">
+          <v-table v-else density="compact" class="iov-table">
             <thead>
               <tr>
                 <th>Item</th>
@@ -373,24 +364,26 @@
       </v-col>
 
       <v-col cols="12" md="6">
-        <v-card rounded="lg" class="pa-4 h-100" border>
+        <v-card rounded="lg" border class="pa-4 h-100 iov-panel">
           <div class="d-flex align-center mb-3">
-            <v-avatar color="grey" variant="tonal" size="32" class="mr-2">
-              <v-icon size="20">mdi-package-off</v-icon>
-            </v-avatar>
-            <h3 class="text-subtitle-1 font-weight-bold">Dead Stock</h3>
+            <div class="iov-panel-icon" style="--panel-tone:#64748b">
+              <v-icon size="18">mdi-package-off</v-icon>
+            </div>
+            <div class="text-subtitle-2 font-weight-bold">Dead stock</div>
             <v-spacer />
-            <v-chip size="x-small" variant="tonal" color="grey">{{ overview.dead_stock.length ?? 0 }}</v-chip>
+            <v-chip size="x-small" variant="tonal" color="grey" class="font-weight-bold">{{ overview.dead_stock.length ?? 0 }}</v-chip>
           </div>
+
           <div class="text-caption text-medium-emphasis mb-2">
             On-hand items with no sale in the last 90 days
           </div>
+
           <EmptyState
             v-if="!overview.dead_stock.length"
             icon="mdi-package-check" title="No dead stock"
             message="Every item on hand has sold within the last 90 days."
           />
-          <v-table v-else density="compact">
+          <v-table v-else density="compact" class="iov-table">
             <thead>
               <tr>
                 <th>Item</th>
@@ -414,26 +407,30 @@
       </v-col>
     </v-row>
 
-    <!-- Recent stock movements -->
-    <v-row class="mt-1">
+    <!-- ═══════════════ RECENT MOVEMENTS ═══════════════ -->
+    <v-row dense class="mt-1">
       <v-col cols="12">
-        <v-card rounded="lg" class="pa-4 h-100" border>
+        <v-card rounded="lg" border class="pa-4 h-100 iov-panel">
           <div class="d-flex align-center mb-3">
-            <v-avatar color="info" variant="tonal" size="32" class="mr-2">
-              <v-icon size="20">mdi-swap-vertical-bold</v-icon>
-            </v-avatar>
-            <h3 class="text-subtitle-1 font-weight-bold">Recent Stock Movements</h3>
+            <div class="iov-panel-icon" style="--panel-tone:#0284c7">
+              <v-icon size="18">mdi-swap-vertical-bold</v-icon>
+            </div>
+            <div>
+              <div class="text-subtitle-2 font-weight-bold">Recent stock movements</div>
+              <div class="text-caption text-medium-emphasis">Last 12 receipts, sales, adjustments and transfers</div>
+            </div>
             <v-spacer />
             <v-btn variant="text" size="small" class="text-none" :to="p('/inventory/stock-movements')" append-icon="mdi-arrow-right">
               Full ledger
             </v-btn>
           </div>
+
           <EmptyState
             v-if="!movements.length && !movementsLoading"
             icon="mdi-swap-vertical" title="No movements recorded"
             message="Receipts, sales, adjustments and transfers will appear here."
           />
-          <v-table v-else density="compact" :loading="movementsLoading">
+          <v-table v-else density="compact" :loading="movementsLoading" class="iov-table">
             <thead>
               <tr>
                 <th>Item</th>
@@ -468,15 +465,23 @@
         </v-card>
       </v-col>
     </v-row>
+
   </v-container>
 </template>
 
 <script setup>
 import { formatMoney } from '~/utils/format'
 import { useBranchStore } from '~/stores/branch'
+import { NuxtLink } from '#components'
 
 const { $api } = useNuxtApp()
 const branchStore = useBranchStore()
+
+// Reuse the same NuxtLink import for linkable KPI cards; falls back to a plain
+// div when no `to` is set so the code paths below stay declarative.
+function linkOr(to) {
+  return to ? NuxtLink : 'div'
+}
 
 // Pharmacy tenants reuse this page under /pharmacy, inventory/warehouse
 // tenants under /ims — the sub-paths are identical after the prefix.
@@ -588,18 +593,88 @@ function clearRange() {
   load()
 }
 
+// ── Derived health signals ──────────────────────────────────────────────
+const healthCount = computed(() =>
+  (overview.stock.healthy ?? 0)
+  + (overview.stock.low_stock ?? 0)
+  + (overview.stock.out_of_stock ?? 0)
+)
+
+const healthSegments = computed(() => [
+  { value: overview.stock.healthy ?? 0, color: '#22c55e', label: 'Healthy' },
+  { value: overview.stock.low_stock ?? 0, color: '#f59e0b', label: 'Low' },
+  { value: overview.stock.out_of_stock ?? 0, color: '#ef4444', label: 'Out' },
+])
+
+const healthPct = computed(() => {
+  const total = overview.stock.total_items ?? 0
+  return total ? Math.round(((overview.stock.healthy ?? 0) / total) * 100) : 0
+})
+
+const healthChipColor = computed(() =>
+  healthPct.value >= 80 ? 'success' : healthPct.value >= 50 ? 'warning' : 'error'
+)
+
+const healthLegend = computed(() => {
+  const total = healthCount.value || 1
+  return [
+    { label: 'Healthy', count: overview.stock.healthy ?? 0, color: '#22c55e', pct: Math.round(((overview.stock.healthy ?? 0) / total) * 100) },
+    { label: 'Low stock', count: overview.stock.low_stock ?? 0, color: '#f59e0b', pct: Math.round(((overview.stock.low_stock ?? 0) / total) * 100) },
+    { label: 'Out of stock', count: overview.stock.out_of_stock ?? 0, color: '#ef4444', pct: Math.round(((overview.stock.out_of_stock ?? 0) / total) * 100) },
+  ]
+})
+
+// ── KPI cards ───────────────────────────────────────────────────────────
+// Six focused metrics, each tone-railed by currentColor and linkable to the
+// screen that acts on it. `tone` drives the top accent bar + icon chip so the
+// tile stays visually coherent across palettes.
 const kpis = computed(() => [
-  { title: 'Total SKUs', value: overview.stock.total_items ?? 0, icon: 'mdi-package-variant-closed', color: 'primary' },
-  { title: 'Units on Hand', value: (overview.stock.units_on_hand ?? 0).toLocaleString(), icon: 'mdi-scale-balance', color: 'info' },
-  { title: 'Low Stock', value: overview.stock.low_stock ?? 0, icon: 'mdi-alert', color: 'warning' },
-  { title: 'Out of Stock', value: overview.stock.out_of_stock ?? 0, icon: 'mdi-package-variant-remove', color: 'error' },
-  { title: 'Expiring ≤30d', value: overview.expiry.expiring_30 ?? 0, icon: 'mdi-clock-alert', color: 'deep-orange' },
-  { title: 'To Be Packed', value: overview.deliveries.to_be_packed ?? 0, icon: 'mdi-package-variant-closed', color: 'teal' },
-  { title: 'To Be Shipped', value: overview.deliveries.to_be_shipped ?? 0, icon: 'mdi-package-up', color: 'cyan' },
-  { title: 'Items Received', value: (overview.procurement.items_received ?? 0).toLocaleString(), icon: 'mdi-cart-arrow-down', color: 'success' },
-  { title: 'Open POs', value: overview.procurement.open_purchase_orders ?? 0, icon: 'mdi-cart', color: 'amber' },
-  { title: 'Units Sold', value: (overview.sales.units_sold ?? 0).toLocaleString(), icon: 'mdi-sale', color: 'purple' },
-  { title: 'Revenue', value: formatMoney(overview.sales.revenue ?? 0), icon: 'mdi-cash-multiple', color: 'green' },
+  {
+    title: 'Total SKUs',
+    value: overview.stock.total_items ?? 0,
+    icon: 'mdi-package-variant-closed',
+    tone: 'blue',
+    to: p('/inventory'),
+    hint: `${overview.stock.healthy ?? 0} healthy items`,
+  },
+  {
+    title: 'Units on Hand',
+    value: (overview.stock.units_on_hand ?? 0).toLocaleString(),
+    icon: 'mdi-scale-balance',
+    tone: 'teal',
+  },
+  {
+    title: 'Low Stock',
+    value: overview.stock.low_stock ?? 0,
+    icon: 'mdi-alert',
+    tone: 'amber',
+    to: p('/inventory') + '?statusFilter=low',
+    hint: 'Needs restocking',
+  },
+  {
+    title: 'Out of Stock',
+    value: overview.stock.out_of_stock ?? 0,
+    icon: 'mdi-package-variant-remove',
+    tone: 'red',
+    to: p('/inventory') + '?statusFilter=out',
+    hint: 'Reorder required',
+  },
+  {
+    title: 'Expiring ≤30d',
+    value: overview.expiry.expiring_30 ?? 0,
+    icon: 'mdi-clock-alert',
+    tone: 'purple',
+    to: p('/inventory') + '?batchFilter=expiring',
+    hint: `${overview.expiry.expired ?? 0} already expired`,
+  },
+  {
+    title: 'Open POs',
+    value: overview.procurement.open_purchase_orders ?? 0,
+    icon: 'mdi-cart',
+    tone: 'orange',
+    to: p('/purchase-orders'),
+    hint: `${(overview.procurement.items_received ?? 0).toLocaleString()} units received`,
+  },
 ])
 
 async function load() {
@@ -648,3 +723,161 @@ watch(() => branchStore.currentBranchId, () => {
   load()
 })
 </script>
+
+<style scoped>
+/* ─────────────── Page ─────────────── */
+.iov-page { background: transparent; }
+
+/* ─────────────── Date bar ─────────────── */
+.iov-datebar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  background: rgba(var(--v-theme-surface-variant), 0.18);
+}
+.iov-date-chips { flex: 1 1 auto; min-width: 280px; }
+.iov-date-field { max-width: 170px; }
+
+/* ─────────────── KPI cards ───────────────
+   Tone travels via `color`, so the top rail, the icon chip and the link
+   underline can all derive from currentColor. Hover gives a small lift. */
+.iov-kpi {
+  position: relative;
+  overflow: hidden;
+  display: block;
+  border-radius: 14px;
+  padding: 14px 16px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  background: rgb(var(--v-theme-surface));
+  color: inherit;
+  text-decoration: none;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.iov-kpi::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: currentColor;
+  opacity: 0.85;
+}
+.iov-kpi:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(15, 23, 42, 0.1); }
+.iov-kpi-link { cursor: pointer; }
+.iov-kpi-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+.iov-kpi-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+  line-height: 1.3;
+}
+.iov-kpi-value {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.4px;
+  margin-top: 1px;
+}
+.iov-kpi-foot {
+  font-size: 11px;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+  line-height: 1.3;
+  margin-top: 2px;
+}
+
+/* Per-KPI hues drive the top accent bar + icon chip via currentColor. */
+.iov-kpi-t-blue { color: #2563eb; }
+.iov-kpi-t-teal { color: #0d9488; }
+.iov-kpi-t-amber { color: #d97706; }
+.iov-kpi-t-red { color: #dc2626; }
+.iov-kpi-t-purple { color: #7c3aed; }
+.iov-kpi-t-orange { color: #ea580c; }
+
+/* ─────────────── Panels ─────────────── */
+.iov-panel { transition: box-shadow 0.18s ease; }
+.iov-panel:hover { box-shadow: 0 6px 20px rgba(15, 23, 42, 0.07); }
+.iov-panel-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 10px;
+  flex-shrink: 0;
+  color: var(--panel-tone, #2563eb);
+  background: color-mix(in srgb, var(--panel-tone, #2563eb) 14%, transparent);
+}
+
+/* Legend rows (stock health) */
+.iov-legend { display: flex; align-items: center; gap: 8px; padding: 5px 0; }
+.iov-legend-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.iov-legend-pct { min-width: 34px; text-align: right; }
+
+/* Inline metric row (units on hand) */
+.iov-metric-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+/* List items (expiry, fulfilment) */
+.iov-list-item {
+  border-radius: 10px;
+  transition: background 0.16s ease;
+  margin: 2px 0;
+}
+.iov-list-item:hover {
+  background: rgba(var(--v-theme-surface-variant), 0.3);
+}
+.iov-list-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--tone, #2563eb);
+  background: color-mix(in srgb, var(--tone, #2563eb) 14%, transparent);
+}
+
+/* Mini grid (procurement / sales tiles) */
+.iov-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+.iov-mini-tile {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  background: rgba(var(--v-theme-surface-variant), 0.18);
+}
+
+/* Tables */
+.iov-table { border-radius: 10px; overflow: hidden; }
+.iov-table :deep(th) {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+}
+</style>

@@ -231,6 +231,14 @@ class StaffListView(generics.ListAPIView):
                 'lab_tech', 'radiographer', 'tenant_admin', 'admin',
             ]
         qs = User.objects.filter(is_active=True, role__in=roles).order_by('first_name', 'last_name')
+        # Scope to the active request tenant (set by HeaderTenantMiddleware).
+        req_tenant = getattr(self.request, 'tenant', None)
+        u = self.request.user
+        if not getattr(u, 'is_superuser', False):
+            if req_tenant and req_tenant.pk != u.tenant_id:
+                qs = qs.filter(tenant_id=req_tenant.pk)
+            elif u.tenant_id:
+                qs = qs.filter(tenant_id=u.tenant_id)
         search = self.request.query_params.get('search', '').strip()
         if search:
             from django.db.models import Q
@@ -286,17 +294,29 @@ class UserManagementViewSet(_viewsets.GenericViewSet,
         qs = User.objects.exclude(role=User.Role.PATIENT).exclude(
             role=User.Role.SUPER_ADMIN
         ).order_by('first_name', 'last_name')
-        # Tenant admins only see their own tenant's users; super admin sees all.
-        if not getattr(u, 'is_superuser', False) and u.tenant_id:
+        if getattr(u, 'is_superuser', False):
+            # Super admin sees all users.
+            return qs
+        # Use the request tenant (set by HeaderTenantMiddleware from X-Tenant-Schema)
+        # when available — an org admin may switch between linked tenants, so we
+        # want the users of the *active* tenant, not the admin's home tenant.
+        req_tenant = getattr(self.request, 'tenant', None)
+        if req_tenant and req_tenant.pk != u.tenant_id:
+            qs = qs.filter(tenant_id=req_tenant.pk)
+        elif u.tenant_id:
             qs = qs.filter(tenant_id=u.tenant_id)
         return qs
 
     def perform_create(self, serializer):
-        # Force the new user into the admin's tenant (unless super admin).
+        # Force the new user into the active request tenant (unless super admin).
         u = self.request.user
         instance = serializer.save()
-        if not getattr(u, 'is_superuser', False) and u.tenant_id and not instance.tenant_id:
-            instance.tenant = u.tenant
+        if getattr(u, 'is_superuser', False):
+            return
+        req_tenant = getattr(self.request, 'tenant', None)
+        target_tenant = req_tenant or u.tenant
+        if target_tenant and not instance.tenant_id:
+            instance.tenant = target_tenant
             instance.save()
 
 

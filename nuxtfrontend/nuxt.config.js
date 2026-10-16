@@ -149,10 +149,10 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
-      //  apiBase: 'http://127.0.0.1:8000/api',
+       apiBase: 'http://127.0.0.1:8000/api',
       // // apiBase: 'http://ec2-3-120-129-138.eu-central-1.compute.amazonaws.com/api',
       // apiBase: 'https://adheremedapi.tiktek-ex.com/api',
-      apiBase: 'https://apisys.adheremed.co/api',
+      // apiBase: 'https://apisys.adheremed.co/api',
       appName: 'AdhereMed',
       googleMapsApiKey: 'AIzaSyAhiNO62geg58-WaLGeq235Lo8gySLvs_I'
     }
@@ -367,6 +367,16 @@ export default defineNuxtConfig({
         ['ims-evaluations',                   '/ims/evaluations',                          'purchase-orders/evaluations.vue'],
         ['ims-reorder-suggestions',          '/ims/purchase-orders/reorder-suggestions',  'purchase-orders/reorder-suggestions.vue'],
         ['ims-grns',                          '/ims/purchase-orders/grns',                 'purchase-orders/grns.vue'],
+        // Procurement workspace (comprehensive procure-to-pay suite)
+        ['ims-procurement-command-center',   '/ims/purchase-orders/command-center',        'purchase-orders/command-center.vue'],
+        ['ims-procurement-requisitions',     '/ims/purchase-orders/requisitions',          'purchase-orders/requisitions.vue'],
+        ['ims-procurement-approvals',        '/ims/purchase-orders/approvals',             'purchase-orders/approvals.vue'],
+        ['ims-procurement-quote-comparison', '/ims/purchase-orders/quote-comparison',      'purchase-orders/quote-comparison.vue'],
+        ['ims-procurement-returns',          '/ims/purchase-orders/returns',               'purchase-orders/returns.vue'],
+        ['ims-procurement-delivery',         '/ims/purchase-orders/delivery',              'purchase-orders/delivery.vue'],
+        ['ims-procurement-scorecards',       '/ims/purchase-orders/scorecards',            'purchase-orders/scorecards.vue'],
+        ['ims-procurement-price-agreements', '/ims/purchase-orders/price-agreements',      'purchase-orders/price-agreements.vue'],
+        ['ims-procurement-spend',            '/ims/purchase-orders/spend',                 'purchase-orders/spend.vue'],
         // Suppliers
         ['ims-suppliers',                     '/ims/suppliers',                           'suppliers/index.vue'],
         ['ims-suppliers-new',                 '/ims/suppliers/new',                       'suppliers/new.vue'],
@@ -395,6 +405,15 @@ export default defineNuxtConfig({
         ['ims-analytics',                     '/ims/analytics',                            'analytics/index.vue'],
         ['ims-analytics-categories',          '/ims/analytics/categories',                 'analytics/categories.vue'],
         ['ims-analytics-products',            '/ims/analytics/products',                   'analytics/products.vue'],
+        // BI Analysis workspace (business-intelligence analytics)
+        ['ims-bi',                            '/ims/analytics/bi',                         'analytics/bi/index.vue'],
+        ['ims-bi-dashboards',                 '/ims/analytics/bi/dashboards',              'analytics/bi/dashboards.vue'],
+        ['ims-bi-root-cause',                 '/ims/analytics/bi/root-cause',              'analytics/bi/root-cause.vue'],
+        ['ims-bi-forecast',                   '/ims/analytics/bi/forecast',                'analytics/bi/forecast.vue'],
+        ['ims-bi-optimization',               '/ims/analytics/bi/optimization',            'analytics/bi/optimization.vue'],
+        ['ims-bi-models',                     '/ims/analytics/bi/models',                  'analytics/bi/models.vue'],
+        ['ims-bi-reports',                    '/ims/analytics/bi/reports',                 'analytics/bi/reports.vue'],
+        ['ims-bi-explorer',                   '/ims/analytics/bi/explorer',                'analytics/bi/explorer.vue'],
         // Reports
         ['ims-reports',                       '/ims/reports',                              'reports/index.vue'],
         ['ims-reports-analytics',             '/ims/reports/analytics',                    'reports/analytics.vue'],

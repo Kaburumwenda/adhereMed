@@ -75,6 +75,7 @@ const ADMIN_ONLY_PREFIXES = [
   '/clinics/wards',
   '/clinics/doctor-profile',
   '/clinics/billing/usage',
+  '/clinics/settings',
   '/clinics/billing/commission',
   // Inventory-tenant namespaced admin-only routes
   '/ims/accounts',
@@ -395,23 +396,29 @@ export function canAccessRoute(role, path) {
 /**
  * Filters a nav-section array (from utils/nav.js) so that items the
  * current role cannot reach are hidden. Items with `children` are
- * recursively filtered; sections with no remaining items are dropped.
+ * recursively filtered (supports nested submenus); sections with no
+ * remaining items are dropped.
  */
 export function filterNavSections(sections, role) {
-  const out = []
-  for (const section of sections || []) {
-    const items = []
-    for (const item of section.items || []) {
+  const filterItems = (items) => {
+    const out = []
+    for (const item of items || []) {
       const allowed = canAccessRoute(role, item.path)
       let children
       if (item.children) {
-        children = item.children.filter(c => canAccessRoute(role, c.path))
+        children = filterItems(item.children)
         if (!children.length) children = undefined
       }
       if (allowed || (children && children.length)) {
-        items.push(children ? { ...item, children } : item)
+        out.push(children ? { ...item, children } : item)
       }
     }
+    return out
+  }
+
+  const out = []
+  for (const section of sections || []) {
+    const items = filterItems(section.items)
     if (items.length) out.push({ ...section, items })
   }
   return out

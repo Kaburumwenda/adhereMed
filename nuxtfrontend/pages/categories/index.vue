@@ -215,7 +215,7 @@ const stocks = computed(() => stockRes.items.value || [])
 const loading = computed(() => catRes.loading.value || stockRes.loading.value)
 
 const search = ref('')
-const viewMode = ref('grid')
+const viewMode = ref('table')
 const page = ref(1)
 const pageSize = ref(12)
 
