@@ -27,16 +27,41 @@ export const BRAND_DEFAULTS = {
 
 /**
  * Palettes offered by the branding page. Kept in sync with
- * `pages/organization/branding.vue` so a tenant that never saved a palette
- * still gets a coherent one.
+ * `pages/organization/branding.vue` (which adds descriptions + categories) so a
+ * tenant that never saved a palette still gets a coherent one.
+ *
+ * The order is deliberate: the first entry is the platform default, and the
+ * rest follow the healthcare groupings used by the branding page
+ * (clinical → pharmacy → specialties → care & community).
  */
 export const BRAND_PRESETS = [
-  { name: 'AdhereMed', primary: '#2f6dff', secondary: '#143ce1', accent: '#37d6ff' },
-  { name: 'Teal', primary: '#0D9488', secondary: '#0F766E', accent: '#5EEAD4' },
-  { name: 'Indigo', primary: '#4F46E5', secondary: '#3730A3', accent: '#818CF8' },
-  { name: 'Rose', primary: '#DB2777', secondary: '#9D174D', accent: '#F9A8D4' },
-  { name: 'Emerald', primary: '#16A34A', secondary: '#15803D', accent: '#86EFAC' },
-  { name: 'Sunset', primary: '#F97316', secondary: '#C2410C', accent: '#FED7AA' }
+  // Clinical
+  { name: 'AdhereMed Blue', primary: '#2f6dff', secondary: '#143ce1', accent: '#37d6ff' },
+  { name: 'Clinical Navy', primary: '#1D4ED8', secondary: '#1E3A8A', accent: '#93C5FD' },
+  { name: 'Scrubs Teal', primary: '#0D9488', secondary: '#0F766E', accent: '#5EEAD4' },
+  { name: 'Surgical Green', primary: '#15803D', secondary: '#14532D', accent: '#86EFAC' },
+  { name: 'Mercury Slate', primary: '#475569', secondary: '#1E293B', accent: '#94A3B8' },
+  { name: 'Telehealth Azure', primary: '#0EA5E9', secondary: '#0369A1', accent: '#7DD3FC' },
+  // Pharmacy
+  { name: 'Pharmacy Green', primary: '#16A34A', secondary: '#15803D', accent: '#86EFAC' },
+  { name: 'Wellness Mint', primary: '#10B981', secondary: '#047857', accent: '#6EE7B7' },
+  { name: 'Chemist Amber', primary: '#D97706', secondary: '#92400E', accent: '#FCD34D' },
+  { name: 'Compounding Clay', primary: '#B45309', secondary: '#78350F', accent: '#FDE68A' },
+  // Specialties
+  { name: 'Cardiology Crimson', primary: '#DC2626', secondary: '#991B1B', accent: '#FCA5A5' },
+  { name: 'Radiology Indigo', primary: '#4F46E5', secondary: '#3730A3', accent: '#818CF8' },
+  { name: 'Oncology Plum', primary: '#9333EA', secondary: '#6B21A8', accent: '#D8B4FE' },
+  { name: 'Laboratory Violet', primary: '#7C3AED', secondary: '#5B21B6', accent: '#C4B5FD' },
+  { name: 'Pediatrics Coral', primary: '#FB7185', secondary: '#BE123C', accent: '#FDA4AF' },
+  { name: 'Dental Aqua', primary: '#0891B2', secondary: '#155E75', accent: '#67E8F9' },
+  { name: 'Ophthalmology Cyan', primary: '#0284C7', secondary: '#075985', accent: '#7DD3FC' },
+  // Care & community
+  { name: 'Homecare Rose', primary: '#DB2777', secondary: '#9D174D', accent: '#F9A8D4' },
+  { name: 'Midwifery Blush', primary: '#EC4899', secondary: '#BE185D', accent: '#FBCFE8' },
+  { name: 'First Aid Red', primary: '#B91C1C', secondary: '#7F1D1D', accent: '#FCA5A5' },
+  { name: 'Ambulance Amber', primary: '#F59E0B', secondary: '#B45309', accent: '#FDE68A' },
+  { name: 'Sunset', primary: '#F97316', secondary: '#C2410C', accent: '#FED7AA' },
+  { name: 'Community Olive', primary: '#65A30D', secondary: '#3F6212', accent: '#BEF264' }
 ]
 
 /**

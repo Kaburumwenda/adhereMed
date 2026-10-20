@@ -1,27 +1,97 @@
 <template>
   <v-container fluid class="pa-3 pa-md-5 ims-dash">
-    <!-- ═══════════════ COMPACT HEADER ═══════════════ -->
-    <div class="d-flex flex-wrap align-center justify-space-between mb-3">
-      <div>
-        <h1 class="text-h5 text-md-h4 font-weight-bold mb-0">Warehouse Operations</h1>
-        <div class="text-body-2 text-medium-emphasis">
-          {{ today }}
-          <span class="ml-1">· {{ auth.tenantName || 'Inventory' }}</span>
-          <span v-if="branchLabel"> · {{ branchLabel }}</span>
+    <!-- ═══════════════ HERO ═══════════════
+         Brand-tinted gradient (tenant palette from /ims/organization/branding),
+         same CSS-variable bridge as the inventory list/detail/form heroes so
+         the whole IMS surface reads as one product. -->
+    <div class="ims-hero mb-4" :style="heroTheme">
+      <span class="ims-hero-glow" />
+      <span class="ims-hero-glow ims-hero-glow-2" />
+
+      <div class="d-flex flex-wrap align-center justify-space-between ga-3 ims-hero-top">
+        <div class="d-flex align-center" style="gap:16px; min-width:0">
+          <div class="ims-hero-icon">
+            <v-icon size="30">mdi-warehouse</v-icon>
+          </div>
+          <div style="min-width:0">
+            <div class="ims-hero-eyebrow">
+              <v-icon size="10">mdi-circle</v-icon>
+              {{ auth.tenantName || 'INVENTORY' }} · OPERATIONS
+            </div>
+            <h1 class="ims-hero-title">{{ greeting }}, {{ firstName }}</h1>
+            <div class="ims-hero-sub">
+              Warehouse operations · {{ today }}
+              <span v-if="branchLabel"> · {{ branchLabel }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="d-flex flex-wrap align-center ga-2">
+          <v-btn
+            icon="mdi-refresh"
+            variant="text"
+            size="small"
+            class="ims-hero-iconbtn"
+            title="Refresh"
+            :loading="loading"
+            @click="load"
+          />
+          <v-btn
+            variant="flat"
+            elevation="0"
+            rounded="lg"
+            class="text-none ims-hero-btn-glass"
+            prepend-icon="mdi-download-outline"
+            title="Download a CSV snapshot of this dashboard"
+            :disabled="loading"
+            @click="exportSnapshot"
+          >Snapshot</v-btn>
+          <v-btn
+            v-if="canAccessRoute(auth.role, '/ims/inventory/stock-take')"
+            variant="flat"
+            elevation="0"
+            rounded="lg"
+            class="text-none ims-hero-btn-glass"
+            prepend-icon="mdi-clipboard-check-outline"
+            to="/ims/inventory/stock-take"
+          >New stock take</v-btn>
+          <v-btn
+            v-if="canAccessRoute(auth.role, '/ims/inventory/stocks/new')"
+            variant="flat"
+            elevation="0"
+            rounded="lg"
+            class="text-none ims-hero-btn-strong"
+            prepend-icon="mdi-plus"
+            to="/ims/inventory/stocks/new"
+          >Add stock item</v-btn>
         </div>
       </div>
-      <div class="d-flex flex-wrap align-center ga-2 mt-2 mt-md-0">
-        <v-btn icon="mdi-refresh" variant="tonal" color="primary" size="small" title="Refresh" :loading="loading" @click="load" />
-        <v-btn
-          v-if="canAccessRoute(auth.role, '/ims/inventory/stock-take')"
-          variant="outlined" rounded="lg" class="text-none"
-          prepend-icon="mdi-clipboard-check-outline" to="/ims/inventory/stock-take"
-        >New Stock Take</v-btn>
-        <v-btn
-          v-if="canAccessRoute(auth.role, '/ims/inventory/stocks/new')"
-          color="primary" rounded="lg" class="text-none"
-          prepend-icon="mdi-plus" to="/ims/inventory/stocks/new"
-        >Add Stock Item</v-btn>
+
+      <div class="ims-hero-foot d-flex flex-wrap align-center" style="gap:8px">
+        <span class="ims-hero-chip">
+          <v-icon size="14">mdi-package-variant-closed</v-icon>
+          {{ num(analytics?.total_items ?? stocks.length) }} SKUs
+        </span>
+        <span class="ims-hero-chip">
+          <v-icon size="14">mdi-scale-balance</v-icon>
+          {{ num(unitsOnHand) }} units on hand
+        </span>
+        <span class="ims-hero-chip">
+          <v-icon size="14">mdi-cash-multiple</v-icon>
+          {{ formatMoney(analytics?.total_cost_value ?? 0) }} at cost
+        </span>
+        <span class="ims-hero-chip" :class="healthChipClass">
+          <v-icon size="14">{{ health.icon }}</v-icon>
+          {{ healthPct }}% healthy
+        </span>
+        <span v-if="openPOs.length" class="ims-hero-chip ims-hero-chip-alert">
+          <v-icon size="14">mdi-cart-clock</v-icon>
+          {{ openPOs.length }} open PO{{ openPOs.length === 1 ? '' : 's' }}
+        </span>
+        <span v-if="stockHealth.out" class="ims-hero-chip ims-hero-chip-alert">
+          <v-icon size="14">mdi-package-variant-remove</v-icon>
+          {{ stockHealth.out }} out of stock
+        </span>
       </div>
     </div>
 
@@ -63,7 +133,18 @@
       <div class="ims-pulse-head">
         <v-icon size="17">mdi-pulse</v-icon>
         <span>Operational pulse</span>
-        <span class="ims-pulse-window">last {{ trendDays }} days</span>
+        <div class="ims-pulse-compare">
+          <span class="ims-compare-label">vs previous {{ trendDays }}d</span>
+          <span
+            v-for="c in periodCompare"
+            :key="c.label"
+            class="ims-compare"
+            :class="c.good ? 'ims-compare-up' : 'ims-compare-down'"
+          >
+            <v-icon size="12">{{ c.icon }}</v-icon>
+            {{ c.label }} {{ c.value }}
+          </span>
+        </div>
       </div>
       <div class="ims-pulse-grid">
         <component
@@ -84,6 +165,136 @@
         </component>
       </div>
     </div>
+
+    <!-- ═══════════════ INTELLIGENCE ROW ═══════════════
+         Two forward-looking panels: what will run out, and how concentrated
+         the capital is. Both derive entirely from the payloads already loaded
+         (stocks + the movement rollup), so no extra endpoint is needed. -->
+    <v-row dense class="mb-1">
+      <v-col cols="12" lg="7">
+        <v-card rounded="lg" border class="pa-4 h-100 ims-panel">
+          <div class="d-flex flex-wrap align-center justify-space-between ga-2 mb-3">
+            <div class="d-flex align-center" style="gap:10px">
+              <div class="ims-panel-icon" style="--panel-tone:#dc2626">
+                <v-icon size="17">mdi-timer-alert-outline</v-icon>
+              </div>
+              <div>
+                <h3 class="ims-panel-title">Stockout forecast</h3>
+                <div class="text-caption text-medium-emphasis">
+                  Days of cover at the current run rate ({{ trendDays }}d average)
+                </div>
+              </div>
+            </div>
+            <v-chip
+              size="small"
+              :color="stockoutRisk.length ? 'error' : 'success'"
+              variant="tonal"
+              class="font-weight-bold"
+            >
+              {{ stockoutRisk.length ? `${stockoutRisk.length} at risk` : 'All healthy' }}
+            </v-chip>
+          </div>
+
+          <EmptyState
+            v-if="!coverRows.length"
+            icon="mdi-chart-timeline-variant"
+            title="No consumption data yet"
+            message="Cover days appear once items start issuing stock."
+          />
+
+          <template v-else>
+            <div class="ims-risk-head">
+              <span>Item · tightest cover first</span>
+              <span class="text-right">On hand</span>
+              <span class="text-right">Daily use</span>
+              <span class="text-right">Cover</span>
+            </div>
+            <component
+              :is="linkOr(`/ims/inventory/stocks/${s.id}/edit`)"
+              :to="`/ims/inventory/stocks/${s.id}/edit`"
+              v-for="s in coverRows.slice(0, 6)"
+              :key="s.id"
+              class="ims-risk-row"
+            >
+              <div class="ims-risk-name">
+                <span class="ims-risk-dot" :class="`ims-risk-${s.severity}`" />
+                <span class="text-truncate">{{ s.name }}</span>
+              </div>
+              <span class="text-right ims-nowrap">{{ num(s.qty) }}</span>
+              <span class="text-right ims-nowrap">{{ s.rate.toFixed(1) }}/day</span>
+              <span class="text-right ims-nowrap">
+                <span class="ims-cover" :class="`ims-cover-${s.severity}`">
+                  {{ s.coverDays == null ? '—' : s.coverDays.toFixed(0) + 'd' }}
+                </span>
+              </span>
+              <span class="ims-risk-bar">
+                <span
+                  :style="{ width: Math.min(100, (s.coverRatio || 0) * 100) + '%' }"
+                  :class="`ims-risk-fill-${s.severity}`"
+                />
+              </span>
+            </component>
+            <NuxtLink v-if="stockoutRisk.length" to="/ims/inventory" class="ims-row-more mt-1">
+              Review all {{ num(stockoutRisk.length) }} at-risk items
+              <v-icon size="13">mdi-arrow-right</v-icon>
+            </NuxtLink>
+            <div v-else class="text-caption text-medium-emphasis mt-2 d-flex align-center" style="gap:6px">
+              <v-icon size="14" color="success">mdi-check-circle-outline</v-icon>
+              Every moving item has more than {{ COVER_WATCH_DAYS }} days of cover at the current run rate.
+            </div>
+          </template>
+        </v-card>
+      </v-col>
+
+      <v-col cols="12" lg="5">
+        <v-card rounded="lg" border class="pa-4 h-100 ims-panel">
+          <div class="d-flex flex-wrap align-center justify-space-between ga-2 mb-3">
+            <div class="d-flex align-center" style="gap:10px">
+              <div class="ims-panel-icon" style="--panel-tone:#7c3aed">
+                <v-icon size="17">mdi-chart-donut-variant</v-icon>
+              </div>
+              <div>
+                <h3 class="ims-panel-title">Value concentration</h3>
+                <div class="text-caption text-medium-emphasis">ABC analysis of capital at cost</div>
+              </div>
+            </div>
+            <v-chip size="small" variant="tonal" color="purple" class="font-weight-bold">
+              {{ compactMoney(abc.totalValue) }}
+            </v-chip>
+          </div>
+
+          <EmptyState v-if="!abc.classes.length" icon="mdi-chart-donut" title="No valued stock yet" />
+
+          <template v-else>
+            <div class="ims-abc-bar mb-3">
+              <span
+                v-for="c in abc.classes"
+                :key="c.key"
+                :style="{ flex: c.valueShare, background: c.color }"
+                :title="`${c.label}: ${c.valueShare}% of value`"
+              />
+            </div>
+            <div class="d-flex flex-column ga-2">
+              <div v-for="c in abc.classes" :key="c.key" class="ims-abc-row">
+                <span class="ims-abc-key" :style="{ background: c.color }">{{ c.key }}</span>
+                <div style="min-width:0; flex:1">
+                  <div class="text-body-2 font-weight-medium">{{ c.label }}</div>
+                  <div class="text-caption text-medium-emphasis">
+                    {{ num(c.count) }} SKU{{ c.count === 1 ? '' : 's' }} · {{ c.valueShare }}% of value
+                  </div>
+                </div>
+                <span class="ims-abc-val">{{ formatMoney(c.value) }}</span>
+              </div>
+            </div>
+            <v-divider class="my-3" />
+            <div class="d-flex align-center" style="gap:10px">
+              <v-icon size="18" color="warning">mdi-lightbulb-on-outline</v-icon>
+              <div class="text-caption" style="line-height: 1.45">{{ abc.insight }}</div>
+            </div>
+          </template>
+        </v-card>
+      </v-col>
+    </v-row>
 
     <!-- ═══════════════ FLOW + HEALTH ═══════════════ -->
     <v-row dense>
@@ -245,6 +456,146 @@
       </v-col>
     </v-row>
 
+    <!-- ═══════════════ NETWORK INTELLIGENCE ═══════════════
+         Warehouse benchmarking, expiry runway and idle capital — the three
+         questions a warehouse lead asks that raw counts never answer. -->
+    <v-row dense class="mt-1">
+      <v-col cols="12" md="6" xl="4">
+        <v-card rounded="lg" border class="pa-4 h-100 ims-panel">
+          <div class="d-flex align-center justify-space-between mb-3">
+            <div class="d-flex align-center" style="gap:10px">
+              <div class="ims-panel-icon" style="--panel-tone:#2563eb">
+                <v-icon size="17">mdi-warehouse</v-icon>
+              </div>
+              <div>
+                <h3 class="ims-panel-title">Warehouse comparison</h3>
+                <div class="text-caption text-medium-emphasis">Value and health by location</div>
+              </div>
+            </div>
+            <v-chip size="small" variant="tonal" color="primary" class="font-weight-bold">
+              {{ branchBreakdown.length }}
+            </v-chip>
+          </div>
+
+          <EmptyState v-if="!branchBreakdown.length" icon="mdi-warehouse" title="No warehouses configured" />
+
+          <div v-for="b in branchBreakdown" :key="b.name" class="ims-branch">
+            <div class="d-flex align-center justify-space-between mb-1">
+              <span class="text-body-2 font-weight-medium text-truncate">{{ b.name }}</span>
+              <span class="ims-nowrap text-body-2 font-weight-bold">{{ formatMoney(b.value) }}</span>
+            </div>
+            <div class="ims-bar-track mb-1">
+              <span :style="{ width: b.valuePct + '%', background: b.color }" />
+            </div>
+            <div class="d-flex align-center justify-space-between text-caption text-medium-emphasis">
+              <span>{{ num(b.skus) }} SKUs · {{ b.healthPct }}% healthy</span>
+              <span v-if="b.flags" class="ims-branch-flags">{{ b.flags }}</span>
+            </div>
+          </div>
+        </v-card>
+      </v-col>
+
+      <v-col cols="12" md="6" xl="4">
+        <v-card rounded="lg" border class="pa-4 h-100 ims-panel">
+          <div class="d-flex align-center justify-space-between mb-3">
+            <div class="d-flex align-center" style="gap:10px">
+              <div class="ims-panel-icon" style="--panel-tone:#d97706">
+                <v-icon size="17">mdi-calendar-clock-outline</v-icon>
+              </div>
+              <div>
+                <h3 class="ims-panel-title">Expiry runway</h3>
+                <div class="text-caption text-medium-emphasis">Units leaving shelf life, next 6 months</div>
+              </div>
+            </div>
+            <v-chip size="small" variant="tonal" color="warning" class="font-weight-bold">
+              {{ compactMoney(expiryTotalValue) }}
+            </v-chip>
+          </div>
+
+          <EmptyState v-if="!expiryRunway.length" icon="mdi-calendar-check" title="No dated batches in this window" />
+
+          <div v-else class="ims-runway">
+            <div v-for="m in expiryRunway" :key="m.key" class="ims-runway-col">
+              <span class="ims-runway-value">{{ num(m.units) }}</span>
+              <div class="ims-runway-bar-wrap">
+                <span
+                  class="ims-runway-bar"
+                  :class="{ 'ims-runway-bar-soon': m.soon }"
+                  :style="{ height: Math.max(4, m.pct) + '%' }"
+                  :title="`${num(m.units)} units · ${formatMoney(m.value)}`"
+                />
+              </div>
+              <span class="ims-runway-label">{{ m.label }}</span>
+            </div>
+          </div>
+          <div v-if="expiryRunway.length" class="text-caption text-medium-emphasis mt-3 d-flex align-center" style="gap:6px">
+            <v-icon size="14" color="error">mdi-alert-circle-outline</v-icon>
+            {{ num(expiring.length) }} batch{{ expiring.length === 1 ? '' : 'es' }} expire within {{ expiryWindow }} days
+          </div>
+        </v-card>
+      </v-col>
+
+      <v-col cols="12" md="12" xl="4">
+        <v-card rounded="lg" border class="pa-4 h-100 ims-panel">
+          <div class="d-flex align-center justify-space-between mb-3">
+            <div class="d-flex align-center" style="gap:10px">
+              <div class="ims-panel-icon" style="--panel-tone:#64748b">
+                <v-icon size="17">mdi-sleep</v-icon>
+              </div>
+              <div>
+                <h3 class="ims-panel-title">Idle capital</h3>
+                <div class="text-caption text-medium-emphasis">Stock with no movement in {{ trendDays }} days</div>
+              </div>
+            </div>
+            <v-chip size="small" variant="tonal" color="grey" class="font-weight-bold">
+              {{ compactMoney(idleCapital.value) }}
+            </v-chip>
+          </div>
+
+          <EmptyState
+            v-if="!idleCapital.items.length"
+            icon="mdi-check-circle-outline"
+            title="No idle stock"
+            message="Every item with value on hand moved during the period."
+          />
+
+          <template v-else>
+            <div class="d-flex align-center mb-3" style="gap:16px">
+              <div>
+                <div class="ims-mini-label">Items</div>
+                <div class="ims-mini-value">{{ num(idleCapital.items.length) }}</div>
+              </div>
+              <div>
+                <div class="ims-mini-label">Units</div>
+                <div class="ims-mini-value">{{ num(idleCapital.units) }}</div>
+              </div>
+              <div>
+                <div class="ims-mini-label">Share of value</div>
+                <div class="ims-mini-value">{{ idleCapital.sharePct }}%</div>
+              </div>
+            </div>
+            <component
+              :is="linkOr(`/ims/inventory/stocks/${s.id}/edit`)"
+              :to="`/ims/inventory/stocks/${s.id}/edit`"
+              v-for="s in idleCapital.items.slice(0, 4)"
+              :key="s.id"
+              class="ims-row ims-row-link"
+            >
+              <div class="ims-row-main">
+                <div class="ims-row-title text-truncate">{{ s.name }}</div>
+                <div class="ims-row-sub">{{ num(s.qty) }} {{ s.unit || 'units' }} on hand</div>
+              </div>
+              <span class="ims-row-badge ims-badge-neutral">{{ formatMoney(s.value) }}</span>
+            </component>
+            <NuxtLink to="/ims/inventory/stock-analysis" class="ims-row-more mt-1">
+              Investigate idle stock
+              <v-icon size="13">mdi-arrow-right</v-icon>
+            </NuxtLink>
+          </template>
+        </v-card>
+      </v-col>
+    </v-row>
+
     <!-- ═══════════════ NEEDS ATTENTION ═══════════════ -->
     <v-row dense class="mt-1">
       <v-col v-for="q in queues" :key="q.key" cols="12" md="4">
@@ -391,11 +742,23 @@ const linkOr = (to) => (to ? NuxtLink : 'div')
 // the inventory list / detail / form pages use, so the IMS screens match.
 const brand = useBranding()
 
+// The third gradient stop is the accent mixed toward the primary: accent
+// colours are typically near-white highlights, and the glass/solid buttons sit
+// at that end of the panel.
+const heroTheme = computed(() => ({
+  '--hero-deep': brand.secondary.value,
+  '--hero-main': brand.primary.value,
+  '--hero-accent': brand.gradientStops.value[2],
+  '--hero-ink': brand.ink.value,
+  '--hero-glow': brand.tint('primary', 0.3),
+  '--hero-glow-2': brand.tint('accent', 0.2),
+  '--hero-shadow': brand.shadow.value
+}))
+
 const today = new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
 const loading = ref(false)
 const trendDays = 30
 const expiryWindow = 90
-
 const analytics = ref(null)
 const stocks = ref([])
 const flowKpis = reactive({ total_in: 0, total_out: 0, total_transfer: 0, net_change: 0 })
@@ -410,6 +773,13 @@ const openPOs = ref([])
 const recentTransfers = ref([])
 const recentCounts = ref([])
 
+// ── Premium analytics state ──────────────────────────────────────────────
+// `movementItems` is the per-item rollup returned alongside the movement
+// report — the source of truth for run-rate (and therefore cover days).
+const movementItems = ref([])
+const previousKpis = ref(null)
+const runwayMonths = 6
+
 const stockHealth = reactive({ healthy: 0, low: 0, out: 0 })
 const barColors = ['#2563eb', '#0d9488', '#16a34a', '#d97706', '#7c3aed', '#0ea5e9']
 
@@ -418,9 +788,29 @@ const branchLabel = computed(() =>
 
 const unitsOnHand = computed(() => stocks.value.reduce((s, x) => s + (Number(x.total_quantity) || 0), 0))
 
+// ── Greeting ─────────────────────────────────────────────────────────────
+const greeting = computed(() => {
+  const h = new Date().getHours()
+  if (h < 12) return 'Good morning'
+  if (h < 17) return 'Good afternoon'
+  return 'Good evening'
+})
+const firstName = computed(() => {
+  const name = auth.user?.full_name || auth.user?.first_name || ''
+  return String(name).trim().split(/\s+/)[0] || 'there'
+})
+
 /** 1,234 — explicit locale so grouping can't drift between renders. */
 function num(v) {
   return Number(v || 0).toLocaleString('en-US')
+}
+
+/** KES 88.9K / KES 1.2M — for chips where full precision would wrap. */
+function compactMoney(v) {
+  const n = Number(v) || 0
+  if (Math.abs(n) >= 1_000_000) return `KES ${(n / 1_000_000).toFixed(1)}M`
+  if (Math.abs(n) >= 1_000) return `KES ${(n / 1_000).toFixed(1)}K`
+  return `KES ${n.toFixed(0)}`
 }
 
 // ── KPI strip ────────────────────────────────────────────────────────────
@@ -479,6 +869,10 @@ const healthPct = computed(() =>
   totalSkus.value ? Math.round((stockHealth.healthy / totalSkus.value) * 100) : 0)
 const healthChipColor = computed(() =>
   healthPct.value >= 85 ? 'success' : healthPct.value >= 60 ? 'warning' : 'error')
+
+/** Hero chip tone — inherits the same thresholds as the health panel. */
+const healthChipClass = computed(() =>
+  healthPct.value >= 85 ? '' : 'ims-hero-chip-alert')
 
 const health = computed(() => {
   if (!totalSkus.value) return { tone: 'ok', label: 'No stock loaded', icon: 'mdi-information-outline' }
@@ -562,6 +956,285 @@ const pulse = computed(() => [
     to: '/ims/inventory/stock-movements'
   }
 ])
+
+// ── Period comparison (vs the previous window) ───────────────────────────
+// Processed volume is the honest "are we busier?" signal; value is not
+// comparable across periods because prices move.
+const periodCompare = computed(() => {
+  const prev = previousKpis.value
+  if (!prev) return []
+  const pct = (cur, before) => {
+    const c = Number(cur) || 0
+    const b = Number(before) || 0
+    if (!b) return c > 0 ? 100 : 0
+    return ((c - b) / b) * 100
+  }
+  return [
+    { label: 'Inflow', delta: pct(flowKpis.total_in, prev.total_in) },
+    { label: 'Outflow', delta: pct(flowKpis.total_out, prev.total_out) },
+    { label: 'Postings', delta: pct(flowKpis.count, prev.count) }
+  ].map((r) => ({
+    label: r.label,
+    value: `${Math.abs(r.delta).toFixed(1)}%`,
+    icon: r.delta >= 0 ? 'mdi-arrow-up' : 'mdi-arrow-down',
+    good: r.delta >= 0
+  }))
+})
+
+// ── Stockout forecast ────────────────────────────────────────────────────
+// Run rate comes from the movement rollup (units out per item over the same
+// window the chart uses), so cover days stay consistent with the KPI strip.
+// `coverRows` is every moving item ranked by cover; `stockoutRisk` is the
+// subset inside the watch window. Showing the tightest covers even when none
+// are technically at risk keeps the panel informative on a healthy tenant.
+const COVER_WATCH_DAYS = 21
+
+const coverRows = computed(() => {
+  if (!movementItems.value.length) return []
+  const byId = new Map()
+  for (const it of movementItems.value) {
+    if (it.stock_id != null) byId.set(it.stock_id, it)
+  }
+  const windowDays = Math.max(1, trendDays)
+  const rows = []
+
+  for (const s of stocks.value) {
+    const mv = byId.get(s.id)
+    if (!mv) continue
+    const out = Number(mv.out) || 0
+    if (out <= 0) continue
+
+    const rate = out / windowDays                 // units consumed per day
+    const qty = Number(s.total_quantity) || 0
+    const coverDays = rate > 0 ? qty / rate : null
+
+    const severity =
+      qty <= 0 ? 'out'
+        : coverDays <= 7 ? 'critical'
+          : coverDays <= 14 ? 'high'
+            : coverDays <= COVER_WATCH_DAYS ? 'watch'
+              : 'ok'
+
+    rows.push({
+      id: s.id,
+      name: s.medication_name,
+      qty,
+      rate,
+      coverDays,
+      severity,
+      coverRatio: Math.min(1, (coverDays || 0) / COVER_WATCH_DAYS)
+    })
+  }
+
+  const rank = { out: 0, critical: 1, high: 2, watch: 3, ok: 4 }
+  return rows.sort(
+    (a, b) => rank[a.severity] - rank[b.severity] || (a.coverDays ?? 0) - (b.coverDays ?? 0)
+  )
+})
+
+const stockoutRisk = computed(() =>
+  coverRows.value.filter((r) => r.severity !== 'ok'))
+
+// ── ABC value concentration ──────────────────────────────────────────────
+// Classic Pareto: class A covers the stock lines that make up the first 70%
+// of capital, B the next 20%, and C the long tail.
+const abc = computed(() => {
+  const rows = stocks.value
+    .map((s) => ({
+      id: s.id,
+      value: (Number(s.total_quantity) || 0) * (Number(s.cost_price) || 0)
+    }))
+    .filter((r) => r.value > 0)
+    .sort((a, b) => b.value - a.value)
+
+  const total = rows.reduce((n, r) => n + r.value, 0)
+  if (!total || !rows.length) return { classes: [], totalValue: 0, insight: '' }
+
+  const acc = {
+    A: { count: 0, value: 0, label: 'Class A · high value', color: '#7c3aed' },
+    B: { count: 0, value: 0, label: 'Class B · mid value', color: '#0ea5e9' },
+    C: { count: 0, value: 0, label: 'Class C · long tail', color: '#94a3b8' }
+  }
+
+  let cumulative = 0
+  for (const r of rows) {
+    const shareBefore = cumulative / total
+    const key = shareBefore < 0.7 ? 'A' : shareBefore < 0.9 ? 'B' : 'C'
+    acc[key].count += 1
+    acc[key].value += r.value
+    cumulative += r.value
+  }
+
+  const classes = ['A', 'B', 'C'].map((key) => ({
+    key,
+    label: acc[key].label,
+    color: acc[key].color,
+    count: acc[key].count,
+    value: acc[key].value,
+    valueShare: Math.round((acc[key].value / total) * 100)
+  }))
+
+  const a = acc.A
+  const c = acc.C
+  const insight = a.count
+    ? `Class A is just ${a.count} SKU${a.count === 1 ? '' : 's'} (${Math.round(
+      (a.count / rows.length) * 100
+    )}% of the catalogue) but holds ${Math.round((a.value / total) * 100)}% of the capital. Cycle-count those first; the ${c.count}-SKU long tail can wait.`
+    : `Capital is evenly spread across ${rows.length} SKUs.`
+
+  return { classes, totalValue: total, insight }
+})
+
+// ── Idle capital ─────────────────────────────────────────────────────────
+// Any valued item that neither received nor issued stock in the window.
+const idleCapital = computed(() => {
+  const moved = new Set()
+  for (const it of movementItems.value) {
+    if (it.stock_id == null) continue
+    if ((Number(it.out) || 0) > 0 || (Number(it.in) || 0) > 0) moved.add(it.stock_id)
+  }
+
+  let totalValue = 0
+  const items = []
+  for (const s of stocks.value) {
+    const qty = Number(s.total_quantity) || 0
+    const value = qty * (Number(s.cost_price) || 0)
+    totalValue += value
+    if (qty <= 0 || value <= 0 || moved.has(s.id)) continue
+    items.push({
+      id: s.id,
+      name: s.medication_name,
+      qty,
+      unit: s.unit_abbreviation || s.unit_name,
+      value
+    })
+  }
+
+  items.sort((a, b) => b.value - a.value)
+  const value = items.reduce((n, i) => n + i.value, 0)
+  const units = items.reduce((n, i) => n + i.qty, 0)
+  return {
+    items,
+    value,
+    units,
+    sharePct: totalValue > 0 ? Math.round((value / totalValue) * 100) : 0
+  }
+})
+
+// ── Warehouse comparison ─────────────────────────────────────────────────
+const branchBreakdown = computed(() => {
+  const map = new Map()
+  for (const s of stocks.value) {
+    const name = s.branch_name || 'Unassigned'
+    const d = map.get(name) || { name, value: 0, skus: 0, healthy: 0, flagged: 0 }
+    const qty = Number(s.total_quantity) || 0
+    d.value += qty * (Number(s.cost_price) || 0)
+    d.skus += 1
+    if (qty <= 0 || s.is_low_stock) d.flagged += 1
+    else d.healthy += 1
+    map.set(name, d)
+  }
+
+  const rows = [...map.values()].sort((a, b) => b.value - a.value)
+  const max = rows[0]?.value || 1
+  return rows.map((r, i) => ({
+    ...r,
+    valuePct: Math.max(3, (r.value / max) * 100),
+    healthPct: r.skus ? Math.round((r.healthy / r.skus) * 100) : 0,
+    color: barColors[i % barColors.length],
+    flags: r.flagged ? `${r.flagged} flagged` : ''
+  }))
+})
+
+// ── Expiry runway (month buckets) ────────────────────────────────────────
+const expiryRunway = computed(() => {
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+
+  const buckets = []
+  for (let i = 0; i < runwayMonths; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1)
+    buckets.push({
+      key: `${d.getFullYear()}-${d.getMonth()}`,
+      label: d.toLocaleDateString(undefined, { month: 'short' }),
+      units: 0,
+      value: 0,
+      soon: i <= 1
+    })
+  }
+
+  for (const s of stocks.value) {
+    const cost = Number(s.cost_price) || 0
+    for (const b of (s.batches || [])) {
+      const qty = Number(b.quantity_remaining) || 0
+      if (qty <= 0 || !b.expiry_date) continue
+      const exp = new Date(b.expiry_date)
+      if (Number.isNaN(exp.getTime())) continue
+      const offset =
+        (exp.getFullYear() - now.getFullYear()) * 12 + (exp.getMonth() - now.getMonth())
+      if (offset < 0 || offset >= runwayMonths) continue
+      buckets[offset].units += qty
+      buckets[offset].value += qty * cost
+    }
+  }
+
+  const max = Math.max(...buckets.map((b) => b.units), 1)
+  return buckets.map((b) => ({ ...b, pct: (b.units / max) * 100 }))
+})
+
+const expiryTotalValue = computed(() =>
+  expiryRunway.value.reduce((n, b) => n + b.value, 0))
+
+// ── Snapshot export ──────────────────────────────────────────────────────
+// A one-click CSV of everything on the page, for the weekly ops review.
+function exportSnapshot() {
+  if (!import.meta.client) return
+  const rows = [
+    ['Warehouse operations snapshot', new Date().toISOString().slice(0, 19).replace('T', ' ')],
+    ['Tenant', auth.tenantName || ''],
+    ['Branch', branchLabel.value],
+    [],
+    ['KPI', 'Value'],
+    ...kpis.value.map((k) => [k.title, k.value]),
+    [],
+    ['Stock health', 'Count'],
+    ['Healthy', stockHealth.healthy],
+    ['Low stock', stockHealth.low],
+    ['Out of stock', stockHealth.out],
+    [],
+    ['Stockout forecast', 'On hand', 'Daily use', 'Days of cover', 'Status'],
+    ...coverRows.value.map((s) => [
+      s.name,
+      s.qty,
+      s.rate.toFixed(2),
+      s.coverDays == null ? '' : s.coverDays.toFixed(1),
+      s.severity
+    ]),
+    [],
+    ['ABC class', 'SKUs', 'Value', '% of value'],
+    ...abc.value.classes.map((c) => [c.key, c.count, c.value.toFixed(2), c.valueShare]),
+    [],
+    ['Warehouse', 'SKUs', 'Value', 'Healthy %'],
+    ...branchBreakdown.value.map((b) => [b.name, b.skus, b.value.toFixed(2), b.healthPct]),
+    [],
+    ['Expiry month', 'Units', 'Value'],
+    ...expiryRunway.value.map((m) => [m.label, m.units, m.value.toFixed(2)]),
+    [],
+    ['Idle capital', 'Units', 'Value'],
+    ...idleCapital.value.items.map((i) => [i.name, i.qty, i.value.toFixed(2)])
+  ]
+
+  const csv = rows
+    .map((line) => line.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
+    .join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `ims-snapshot-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 // ── Attention queues ─────────────────────────────────────────────────────
 const queues = computed(() => [
@@ -650,15 +1323,19 @@ async function load() {
 
   const end = new Date()
   const start = new Date(end.getTime() - (trendDays - 1) * 86400000)
+  // Previous window of identical length, for the "vs previous 30d" deltas.
+  const prevEnd = new Date(start.getTime() - 86400000)
+  const prevStart = new Date(prevEnd.getTime() - (trendDays - 1) * 86400000)
   const iso = (d) => d.toISOString().slice(0, 10)
 
-  const [an, st, mv, po, tr, cnt] = await Promise.all([
+  const [an, st, mv, po, tr, cnt, prevMv] = await Promise.all([
     safeGet(`/inventory/analytics/${bid ? `?branch_id=${bid}` : ''}`),
     safeList(`/inventory/stocks/?page_size=1000${bpStocks}`),
     safeGet(`/inventory/stock-movements/?date_from=${iso(start)}&date_to=${iso(end)}${bp}`),
     safeList(`/purchase-orders/?page_size=100${bid ? `&branch=${bid}` : ''}`),
     safeList(`/inventory/transfers/?page_size=100${bid ? `&branch=${bid}` : ''}`),
     safeList(`/inventory/counts/?page_size=100${bid ? `&branch=${bid}` : ''}`),
+    safeGet(`/inventory/stock-movements/?date_from=${iso(prevStart)}&date_to=${iso(prevEnd)}${bp}`),
   ])
 
   analytics.value = an
@@ -715,6 +1392,7 @@ async function load() {
   // Stock flow trend
   if (mv) {
     Object.assign(flowKpis, mv.kpis || {})
+    movementItems.value = mv.items || []
     const trend = mv.trend || []
     const active = trend
       .map(d => ({
@@ -731,6 +1409,8 @@ async function load() {
       .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))
       .slice(0, 8)
   }
+
+  previousKpis.value = prevMv?.kpis || null
 
   // Open POs (draft / sent / partially received)
   openPOs.value = (po || []).filter(o => ['draft', 'sent', 'partial'].includes(o.status))
@@ -758,6 +1438,134 @@ watch(() => branchStore.currentBranchId, () => {
 <style scoped>
 .ims-dash { max-width: 1600px; margin: 0 auto; }
 .ims-nowrap { white-space: nowrap; }
+
+/* ═══════════════ Hero ═══════════════
+   var() fallbacks mirror BRAND_DEFAULTS in utils/branding.js so the panel
+   still renders if the custom properties are ever missing. */
+.ims-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  padding: 20px 22px 16px;
+  color: #fff;
+  background: linear-gradient(
+    120deg,
+    var(--hero-deep, #143ce1) 0%,
+    var(--hero-main, #2f6dff) 52%,
+    var(--hero-accent, #37d6ff) 100%
+  );
+  box-shadow: var(--hero-shadow, 0 14px 34px rgba(47, 109, 255, 0.24));
+}
+.ims-hero-glow {
+  position: absolute;
+  width: 340px;
+  height: 340px;
+  border-radius: 50%;
+  right: -110px;
+  top: -170px;
+  background: radial-gradient(circle, var(--hero-glow, rgba(255, 255, 255, 0.28)), transparent 68%);
+  pointer-events: none;
+}
+.ims-hero-glow-2 {
+  right: auto;
+  left: -140px;
+  top: auto;
+  bottom: -220px;
+  width: 300px;
+  height: 300px;
+  background: radial-gradient(circle, var(--hero-glow-2, rgba(55, 214, 255, 0.24)), transparent 70%);
+}
+.ims-hero-top { position: relative; }
+.ims-hero-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  backdrop-filter: blur(6px);
+}
+.ims-hero-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.78);
+}
+.ims-hero-title {
+  font-size: 26px;
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  margin: 2px 0;
+}
+.ims-hero-sub {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.82);
+}
+.ims-hero-iconbtn { color: #fff !important; }
+
+/* Two explicit action tiers: a saturated gradient washes out tonal fills, so
+   the emphasised button paints a white pill with the tenant's darkest brand
+   colour as text, and the secondary one is translucent glass. */
+.ims-hero-btn-strong {
+  background: #ffffff !important;
+  color: var(--hero-ink, #143ce1) !important;
+  font-weight: 700 !important;
+  border: 1px solid rgba(255, 255, 255, 0.95) !important;
+  box-shadow: 0 6px 18px rgba(6, 44, 40, 0.28) !important;
+}
+.ims-hero-btn-strong:hover {
+  background: #ffffff !important;
+  filter: brightness(0.94);
+}
+.ims-hero-btn-strong :deep(.v-icon) {
+  color: var(--hero-ink, #143ce1) !important;
+  opacity: 1 !important;
+}
+.ims-hero-btn-glass {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  border: 1px solid rgba(255, 255, 255, 0.34) !important;
+  backdrop-filter: blur(6px);
+}
+.ims-hero-btn-glass:hover {
+  background: rgba(255, 255, 255, 0.26) !important;
+  border-color: rgba(255, 255, 255, 0.6) !important;
+}
+.ims-hero-btn-glass :deep(.v-icon) {
+  color: #ffffff !important;
+  opacity: 1 !important;
+}
+.ims-hero-foot {
+  position: relative;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+.ims-hero-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.94);
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+}
+.ims-hero-chip-alert {
+  background: rgba(239, 68, 68, 0.3);
+  border-color: rgba(255, 255, 255, 0.45);
+}
 
 /* ═══════════════ KPI cards ═══════════════
    Tone travels via `color`, so the top rail, the icon chip and the mini share
@@ -847,13 +1655,32 @@ watch(() => branchStore.currentBranchId, () => {
   color: rgba(var(--v-theme-on-surface), 0.6);
   border-bottom: 1px solid rgba(15, 23, 42, 0.07);
 }
-.ims-pulse-window {
+.ims-pulse-compare {
   margin-left: auto;
-  font-weight: 600;
-  letter-spacing: 0.3px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
   text-transform: none;
-  color: rgba(var(--v-theme-on-surface), 0.45);
+  letter-spacing: 0;
 }
+.ims-compare-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: rgba(var(--v-theme-on-surface), 0.42);
+}
+.ims-compare {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+.ims-compare-up { color: #15803d; background: rgba(34, 197, 94, 0.12); }
+.ims-compare-down { color: #64748b; background: rgba(100, 116, 139, 0.12); }
 .ims-pulse-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
 .ims-pulse-tile {
   display: flex;
@@ -900,9 +1727,22 @@ watch(() => branchStore.currentBranchId, () => {
   margin-top: 1px;
 }
 
-/* ═══════════════ Panels ═══════════════ */
-.ims-panel { transition: box-shadow 0.18s ease; }
-.ims-panel:hover { box-shadow: 0 6px 20px rgba(15, 23, 42, 0.07); }
+/* ═══════════════ Panels ═══════════════
+   Each panel carries a very faint brand wash at the top so the cards read as
+   curated sections rather than flat white boxes, without competing with the
+   data. */
+.ims-panel {
+  position: relative;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.03) 0%, transparent 110px),
+    rgb(var(--v-theme-surface)) !important;
+  transition: box-shadow 0.18s ease, transform 0.18s ease;
+}
+.ims-panel:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08);
+}
 .ims-panel-title {
   font-size: 15px;
   font-weight: 700;
@@ -970,6 +1810,185 @@ watch(() => branchStore.currentBranchId, () => {
 }
 .ims-bar-track { height: 7px; border-radius: 999px; background: rgba(15, 23, 42, 0.07); overflow: hidden; }
 .ims-bar-track span { display: block; height: 100%; border-radius: 999px; }
+
+/* ═══════════════ Stockout forecast ═══════════════ */
+.ims-risk-head,
+.ims-risk-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 74px 86px 62px;
+  gap: 10px;
+  align-items: center;
+}
+.ims-risk-head {
+  padding: 0 8px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+.ims-risk-row {
+  position: relative;
+  padding: 9px 8px 11px;
+  border-radius: 8px;
+  color: inherit;
+  text-decoration: none;
+  font-size: 13px;
+  transition: background 0.14s ease;
+}
+.ims-risk-row:hover { background: rgba(var(--v-theme-primary), 0.05); }
+.ims-risk-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.ims-risk-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.ims-risk-out { background: #991b1b; box-shadow: 0 0 0 3px rgba(153, 27, 27, 0.16); }
+.ims-risk-critical { background: #dc2626; box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.14); }
+.ims-risk-high { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.14); }
+.ims-risk-watch { background: #0ea5e9; box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.14); }
+.ims-risk-ok { background: #22c55e; box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.14); }
+.ims-cover {
+  display: inline-block;
+  min-width: 42px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 800;
+  text-align: center;
+}
+.ims-cover-out { color: #fff; background: #991b1b; }
+.ims-cover-critical { color: #b91c1c; background: rgba(239, 68, 68, 0.14); }
+.ims-cover-high { color: #b45309; background: rgba(245, 158, 11, 0.16); }
+.ims-cover-watch { color: #0369a1; background: rgba(14, 165, 233, 0.14); }
+.ims-cover-ok { color: #15803d; background: rgba(34, 197, 94, 0.14); }
+.ims-risk-bar {
+  grid-column: 1 / -1;
+  display: block;
+  height: 3px;
+  margin-top: -3px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+.ims-risk-bar span { display: block; height: 100%; border-radius: 999px; }
+.ims-risk-fill-out { background: #991b1b; }
+.ims-risk-fill-critical { background: #ef4444; }
+.ims-risk-fill-high { background: #f59e0b; }
+.ims-risk-fill-watch { background: #0ea5e9; }
+.ims-risk-fill-ok { background: #22c55e; }
+
+/* ═══════════════ ABC concentration ═══════════════ */
+.ims-abc-bar {
+  display: flex;
+  height: 14px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(15, 23, 42, 0.06);
+}
+.ims-abc-bar span { display: block; height: 100%; transition: width 0.3s ease; }
+.ims-abc-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ims-abc-key {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+}
+.ims-abc-val {
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* ═══════════════ Warehouse comparison ═══════════════ */
+.ims-branch + .ims-branch { margin-top: 12px; }
+.ims-branch-flags {
+  font-weight: 700;
+  color: #b45309;
+}
+
+/* ═══════════════ Expiry runway ═══════════════ */
+.ims-runway {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 132px;
+  padding-top: 6px;
+}
+.ims-runway-col {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  min-width: 0;
+}
+.ims-runway-value {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+  margin-bottom: 3px;
+  white-space: nowrap;
+}
+.ims-runway-bar-wrap {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.ims-runway-bar {
+  width: 70%;
+  max-width: 34px;
+  border-radius: 6px 6px 3px 3px;
+  background: linear-gradient(180deg, #fbbf24, #f59e0b);
+  transition: height 0.3s ease;
+}
+.ims-runway-bar-soon { background: linear-gradient(180deg, #f87171, #dc2626); }
+.ims-runway-label {
+  margin-top: 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+}
+
+/* ═══════════════ Idle capital ═══════════════ */
+.ims-mini-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+}
+.ims-mini-value {
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.3px;
+}
+.ims-badge-neutral {
+  color: rgba(var(--v-theme-on-surface), 0.7) !important;
+  background: rgba(var(--v-theme-on-surface), 0.07) !important;
+}
 
 /* ═══════════════ Attention queues ═══════════════ */
 .ims-queue { position: relative; overflow: hidden; border-color: rgba(15, 23, 42, 0.08); }
@@ -1117,12 +2136,28 @@ watch(() => branchStore.currentBranchId, () => {
   font-size: 13.5px;
   font-weight: 600;
   text-decoration: none;
-  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease,
+    background 0.16s ease;
 }
-.ims-action :deep(.v-icon) { color: var(--act-tone, #2563eb); flex-shrink: 0; }
+.ims-action :deep(.v-icon) {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  padding: 7px;
+  border-radius: 9px;
+  color: var(--act-tone, #2563eb);
+  background: color-mix(in srgb, var(--act-tone, #2563eb) 13%, transparent);
+}
 .ims-action:hover {
   transform: translateY(-2px);
-  border-color: color-mix(in srgb, var(--act-tone, #2563eb) 45%, transparent);
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.09);
+  border-color: color-mix(in srgb, var(--act-tone, #2563eb) 42%, transparent);
+  background: color-mix(in srgb, var(--act-tone, #2563eb) 5%, rgb(var(--v-theme-surface)));
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.1);
+}
+
+@media (max-width: 700px) {
+  .ims-hero { padding: 16px 16px 14px; border-radius: 16px; }
+  .ims-hero-title { font-size: 21px; }
+  .ims-hero-icon { width: 48px; height: 48px; border-radius: 14px; }
 }
 </style>

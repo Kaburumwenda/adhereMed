@@ -13,6 +13,7 @@ import HomecareDashboard from '~/components/dashboards/HomecareDashboard.vue'
 import CaregiverDashboard from '~/components/dashboards/CaregiverDashboard.vue'
 import ClinicDashboard from '~/components/dashboards/ClinicDashboard.vue'
 import InventoryDashboard from '~/components/dashboards/InventoryDashboard.vue'
+import OhsmsDashboard from '~/components/dashboards/OhsmsDashboard.vue'
 import GenericDashboard from '~/components/dashboards/GenericDashboard.vue'
 
 const auth = useAuthStore()
@@ -42,6 +43,11 @@ if (process.client && auth.tenantType === 'inventory' && !['patient'].includes(a
   navigateTo('/ims', { replace: true })
 }
 
+// Occupational Health & Safety tenants use the /ohs dashboard.
+if (process.client && auth.tenantType === 'ohsms' && !['patient'].includes(auth.role)) {
+  navigateTo('/ohs', { replace: true })
+}
+
 const component = computed(() => {
   if (auth.role === 'super_admin') {
     navigateTo('/superadmin')
@@ -56,6 +62,7 @@ const component = computed(() => {
   if (auth.tenantType === 'pharmacy') return PharmacyDashboard
   if (auth.tenantType === 'lab') return LabDashboard
   if (auth.tenantType === 'inventory') return InventoryDashboard
+  if (auth.tenantType === 'ohsms') return OhsmsDashboard
   return GenericDashboard
 })
 </script>

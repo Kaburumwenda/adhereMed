@@ -34,6 +34,11 @@ class User(AbstractBaseUser, PermissionsMixin):
         CAREGIVER = 'caregiver', 'Caregiver'
         INVENTORY_ADMIN = 'inventory_admin', 'Inventory Admin'
         STOREKEEPER = 'storekeeper', 'Storekeeper'
+        # ── Occupational Health & Safety (OHSMS) tenant roles ──
+        HSE_MANAGER = 'hse_manager', 'HSE Manager'
+        SAFETY_OFFICER = 'safety_officer', 'Safety Officer'
+        OCC_HEALTH_NURSE = 'occ_health_nurse', 'Occupational Health Nurse'
+        SUPERVISOR = 'supervisor', 'Supervisor'
         PATIENT = 'patient', 'Patient'
 
     email = models.EmailField(unique=True)

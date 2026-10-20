@@ -40,7 +40,7 @@ export function getNavSections(role, tenantType, t = (x) => x) {
     items: [{
       icon: 'mdi-view-dashboard',
       label: 'Dashboard',
-      path: tenantType === 'lab' ? '/lab' : tenantType === 'pharmacy' ? '/pharmacy' : tenantType === 'radiology_center' ? '/radiology' : tenantType === 'hospital' ? '/hos' : tenantType === 'clinic' ? '/clinics' : tenantType === 'inventory' ? '/ims' : '/dashboard'
+      path: tenantType === 'lab' ? '/lab' : tenantType === 'pharmacy' ? '/pharmacy' : tenantType === 'radiology_center' ? '/radiology' : tenantType === 'hospital' ? '/hos' : tenantType === 'clinic' ? '/clinics' : tenantType === 'inventory' ? '/ims' : tenantType === 'ohsms' ? '/ohs' : '/dashboard'
     }]
   })
 
@@ -309,6 +309,21 @@ export function getNavSections(role, tenantType, t = (x) => x) {
         ]
       },
       {
+        icon: 'mdi-truck-fast-outline', label: 'Logistics', path: '/ims/logistics',
+        children: [
+          { icon: 'mdi-view-dashboard-variant-outline', label: 'Command Center', path: '/ims/logistics' },
+          { icon: 'mdi-truck-fast-outline', label: 'Shipments', path: '/ims/logistics/shipments' },
+          { icon: 'mdi-clipboard-text-outline', label: 'Dispatch Board', path: '/ims/logistics/dispatch' },
+          { icon: 'mdi-map-marker-path', label: 'Route Planning', path: '/ims/logistics/routes' },
+          { icon: 'mdi-crosshairs-gps', label: 'Live Tracking', path: '/ims/logistics/tracking' },
+          { icon: 'mdi-truck-cargo-container', label: 'Fleet & Vehicles', path: '/ims/logistics/fleet' },
+          { icon: 'mdi-account-tie-hat-outline', label: 'Drivers', path: '/ims/logistics/drivers' },
+          { icon: 'mdi-handshake-outline', label: 'Carriers & 3PL', path: '/ims/logistics/carriers' },
+          { icon: 'mdi-chart-box-outline', label: 'Analytics', path: '/ims/logistics/analytics' },
+          { icon: 'mdi-cog-outline', label: 'Zones & Rates', path: '/ims/logistics/settings' },
+        ]
+      },
+      {
         icon: 'mdi-file-document-multiple-outline', label: 'Documents', path: '/ims/documents',
         children: [
           { icon: 'mdi-file-document-multiple', label: 'All Documents', path: '/ims/documents' },
@@ -323,11 +338,27 @@ export function getNavSections(role, tenantType, t = (x) => x) {
           { icon: 'mdi-point-of-sale', label: 'POS', path: '/ims/pos' },
           { icon: 'mdi-receipt-text-plus', label: 'Sales Orders', path: '/ims/sales-orders' },
           { icon: 'mdi-history', label: 'Sales History', path: '/ims/pos/history' },
-          { icon: 'mdi-account-tie-hat-outline', label: 'Customer CRM', path: '/ims/customers' },
+          { icon: 'mdi-account-multiple-outline', label: 'Customers', path: '/ims/customers' },
           { icon: 'mdi-account-cash-outline', label: 'Credits', path: '/ims/credit' },
           { icon: 'mdi-tray-arrow-up', label: 'On-Hold Sales', path: '/ims/pos/parked' },
           { icon: 'mdi-truck', label: 'Deliveries', path: '/ims/deliveries' },
           { icon: 'mdi-cash-register', label: 'Cashier Shifts', path: '/ims/pos/shifts' },
+        ]
+      },
+      {
+        icon: 'mdi-account-tie-hat-outline', label: 'CRM', path: '/ims/crm',
+        children: [
+          { icon: 'mdi-view-dashboard-variant-outline', label: 'Command Center', path: '/ims/crm' },
+          { icon: 'mdi-account-multiple-outline', label: 'Customers', path: '/ims/crm/customers' },
+          { icon: 'mdi-account-group-outline', label: 'Segments', path: '/ims/crm/segments' },
+          { icon: 'mdi-chart-timeline-variant-shimmer', label: 'Sales Pipeline', path: '/ims/crm/pipeline' },
+          { icon: 'mdi-lifebuoy', label: 'Support Desk', path: '/ims/crm/tickets' },
+          { icon: 'mdi-history', label: 'Activities', path: '/ims/crm/activities' },
+          { icon: 'mdi-checkbox-marked-circle-outline', label: 'Follow-up Tasks', path: '/ims/crm/tasks' },
+          { icon: 'mdi-bullhorn-outline', label: 'Campaigns', path: '/ims/crm/campaigns' },
+          { icon: 'mdi-star-circle-outline', label: 'Loyalty', path: '/ims/crm/loyalty' },
+          { icon: 'mdi-emoticon-outline', label: 'Feedback & NPS', path: '/ims/crm/feedback' },
+          { icon: 'mdi-chart-box-outline', label: 'CRM Analytics', path: '/ims/crm/analytics' },
         ]
       },
       {
@@ -731,6 +762,84 @@ export function getNavSections(role, tenantType, t = (x) => x) {
       practiceItems.push({ icon: 'mdi-chat', label: 'Messages', path: ns ? `${ns}/messages` : '/messages' })
     }
     sections.push({ label: 'MY PRACTICE', items: practiceItems })
+  }
+
+  // ── OCCUPATIONAL HEALTH & SAFETY (OHSMS) tenant type ───────────────────
+  // A standalone ISO 45001 safety-management tenant: risk register, incidents,
+  // inspections, permits, competence, PPE, health surveillance, exposure,
+  // behaviour observations, emergency drills, legal register and audits.
+  const ohsmsRoles = ['tenant_admin', 'hse_manager', 'safety_officer', 'occ_health_nurse', 'supervisor', 'admin']
+  if (tenantType === 'ohsms' && ohsmsRoles.includes(role)) {
+    const isWorker = role === 'supervisor'
+
+    const safetyItems = [
+      {
+        icon: 'mdi-alert-outline', label: 'Risk Register', path: '/ohs/hazards',
+        children: [
+          { icon: 'mdi-format-list-bulleted', label: 'Hazard Register', path: '/ohs/hazards' },
+          { icon: 'mdi-clipboard-text-outline', label: 'Risk Assessments', path: '/ohs/risk-assessments' },
+        ]
+      },
+      { icon: 'mdi-alert-circle-outline', label: 'Incidents & CAPA', path: '/ohs/incidents' },
+      { icon: 'mdi-clipboard-check-outline', label: 'Inspections', path: '/ohs/inspections' },
+      { icon: 'mdi-fire-extinguisher', label: 'Safety Equipment', path: '/ohs/equipment' },
+      { icon: 'mdi-file-document-check-outline', label: 'Permits to Work', path: '/ohs/permits' },
+      { icon: 'mdi-eye-check-outline', label: 'Observations', path: '/ohs/observations' },
+      { icon: 'mdi-fire-alert', label: 'Emergency Drills', path: '/ohs/drills' },
+    ]
+
+    const healthItems = [
+      { icon: 'mdi-heart-pulse', label: 'Health & Exposure', path: '/ohs/health' },
+      { icon: 'mdi-school-outline', label: 'Training & Competence', path: '/ohs/training' },
+      { icon: 'mdi-hard-hat', label: 'PPE Management', path: '/ohs/ppe' },
+      {
+        icon: 'mdi-account-hard-hat', label: 'Contractors', path: '/ohs/contractors',
+        children: [
+          { icon: 'mdi-account-multiple', label: 'Contractor Register', path: '/ohs/contractors' },
+        ]
+      },
+    ]
+
+    const governanceItems = [
+      { icon: 'mdi-account-voice', label: 'Safety Committee', path: '/ohs/committee' },
+      { icon: 'mdi-gavel', label: 'Legal & Audits', path: '/ohs/compliance' },
+      { icon: 'mdi-certificate-outline', label: 'Certifications', path: '/ohs/certifications' },
+      {
+        icon: 'mdi-file-document-multiple-outline', label: 'Document Control', path: '/ohs/documents',
+        children: [
+          { icon: 'mdi-file-document-multiple', label: 'All Documents', path: '/ohs/documents' },
+          { icon: 'mdi-flask-outline', label: 'SDS Library', path: '/ohs/documents?tab=sds' },
+        ]
+      },
+      { icon: 'mdi-clipboard-text-clock-outline', label: 'Management Reviews', path: '/ohs/reviews' },
+      { icon: 'mdi-target', label: 'Objectives', path: '/ohs/objectives' },
+      { icon: 'mdi-office-building-outline', label: 'Sites', path: '/ohs/sites' },
+    ]
+
+    const intelligenceItems = [
+      { icon: 'mdi-chart-timeline-variant-shimmer', label: 'Safety Intelligence', path: '/ohs/intelligence' },
+      { icon: 'mdi-bell-alert', label: 'Alert Centre', path: '/ohs/alerts' },
+    ]
+
+    const securitySettingsItems = [
+      { icon: 'mdi-account-hard-hat', label: 'Staff & Access', path: '/ohs/organization/staff' },
+      { icon: 'mdi-shield-key-outline', label: 'Roles & Access', path: '/ohs/organization/rbac' },
+      { icon: 'mdi-shield-search', label: 'Audit Logs', path: '/ohs/organization/audit-logs' },
+      {
+        icon: 'mdi-office-building-cog', label: 'Organization', path: '/ohs/organization/profile',
+        children: [
+          { icon: 'mdi-card-account-details', label: 'Profile', path: '/ohs/organization/profile' },
+          { icon: 'mdi-palette', label: 'Branding', path: '/ohs/organization/branding' },
+        ]
+      },
+      { icon: 'mdi-database-plus-outline', label: 'Demo Data', path: '/ohs/organization/demo-data' },
+    ]
+
+    sections.push({ label: 'INTELLIGENCE', items: intelligenceItems })
+    sections.push({ label: 'SAFETY', items: safetyItems })
+    sections.push({ label: 'HEALTH & COMPETENCE', items: healthItems })
+    if (!isWorker) sections.push({ label: 'GOVERNANCE', items: governanceItems })
+    if (!isWorker) sections.push({ label: 'SECURITY & SETTINGS', items: securitySettingsItems })
   }
 
   return sections

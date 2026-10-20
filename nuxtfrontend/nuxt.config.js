@@ -11,7 +11,10 @@ export default defineNuxtConfig({
 
   // Avoids Vite Node IPC error in SPA dev mode
   experimental: {
-    spaLoadingTemplate: false
+    spaLoadingTemplate: false,
+    // SPA builds never emit _payload.json, so leaving payload extraction on
+    // makes Workbox warn that the "**/_payload.json" glob matches no files.
+    payloadExtraction: false
   },
 
   app: {
@@ -144,6 +147,12 @@ export default defineNuxtConfig({
     ],
     ssr: {
       noExternal: ['vuetify']
+    },
+    build: {
+      // Vuetify + Vue land in one vendor chunk that is legitimately > 500 kB.
+      // jsPDF / html2canvas are already dynamically imported on the pages that
+      // need them, so the default Rollup warning is pure noise here.
+      chunkSizeWarningLimit: 1600
     }
   },
 
@@ -176,6 +185,9 @@ export default defineNuxtConfig({
         ['pharmacy-inventory-stock-analysis', '/pharmacy/inventory/stock-analysis',       'inventory/stock-analysis.vue'],
         ['pharmacy-inventory-stock-take',     '/pharmacy/inventory/stock-take',           'inventory/stock-take.vue'],
         ['pharmacy-inventory-transfers',      '/pharmacy/inventory/transfers',            'inventory/transfers.vue'],
+        ['pharmacy-inventory-transfers-analytics', '/pharmacy/inventory/transfers/analytics', 'inventory/transfers-analytics.vue'],
+        ['pharmacy-inventory-transfers-suggestions', '/pharmacy/inventory/transfers/suggestions', 'inventory/transfers-suggestions.vue'],
+        ['pharmacy-inventory-transfers-optimization', '/pharmacy/inventory/transfers/optimization', 'inventory/transfers-optimization.vue'],
         ['pharmacy-inventory-controlled',     '/pharmacy/inventory/controlled-register',  'inventory/controlled-register.vue'],
         ['pharmacy-inventory-stock-movements', '/pharmacy/inventory/stock-movements',     'inventory/stock-movements.vue'],
         ['pharmacy-inventory-stocks-new',     '/pharmacy/inventory/stocks/new',           'inventory/stocks/new.vue'],
@@ -304,6 +316,9 @@ export default defineNuxtConfig({
         ['ims-inventory-stock-analysis',       '/ims/inventory/stock-analysis',            'inventory/stock-analysis.vue'],
         ['ims-inventory-stock-take',           '/ims/inventory/stock-take',                'inventory/stock-take.vue'],
         ['ims-inventory-transfers',            '/ims/inventory/transfers',                 'inventory/transfers.vue'],
+        ['ims-inventory-transfers-analytics',  '/ims/inventory/transfers/analytics',       'inventory/transfers-analytics.vue'],
+        ['ims-inventory-transfers-suggestions', '/ims/inventory/transfers/suggestions',   'inventory/transfers-suggestions.vue'],
+        ['ims-inventory-transfers-optimization', '/ims/inventory/transfers/optimization', 'inventory/transfers-optimization.vue'],
         ['ims-inventory-controlled',           '/ims/inventory/controlled-register',       'inventory/controlled-register.vue'],
         ['ims-inventory-stock-movements',     '/ims/inventory/stock-movements',          'inventory/stock-movements.vue'],
         ['ims-inventory-stocks-new',           '/ims/inventory/stocks/new',                'inventory/stocks/new.vue'],
@@ -317,6 +332,30 @@ export default defineNuxtConfig({
         ['ims-inventory-units-id-edit',        '/ims/inventory/units/:id()/edit',         'inventory/units/[id]/edit.vue'],
         ['ims-inventory-adj-new',              '/ims/inventory/adjustments/new',          'inventory/adjustments/new.vue'],
         ['ims-inventory-adj-id-edit',          '/ims/inventory/adjustments/:id()/edit',   'inventory/adjustments/[id]/edit.vue'],
+        // ── Warehouse Transport & Logistics ─────────────────────────────────
+        ['ims-logistics',                      '/ims/logistics',                           'logistics/index.vue'],
+        ['ims-logistics-shipments',            '/ims/logistics/shipments',                 'logistics/shipments.vue'],
+        ['ims-logistics-dispatch',             '/ims/logistics/dispatch',                  'logistics/dispatch.vue'],
+        ['ims-logistics-routes',               '/ims/logistics/routes',                    'logistics/routes.vue'],
+        ['ims-logistics-tracking',             '/ims/logistics/tracking',                  'logistics/tracking.vue'],
+        ['ims-logistics-fleet',                '/ims/logistics/fleet',                     'logistics/fleet.vue'],
+        ['ims-logistics-drivers',              '/ims/logistics/drivers',                   'logistics/drivers.vue'],
+        ['ims-logistics-carriers',             '/ims/logistics/carriers',                  'logistics/carriers.vue'],
+        ['ims-logistics-analytics',            '/ims/logistics/analytics',                 'logistics/analytics.vue'],
+        ['ims-logistics-settings',             '/ims/logistics/settings',                  'logistics/settings.vue'],
+        // ── Customer CRM ────────────────────────────────────────────────────
+        ['ims-crm',                            '/ims/crm',                                 'crm/index.vue'],
+        ['ims-crm-customers',                  '/ims/crm/customers',                       'crm/customers/index.vue'],
+        ['ims-crm-customers-id',               '/ims/crm/customers/:id()',                 'crm/customers/[id]/index.vue'],
+        ['ims-crm-segments',                   '/ims/crm/segments',                        'crm/segments.vue'],
+        ['ims-crm-pipeline',                   '/ims/crm/pipeline',                        'crm/pipeline.vue'],
+        ['ims-crm-tickets',                    '/ims/crm/tickets',                         'crm/tickets.vue'],
+        ['ims-crm-activities',                 '/ims/crm/activities',                      'crm/activities.vue'],
+        ['ims-crm-tasks',                      '/ims/crm/tasks',                           'crm/tasks.vue'],
+        ['ims-crm-campaigns',                  '/ims/crm/campaigns',                       'crm/campaigns.vue'],
+        ['ims-crm-loyalty',                    '/ims/crm/loyalty',                         'crm/loyalty.vue'],
+        ['ims-crm-feedback',                   '/ims/crm/feedback',                        'crm/feedback.vue'],
+        ['ims-crm-analytics',                  '/ims/crm/analytics',                       'crm/analytics.vue'],
         // Document Management System
         ['ims-documents',                     '/ims/documents',                           'documents/index.vue'],
         ['ims-documents-new',                 '/ims/documents/new',                       'documents/new.vue'],
@@ -421,6 +460,10 @@ export default defineNuxtConfig({
         // Organization (tenant profile)
         ['ims-organization-profile',          '/ims/organization/profile',               'organization/profile.vue'],
         ['ims-organization-branding',         '/ims/organization/branding',              'organization/branding.vue'],
+        // Organization (OHSMS namespace — same shared pages)
+        ['ohs-organization',                  '/ohs/organization',                       'organization/profile.vue'],
+        ['ohs-organization-profile',          '/ohs/organization/profile',               'organization/profile.vue'],
+        ['ohs-organization-branding',         '/ohs/organization/branding',              'organization/branding.vue'],
         // Staff
         ['ims-staff',                         '/ims/staff',                                'staff/index.vue'],
         // Roles & Access (RBAC)

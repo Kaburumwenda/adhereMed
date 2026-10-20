@@ -24,11 +24,16 @@ class SpecializationViewSet(viewsets.ModelViewSet):
 
 
 class StaffProfileViewSet(BranchScopedMixin, viewsets.ModelViewSet):
-    queryset = StaffProfile.objects.select_related('user', 'department', 'specialization').all()
+    queryset = StaffProfile.objects.select_related(
+        'user', 'department', 'specialization', 'branch',
+    ).all()
     serializer_class = StaffProfileSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['department', 'is_available', 'specialization', 'branch']
-    search_fields = ['user__first_name', 'user__last_name', 'specialization__name']
+    search_fields = [
+        'user__first_name', 'user__last_name', 'user__email', 'user__role',
+        'specialization__name', 'qualification', 'license_number',
+    ]
     ordering_fields = ['created_at', 'specialization__name']
 
     def get_serializer_class(self):

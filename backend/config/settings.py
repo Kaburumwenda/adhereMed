@@ -72,10 +72,16 @@ TENANT_APPS = [
     'reports',
     # Document Management System
     'documents',
+    # Warehouse Transport & Logistics
+    'logistics',
+    # Customer Relationship Management
+    'crm',
     # Generic per-tenant audit trail (IAM & Security)
     'audit',
     # homecare tenant app
     'homecare',
+    # Occupational Health & Safety Management System
+    'ohs',
 ]
 
 INSTALLED_APPS = list(SHARED_APPS) + [

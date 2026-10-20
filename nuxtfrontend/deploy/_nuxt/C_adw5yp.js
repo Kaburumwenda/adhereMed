@@ -1,0 +1,1 @@
+import{a as o}from"./BOkUe_AH.js";import{o as r,c as n,t as l,f as a,v as c,h as p}from"./Bu3zV44o.js";const d={__name:"RiskBadge",props:{level:{type:[String,Number],default:"unrated"}},setup(s){const t=s,e=p(()=>o(t.level));return(m,i)=>(r(),n("span",{class:c(["ohs-badge",`ohs-badge--${a(e).tone}`])},l(a(e).label),3))}};export{d as _};

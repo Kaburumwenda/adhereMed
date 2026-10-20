@@ -366,7 +366,8 @@ const typeOptions = [
   { title: 'Lab', value: 'lab' },
   { title: 'Radiology', value: 'radiology_center' },
   { title: 'Homecare', value: 'homecare' },
-  { title: 'Inventory / Warehouse', value: 'inventory' }
+  { title: 'Inventory / Warehouse', value: 'inventory' },
+  { title: 'Occupational Health & Safety', value: 'ohsms' }
 ]
 
 const statusOptions = [
@@ -431,12 +432,14 @@ function typeIcon(type) {
   return {
     pharmacy: 'mdi-pill', lab: 'mdi-test-tube', homecare: 'mdi-home-heart',
     clinic: 'mdi-doctor', radiology_center: 'mdi-radiology', inventory: 'mdi-warehouse',
+    ohsms: 'mdi-shield-check-outline',
   }[type] || 'mdi-hospital-building'
 }
 
 function typeColor(type) {
   return {
     pharmacy: 'secondary', lab: 'warning', homecare: 'teal', inventory: 'cyan-darken-1',
+    ohsms: 'pink-darken-1',
   }[type] || 'primary'
 }
 

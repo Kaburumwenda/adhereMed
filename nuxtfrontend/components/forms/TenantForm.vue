@@ -510,7 +510,8 @@ const typeOptions = [
   { title: 'Lab', value: 'lab', icon: 'mdi-flask', color: '#F59E0B', desc: 'Lab orders & results' },
   { title: 'Radiology', value: 'radiology_center', icon: 'mdi-radiology', color: '#8B5CF6', desc: 'Imaging & reports' },
   { title: 'Homecare', value: 'homecare', icon: 'mdi-home-heart', color: '#EC4899', desc: 'In-home care services' },
-  { title: 'Inventory / Warehouse', value: 'inventory', icon: 'mdi-warehouse', color: '#14B8A6', desc: 'Stock control & distribution' }
+  { title: 'Inventory / Warehouse', value: 'inventory', icon: 'mdi-warehouse', color: '#14B8A6', desc: 'Stock control & distribution' },
+  { title: 'Occupational Health & Safety', value: 'ohsms', icon: 'mdi-shield-check-outline', color: '#F43F5E', desc: 'OHSMS, risk & compliance' }
 ]
 
 const selectedType = computed(() => typeOptions.find(t => t.value === form.type))

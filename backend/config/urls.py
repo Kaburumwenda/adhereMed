@@ -46,8 +46,14 @@ urlpatterns = [
     path('api/reports/', include('reports.urls')),
     # API — Document Management System
     path('api/documents/', include('documents.urls')),
+    # API — Warehouse Transport & Logistics
+    path('api/logistics/', include('logistics.urls')),
+    # API — Customer Relationship Management
+    path('api/crm/', include('crm.urls')),
     # API — Homecare tenant app
     path('api/homecare/', include('homecare.urls')),
+    # API — Occupational Health & Safety Management System
+    path('api/ohs/', include('ohs.urls')),
     # API — Per-tenant audit trail (IAM & Security)
     path('api/audit/', include('audit.urls')),
     # OpenAPI documentation

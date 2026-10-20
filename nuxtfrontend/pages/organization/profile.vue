@@ -353,7 +353,7 @@ const { isInventory, profile: profileApi } = useTenantEndpoints()
 const ADMIN_EDIT_ROLES = new Set([
   'super_admin', 'tenant_admin', 'clinic_admin', 'hospital_admin',
   'pharmacy_admin', 'lab_admin', 'radiology_admin', 'homecare_admin',
-  'inventory_admin', 'admin',
+  'inventory_admin', 'hse_manager', 'safety_officer', 'admin',
 ])
 
 const canEdit = computed(() => ADMIN_EDIT_ROLES.has(auth.role))

@@ -97,6 +97,7 @@ const ADMIN_ONLY_PREFIXES = [
   '/ims/adjustments',
   '/ims/categories',
   '/ims/units',
+  '/ohs/organization',
 ]
 
 // Roles considered "admins" of their tenant.
@@ -109,6 +110,9 @@ export const ADMIN_ROLES = new Set([
   'lab_admin',
   'radiology_admin',
   'inventory_admin',
+  'hse_manager',
+  'safety_officer',
+  'occ_health_nurse',
   'branch_admin',
   'admin',
 ])
@@ -361,6 +365,7 @@ const ALWAYS_ALLOWED_EXACT = new Set([
   '/hos',
   '/clinics',
   '/ims',
+  '/ohs',
 ])
 
 function startsWithAny(path, prefixes) {

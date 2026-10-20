@@ -16,6 +16,9 @@
     <slot />
   </v-main>
 
+  <!-- OHSMS command palette (⌘K / Ctrl+K) — mounted only inside the /ohs namespace -->
+  <OhsCommandPalette v-if="isOhsTenant" v-model="paletteOpen" />
+
   <!-- Branch auto-assign notification -->
   <v-snackbar
     v-model="branchSnack"
@@ -68,6 +71,10 @@ async function onLogout() {
 // Init branch store and auto-assign nearest branch for non-admin staff
 onMounted(async () => {
   if (auth.isLoggedIn) {
+    // Pull the tenant's authoritative brand palette (Organization → Branding)
+    // so a saved palette applies app-wide after a reload, not just in the
+    // session that saved it.
+    useBranding().load().catch(() => {})
     await branchStore.load()
     // Lock branch for users with an assigned branch (branch_admin, pharmacist, cashier, etc.)
     const userBranchId = auth.user?.branch_id
@@ -82,4 +89,22 @@ onMounted(async () => {
 watch(() => branchStore.autoAssignedBranch, (v) => {
   if (v) branchSnack.value = true
 })
+
+// ── OHSMS command palette ─────────────────────────────────────────────
+// Only mounted for Occupational Health & Safety tenants; opened with ⌘K /
+// Ctrl+K so keyboard-driven navigation feels native.
+const paletteOpen = ref(false)
+const isOhsTenant = computed(() => auth.tenantType === 'ohsms'
+  || route.path.startsWith('/ohs'))
+
+function onPaletteHotkey(e) {
+  if (!isOhsTenant.value) return
+  if ((e.metaKey || e.ctrlKey) && String(e.key).toLowerCase() === 'k') {
+    e.preventDefault()
+    paletteOpen.value = !paletteOpen.value
+  }
+}
+
+onMounted(() => window.addEventListener('keydown', onPaletteHotkey))
+onBeforeUnmount(() => window.removeEventListener('keydown', onPaletteHotkey))
 </script>

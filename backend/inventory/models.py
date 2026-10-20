@@ -346,6 +346,42 @@ class StockTransfer(models.Model):
     )
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
     notes = models.TextField(blank=True)
+
+    # ── Cargo & scheduling (optional, populated from the wizard) ──
+    class Priority(models.TextChoices):
+        LOW = 'low', 'Low'
+        NORMAL = 'normal', 'Normal'
+        HIGH = 'high', 'High'
+        URGENT = 'urgent', 'Urgent'
+
+    priority = models.CharField(
+        max_length=10, choices=Priority.choices, default=Priority.NORMAL,
+    )
+    parcel_count = models.PositiveIntegerField(null=True, blank=True)
+    weight_kg = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+    )
+    scheduled_pickup = models.DateTimeField(null=True, blank=True)
+    scheduled_delivery = models.DateTimeField(null=True, blank=True)
+
+    # ── Assignment (nullable links to the logistics fleet) ──
+    assigned_driver = models.ForeignKey(
+        'logistics.Driver', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='stock_transfers',
+    )
+    assigned_carrier = models.ForeignKey(
+        'logistics.Carrier', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='stock_transfers',
+    )
+    assigned_vehicle = models.ForeignKey(
+        'logistics.Vehicle', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='stock_transfers',
+    )
+    assigned_vehicle_note = models.CharField(
+        max_length=255, blank=True,
+        help_text='Free-text vehicle description when no fleet vehicle is linked.',
+    )
+
     requested_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='requested_transfers',
@@ -361,6 +397,18 @@ class StockTransfer(models.Model):
     requested_at = models.DateTimeField(auto_now_add=True)
     shipped_at = models.DateTimeField(null=True, blank=True)
     received_at = models.DateTimeField(null=True, blank=True)
+
+    # ── Digital signatures (captured in the approve / receive dialogs) ──
+    # Stored as base64 PNG data-URLs, mirroring homecare.Consent so the whole
+    # platform uses a single signature representation.
+    approved_signature = models.TextField(
+        blank=True, default='',
+        help_text="Base64 data-URL of the approver's captured signature (PNG).",
+    )
+    received_signature = models.TextField(
+        blank=True, default='',
+        help_text="Base64 data-URL of the receiver's captured signature (PNG).",
+    )
 
     class Meta:
         ordering = ['-requested_at']
@@ -387,6 +435,12 @@ class StockTransfer(models.Model):
 class StockTransferLine(models.Model):
     transfer = models.ForeignKey(StockTransfer, on_delete=models.CASCADE, related_name='lines')
     stock = models.ForeignKey(MedicationStock, on_delete=models.CASCADE, related_name='transfer_lines')
+    batch = models.ForeignKey(
+        StockBatch, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='transfer_lines',
+        help_text='Optional: specific source batch to deduct from. '
+                  'When null, the approver drains batches FEFO.',
+    )
     quantity = models.PositiveIntegerField()
     quantity_received = models.PositiveIntegerField(default=0, help_text='How much actually arrived')
     notes = models.CharField(max_length=255, blank=True)

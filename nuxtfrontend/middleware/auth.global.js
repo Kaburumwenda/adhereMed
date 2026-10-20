@@ -37,6 +37,7 @@ function getHomePath(auth) {
   if (auth.tenantType === 'hospital') return '/hos'
   if (auth.tenantType === 'clinic') return '/clinics'
   if (auth.tenantType === 'inventory') return '/ims'
+  if (auth.tenantType === 'ohsms') return '/ohs'
   return '/dashboard'
 }
 

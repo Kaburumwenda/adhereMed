@@ -5,9 +5,9 @@
   "version": "1.0.0",
   "description": "AdhereMed - Hospital & Pharmacy Ecosystem (Nuxt 3 frontend)",
   "scripts": {
-    "build": "nuxt build",
+    "build": "node --max-old-space-size=8192 ./node_modules/nuxt/bin/nuxt.mjs build",
     "dev": "nuxt dev",
-    "generate": "nuxt generate",
+    "generate": "node --max-old-space-size=8192 ./node_modules/nuxt/bin/nuxt.mjs generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare"
   },

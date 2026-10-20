@@ -11,6 +11,7 @@ class Tenant(TenantMixin):
         RADIOLOGY = 'radiology_center', 'Radiology Center'
         CLINIC = 'clinic', 'Clinic'
         INVENTORY = 'inventory', 'Inventory / Warehouse'
+        OHSMS = 'ohsms', 'Occupational Health & Safety'
 
     class ProvisioningStatus(models.TextChoices):
         """Lifecycle of a tenant's database schema.

@@ -139,3 +139,476 @@ html, body, #__nuxt {
   background: rgb(30, 41, 59) !important;
   border-color: rgba(255, 255, 255, 0.08) !important;
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   BRANDED DIALOG HEADER
+   ---------------------------------------------------------------------
+   Every `v-dialog` in the app gets the tenant's brand gradient on its
+   first `v-card-title`, so modals look like a top-branded sheet without
+   touching hundreds of SFCs.
+
+   Values come from `plugins/branding-vars.client.js`, which mirrors the
+   `useBranding()` palette onto <html> as `--brand-*` custom properties.
+
+   Dialogs that already build their own header (`BrandDialogHeader.vue`,
+   the `.lg-dialog-head` heads in logistics) do not use `v-card-title`,
+   so they are untouched.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Vuetify renders an absolutely-positioned `.v-card__loader` as the card's
+   first child, so `:first-child` never matches the title. Accept both. */
+.v-dialog > .v-overlay__content > .v-card > :is(.v-card-title:first-child, .v-card__loader:first-child + .v-card-title) {
+  position: relative;
+  color: #fff !important;
+  background-color: var(--brand-primary, #2f6dff);
+  background-image:
+    radial-gradient(circle at 88% -60%, rgba(255, 255, 255, 0.26), transparent 62%),
+    var(--brand-gradient, linear-gradient(120deg, #143ce1 0%, #2f6dff 52%, #37d6ff 100%));
+  background-repeat: no-repeat;
+  background-size: cover;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.16);
+  min-height: 62px;
+}
+
+/* Icons inside a branded header inherit white instead of their own colour. */
+.v-dialog > .v-overlay__content > .v-card > :is(.v-card-title:first-child, .v-card__loader:first-child + .v-card-title) .v-icon {
+  color: #fff !important;
+  opacity: 0.96;
+}
+
+/* Chips render as frosted pills on the gradient. */
+.v-dialog > .v-overlay__content > .v-card > :is(.v-card-title:first-child, .v-card__loader:first-child + .v-card-title) .v-chip {
+  background-color: rgba(255, 255, 255, 0.18) !important;
+  color: #fff !important;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+}
+.v-dialog > .v-overlay__content > .v-card > :is(.v-card-title:first-child, .v-card__loader:first-child + .v-card-title) .v-chip .v-chip__underlay {
+  display: none;
+}
+
+/* Secondary/help text inside the header stays legible on the gradient. */
+.v-dialog > .v-overlay__content > .v-card > :is(.v-card-title:first-child, .v-card__loader:first-child + .v-card-title) :is(.text-medium-emphasis, .text-caption, .text-body-2) {
+  color: rgba(255, 255, 255, 0.84) !important;
+}
+
+/* A `v-divider` directly under the header is redundant — the gradient edge
+   already separates the two surfaces. */
+.v-dialog > .v-overlay__content > .v-card > :is(.v-card-title:first-child, .v-card__loader:first-child + .v-card-title) + .v-divider {
+  display: none;
+}
+
+/* `v-toolbar`-headed dialogs (flat variant) get the same treatment. */
+.v-dialog > .v-overlay__content > .v-card > .v-toolbar:first-child {
+  color: #fff !important;
+  background-color: var(--brand-primary, #2f6dff) !important;
+  background-image:
+    radial-gradient(circle at 88% -60%, rgba(255, 255, 255, 0.26), transparent 62%),
+    var(--brand-gradient, linear-gradient(120deg, #143ce1 0%, #2f6dff 52%, #37d6ff 100%)) !important;
+  background-repeat: no-repeat;
+  background-size: cover;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+}
+.v-dialog > .v-overlay__content > .v-card > .v-toolbar:first-child .v-icon,
+.v-dialog > .v-overlay__content > .v-card > .v-toolbar:first-child .v-toolbar-title {
+  color: #fff !important;
+}
+
+/* ── Branded dialog header helpers (usable from any template) ────────── */
+.brand-dialog-chip {
+  background: rgba(255, 255, 255, 0.18) !important;
+  color: #fff !important;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+}
+.brand-dialog-chip-solid {
+  background: #fff !important;
+  color: var(--brand-ink, #143ce1) !important;
+}
+
+/* OHS_MARKER */
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OHSMS surface (／ohs/*) — Occupational Health & Safety Management System
+   A shared design system for every OHS page. Colours come from the tenant
+   palette published on <html> by plugins/branding-vars.client.js.
+   ═══════════════════════════════════════════════════════════════════════ */
+.ohs-page {
+  max-width: 1680px;
+  margin: 0 auto;
+  padding: 16px 18px 40px;
+}
+@media (max-width: 700px) {
+  .ohs-page { padding: 12px 12px 32px; }
+}
+
+/* ── Hero ──────────────────────────────────────────────────────────── */
+.ohs-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  padding: 20px 22px 16px;
+  color: #fff;
+  background: var(--brand-gradient, linear-gradient(120deg, #143ce1 0%, #2f6dff 52%, #37d6ff 100%));
+  box-shadow: var(--brand-shadow, 0 14px 34px rgba(47, 109, 255, 0.24));
+}
+.ohs-glow {
+  position: absolute;
+  width: 340px;
+  height: 340px;
+  border-radius: 50%;
+  right: -110px;
+  top: -170px;
+  pointer-events: none;
+  background: radial-gradient(circle, var(--brand-glow, rgba(255, 255, 255, 0.28)), transparent 68%);
+}
+.ohs-glow-2 {
+  right: auto;
+  left: -140px;
+  top: auto;
+  bottom: -220px;
+  width: 300px;
+  height: 300px;
+  background: radial-gradient(circle, var(--brand-glow-2, rgba(55, 214, 255, 0.24)), transparent 70%);
+}
+.ohs-hero-top { position: relative; z-index: 1; }
+.ohs-hero-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  backdrop-filter: blur(6px);
+}
+.ohs-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.78);
+}
+.ohs-title {
+  font-size: 25px;
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  margin: 2px 0;
+}
+.ohs-sub {
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.82);
+  max-width: 820px;
+}
+.ohs-hero-foot {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+.ohs-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.94);
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  white-space: nowrap;
+}
+.ohs-chip b { font-weight: 800; }
+.ohs-chip-warn {
+  background: rgba(245, 158, 11, 0.32);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+.ohs-chip-danger {
+  background: rgba(220, 38, 38, 0.34);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+/* Hero action tiers */
+.ohs-btn-strong {
+  background: #fff !important;
+  color: var(--brand-ink, #143ce1) !important;
+  font-weight: 700 !important;
+  border: 1px solid rgba(255, 255, 255, 0.95) !important;
+  box-shadow: 0 6px 18px rgba(6, 20, 44, 0.26) !important;
+}
+.ohs-btn-strong:hover { filter: brightness(0.95); }
+.ohs-btn-strong .v-icon { color: var(--brand-ink, #143ce1) !important; opacity: 1 !important; }
+.ohs-btn-glass {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #fff !important;
+  font-weight: 600 !important;
+  border: 1px solid rgba(255, 255, 255, 0.34) !important;
+  backdrop-filter: blur(6px);
+}
+.ohs-btn-glass:hover {
+  background: rgba(255, 255, 255, 0.26) !important;
+  border-color: rgba(255, 255, 255, 0.6) !important;
+}
+.ohs-btn-glass .v-icon { color: #fff !important; opacity: 1 !important; }
+
+/* ── KPI tiles ─────────────────────────────────────────────────────── */
+.ohs-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(172px, 1fr));
+  gap: 10px;
+}
+.ohs-kpi {
+  position: relative;
+  overflow: hidden;
+  padding: 13px 14px 12px;
+  border-radius: 13px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgb(var(--v-theme-surface));
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+.ohs-kpi::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: currentColor;
+  opacity: 0.85;
+}
+.ohs-kpi:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  border-color: color-mix(in srgb, currentColor 34%, transparent);
+}
+.ohs-kpi-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ohs-kpi-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  line-height: 1.3;
+}
+.ohs-kpi-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: currentColor;
+  background: color-mix(in srgb, currentColor 13%, transparent);
+}
+.ohs-kpi-value {
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.5px;
+  margin-top: 6px;
+  color: rgb(var(--v-theme-on-surface));
+  font-variant-numeric: tabular-nums;
+}
+.ohs-kpi-sub {
+  font-size: 11px;
+  line-height: 1.35;
+  margin-top: 3px;
+  color: rgba(var(--v-theme-on-surface), 0.58);
+}
+.ohs-kpi-delta { font-weight: 700; }
+
+/* ── Panels ────────────────────────────────────────────────────────── */
+.ohs-panel {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 14px;
+  background: rgb(var(--v-theme-surface));
+  overflow: hidden;
+  height: 100%;
+}
+.ohs-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 14px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+.ohs-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.ohs-panel-sub {
+  font-size: 11px;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  line-height: 1.3;
+}
+.ohs-panel-body { padding: 13px 14px; }
+.ohs-panel-body--flush { padding: 0; }
+
+/* ── Badges ────────────────────────────────────────────────────────── */
+.ohs-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.ohs-badge--ok    { color: #15803d; background: rgba(34, 197, 94, 0.12);  border-color: rgba(34, 197, 94, 0.28); }
+.ohs-badge--info  { color: #0369a1; background: rgba(14, 165, 233, 0.12); border-color: rgba(14, 165, 233, 0.28); }
+.ohs-badge--warn  { color: #b45309; background: rgba(245, 158, 11, 0.14); border-color: rgba(245, 158, 11, 0.3); }
+.ohs-badge--err   { color: #b91c1c; background: rgba(239, 68, 68, 0.12);  border-color: rgba(239, 68, 68, 0.28); }
+.ohs-badge--crit  { color: #fff;    background: #b91c1c;                  border-color: #991b1b; }
+.ohs-badge--muted { color: rgba(var(--v-theme-on-surface), 0.62); background: rgba(15, 23, 42, 0.05); border-color: rgba(15, 23, 42, 0.1); }
+.v-theme--dark .ohs-badge--ok   { color: #86efac; }
+.v-theme--dark .ohs-badge--info { color: #7dd3fc; }
+.v-theme--dark .ohs-badge--warn { color: #fcd34d; }
+.v-theme--dark .ohs-badge--err  { color: #fca5a5; }
+
+/* ── Meter ─────────────────────────────────────────────────────────── */
+.ohs-meter {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+}
+.ohs-meter-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: currentColor;
+  transition: width 0.4s ease;
+}
+
+/* ── Risk matrix ───────────────────────────────────────────────────── */
+.ohs-matrix {
+  display: grid;
+  grid-template-columns: 24px repeat(5, 1fr);
+  gap: 3px;
+  max-width: 330px;
+}
+.ohs-matrix-axis {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+}
+.ohs-matrix-cell {
+  aspect-ratio: 1;
+  min-height: 40px;
+  max-height: 62px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 800;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  transition: transform 0.12s ease;
+  cursor: default;
+}
+.ohs-matrix-cell:hover { transform: scale(1.06); z-index: 1; }
+.ohs-matrix-cell small { font-size: 9px; font-weight: 700; opacity: 0.7; }
+.ohs-matrix-cell--0 { background: rgba(15, 23, 42, 0.03); color: rgba(var(--v-theme-on-surface), 0.35); }
+.ohs-matrix-cell--1 { background: rgba(34, 197, 94, 0.18); color: #15803d; }
+.ohs-matrix-cell--2 { background: rgba(132, 204, 22, 0.26); color: #3f6212; }
+.ohs-matrix-cell--3 { background: rgba(245, 158, 11, 0.3); color: #b45309; }
+.ohs-matrix-cell--4 { background: rgba(249, 115, 22, 0.36); color: #9a3412; }
+.ohs-matrix-cell--5 { background: rgba(220, 38, 38, 0.55); color: #fff; }
+
+/* ── Toolbar ───────────────────────────────────────────────────────── */
+.ohs-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  background: rgba(var(--v-theme-primary), 0.02);
+}
+
+/* ── Tables ────────────────────────────────────────────────────────── */
+.ohs-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
+.ohs-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 9px 12px;
+  text-align: left;
+  white-space: nowrap;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  background: rgb(var(--v-theme-surface));
+  border-bottom: 2px solid rgba(var(--v-theme-on-surface), 0.08);
+}
+.ohs-table tbody td {
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.05);
+  vertical-align: middle;
+}
+.ohs-table tbody tr:hover td { background: rgba(var(--v-theme-primary), 0.035); }
+.ohs-table tbody tr { cursor: pointer; }
+.ohs-table--plain tbody tr { cursor: default; }
+.ohs-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.ohs-scroll { overflow: auto; max-height: 64vh; }
+
+/* ── Misc ──────────────────────────────────────────────────────────── */
+.ohs-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 16px;
+  text-align: center;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  font-size: 12.5px;
+}
+.ohs-list-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.05);
+}
+.ohs-list-row:last-child { border-bottom: none; }
+.ohs-mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
+.ohs-strong { font-weight: 700; }
+.ohs-tabular { font-variant-numeric: tabular-nums; }
+

@@ -1,133 +1,257 @@
 <template>
   <div class="excel-page">
-    <v-container fluid class="pa-4 pa-md-6">
-      <!-- Header -->
-      <div class="d-flex align-center flex-wrap ga-3 mb-5">
-        <v-btn icon="mdi-arrow-left" variant="text" to="/inventory" size="small" class="mr-1" />
-        <v-avatar color="green-lighten-5" rounded="lg" size="52">
-          <v-icon color="green-darken-2" size="30">mdi-microsoft-excel</v-icon>
-        </v-avatar>
-        <div>
-          <div class="text-h5 font-weight-bold">Excel Import / Export</div>
-          <div class="text-body-2 text-medium-emphasis">
-            Move inventory in and out of AdhereMed with spreadsheets · review before saving
+    <v-container fluid class="pa-3 pa-md-5 xl-page">
+
+      <!-- ═══════════════ HERO ═══════════════ -->
+      <div class="xl-hero mb-4" :style="heroTheme">
+        <span class="xl-glow" />
+        <span class="xl-glow xl-glow-2" />
+
+        <div class="d-flex flex-wrap align-center justify-space-between ga-3 xl-hero-top">
+          <div class="d-flex align-center" style="gap:14px; min-width:0">
+            <v-btn
+              icon="mdi-arrow-left"
+              variant="text"
+              size="small"
+              class="xl-hero-iconbtn"
+              title="Back to inventory"
+              :to="p('/inventory')"
+            />
+            <div class="xl-hero-icon">
+              <v-icon size="30">mdi-microsoft-excel</v-icon>
+            </div>
+            <div style="min-width:0">
+              <div class="xl-eyebrow">
+                <v-icon size="10">mdi-circle</v-icon>
+                INVENTORY · DATA EXCHANGE
+              </div>
+              <h1 class="xl-title">Excel import / export</h1>
+              <div class="xl-sub">
+                Move stock in and out of the system with spreadsheets — every row is reviewed before it is saved
+              </div>
+            </div>
+          </div>
+
+          <div class="d-flex flex-wrap align-center ga-2">
+            <v-btn
+              variant="flat"
+              elevation="0"
+              rounded="lg"
+              class="text-none xl-btn-glass"
+              prepend-icon="mdi-file-download-outline"
+              :loading="busy === 'template'"
+              @click="download('template')"
+            >Import template</v-btn>
+            <v-btn
+              variant="flat"
+              elevation="0"
+              rounded="lg"
+              class="text-none xl-btn-strong"
+              prepend-icon="mdi-file-upload-outline"
+              @click="openPicker"
+            >Upload a file</v-btn>
           </div>
         </div>
-        <v-spacer />
+
+        <div class="xl-hero-foot d-flex flex-wrap align-center" style="gap:8px">
+          <span class="xl-hero-chip">
+            <v-icon size="14">mdi-database-outline</v-icon>
+            {{ stockCount.toLocaleString() }} items in stock
+          </span>
+          <span class="xl-hero-chip">
+            <v-icon size="14">mdi-shape-outline</v-icon>
+            {{ categoryNames.length }} categories
+          </span>
+          <span class="xl-hero-chip">
+            <v-icon size="14">mdi-warehouse</v-icon>
+            {{ branchList.length }} warehouses
+          </span>
+          <span class="xl-hero-chip">
+            <v-icon size="14">mdi-counter</v-icon>
+            {{ unitNames.length }} units
+          </span>
+          <span v-if="rows.length" class="xl-hero-chip xl-hero-chip-warn">
+            <v-icon size="14">mdi-table-alert</v-icon>
+            {{ rows.length }} rows pending review
+          </span>
+        </div>
       </div>
 
-      <!-- Export card -->
-      <v-card flat rounded="xl" border class="pa-4 mb-4">
-        <div class="d-flex align-center flex-wrap ga-3">
-          <v-avatar color="teal-lighten-5" size="44" class="mr-2">
-            <v-icon color="teal-darken-2">mdi-file-export</v-icon>
-          </v-avatar>
-          <div class="mr-4">
-            <div class="text-subtitle-1 font-weight-bold">Export</div>
-            <div class="text-caption text-medium-emphasis">
-              Download your full inventory ({{ stockCount.toLocaleString() }} items) as a spreadsheet
-            </div>
-          </div>
-          <v-spacer />
-          <v-btn variant="tonal" color="primary" rounded="lg" class="text-none"
-                 prepend-icon="mdi-file-download-outline" :loading="busy === 'template'"
-                 @click="download('template')">Import template</v-btn>
-          <v-btn color="success" rounded="lg" class="text-none"
-                 prepend-icon="mdi-microsoft-excel" :loading="busy === 'excel'"
-                 @click="download('excel')">Export to Excel</v-btn>
-          <v-btn variant="tonal" color="primary" rounded="lg" class="text-none"
-                 prepend-icon="mdi-file-delimited" :loading="busy === 'csv'"
-                 @click="download('csv')">Export CSV</v-btn>
-        </div>
-      </v-card>
-
-      <!-- Import card -->
-      <v-card flat rounded="xl" border class="pa-4">
-        <div class="d-flex align-center flex-wrap ga-3 mb-3">
-          <v-avatar color="green-lighten-5" size="44" class="mr-2">
-            <v-icon color="green-darken-2">mdi-file-upload</v-icon>
-          </v-avatar>
-          <div>
-            <div class="text-subtitle-1 font-weight-bold">Import</div>
-            <div class="text-caption text-medium-emphasis">
-              Upload .xlsx or .csv · every row is reviewed and editable before anything is saved
-            </div>
-          </div>
-        </div>
-
-        <!-- Drop zone -->
+      <!-- ═══════════════ WORKFLOW STEPS ═══════════════ -->
+      <div class="xl-steps mb-3">
         <div
-          v-if="!rows.length"
-          class="dropzone"
-          :class="{ 'dropzone-active': dragging }"
-          @dragover.prevent="dragging = true"
-          @dragleave.prevent="dragging = false"
-          @drop.prevent="onDrop"
-          @click="openPicker"
+          v-for="(s, i) in steps"
+          :key="s.key"
+          class="xl-step"
+          :class="{ 'xl-step--done': s.done, 'xl-step--active': s.active }"
         >
-          <input ref="fileInput" type="file" accept=".xlsx,.csv" class="d-none" @change="onFileInput" />
-          <svg class="dropzone-ants" aria-hidden="true">
-            <rect x="1.25" y="1.25" width="calc(100% - 2.5px)" height="calc(100% - 2.5px)" rx="16" />
-          </svg>
-          <v-avatar size="72" color="primary" variant="tonal" class="mb-3">
-            <v-icon size="36">{{ dragging ? 'mdi-file-upload-outline' : 'mdi-cloud-upload-outline' }}</v-icon>
-          </v-avatar>
-          <div class="text-h6 mb-1">{{ dragging ? 'Drop your file here' : 'Drag & drop your spreadsheet' }}</div>
-          <div class="text-body-2 text-medium-emphasis mb-3">
-            or <span class="text-primary font-weight-medium">browse files</span> · .xlsx / .csv · up to ~5,000 rows
+          <span class="xl-step-num">
+            <v-icon v-if="s.done" size="15">mdi-check</v-icon>
+            <template v-else>{{ i + 1 }}</template>
+          </span>
+          <div style="min-width:0">
+            <div class="xl-step-title">{{ s.title }}</div>
+            <div class="xl-step-sub">{{ s.sub }}</div>
           </div>
-          <v-btn variant="tonal" color="primary" rounded="lg" class="text-none"
-                 prepend-icon="mdi-file-download-outline" :loading="busy === 'template'"
-                 @click.stop="download('template')">
-            Download the template first
-          </v-btn>
         </div>
+      </div>
 
-        <v-progress-linear v-if="uploading" color="primary" indeterminate height="3" class="mb-3" />
+      <v-row class="align-start">
+        <!-- ═══════════════ LEFT: EXPORT ═══════════════ -->
+        <v-col cols="12" md="4">
+          <v-card rounded="lg" elevation="0" class="xl-card h-100 overflow-hidden">
+            <div class="xl-section-head">
+              <div class="d-flex align-center" style="gap:10px">
+                <v-avatar size="32" color="teal" variant="tonal">
+                  <v-icon size="17">mdi-file-export-outline</v-icon>
+                </v-avatar>
+                <div>
+                  <div class="xl-section-title">Export</div>
+                  <div class="xl-section-sub">Download your catalogue</div>
+                </div>
+              </div>
+            </div>
+            <v-divider />
 
-        <!-- Parse error -->
-        <v-alert v-if="parseError" type="error" variant="tonal" rounded="lg" density="compact" class="mb-3">
-          <template #prepend><v-icon>mdi-alert-circle</v-icon></template>
-          {{ parseError }}
-        </v-alert>
+            <div class="pa-3 d-flex flex-column" style="gap:8px">
+              <button
+                v-for="fmt in exportFormats"
+                :key="fmt.kind"
+                type="button"
+                class="xl-format"
+                :disabled="!!busy"
+                @click="download(fmt.kind)"
+              >
+                <span class="xl-format-icon" :style="{ '--fmt-tone': fmt.tone }">
+                  <v-icon size="18">{{ fmt.icon }}</v-icon>
+                </span>
+                <span class="xl-format-body">
+                  <span class="xl-format-name">{{ fmt.name }}</span>
+                  <span class="xl-format-desc">{{ fmt.description }}</span>
+                </span>
+                <v-progress-circular
+                  v-if="busy === fmt.kind"
+                  indeterminate
+                  size="16"
+                  width="2"
+                  color="primary"
+                />
+                <v-icon v-else size="18" class="xl-format-go">mdi-download</v-icon>
+              </button>
 
-        <!-- Review table -->
-        <template v-if="rows.length">
-          <!-- Summary chips -->
-          <div class="d-flex align-center flex-wrap ga-2 mb-3">
-            <v-chip size="small" variant="tonal" color="primary" prepend-icon="mdi-table">
-              {{ rows.length }} rows
-            </v-chip>
-            <v-chip size="small" variant="tonal" color="success" prepend-icon="mdi-plus-circle-outline">
-              {{ countByStatus('new') }} new
-            </v-chip>
-            <v-chip size="small" variant="tonal" color="info" prepend-icon="mdi-pencil-circle-outline">
-              {{ countByStatus('update') }} updates
-            </v-chip>
-            <v-chip v-if="countByStatus('error')" size="small" variant="tonal" color="error"
-                    prepend-icon="mdi-alert-circle-outline">
-              {{ countByStatus('error') }} with errors
-            </v-chip>
-            <v-spacer />
-            <v-text-field v-model="search" placeholder="Search rows…" prepend-inner-icon="mdi-magnify"
-                          density="compact" variant="outlined" rounded="lg" hide-details single-line
-                          clearable style="max-width: 260px" />
-            <v-btn variant="text" color="primary" size="small" rounded="lg" class="text-none"
-                   prepend-icon="mdi-plus" @click="addBlankRow">Add row</v-btn>
-            <v-btn variant="text" color="error" size="small" rounded="lg" class="text-none"
-                   prepend-icon="mdi-close-circle-outline" @click="reset">Start over</v-btn>
-          </div>
+              <v-divider class="my-1" />
 
-          <div class="helper-strip">
-            <v-icon size="14" color="primary" class="mr-1">mdi-information-outline</v-icon>
-            Click any cell to edit · rows marked
-            <v-chip size="x-small" variant="tonal" color="success" class="mx-1">New</v-chip>/
-            <v-chip size="x-small" variant="tonal" color="info" class="mx-1">Update</v-chip>
-            will be applied on submit · fix red rows before submitting
-          </div>
+              <div class="xl-note">
+                <v-icon size="15" color="teal">mdi-lightbulb-on-outline</v-icon>
+                <div>
+                  Exports include every column the importer accepts, so a round-trip
+                  (export → edit → import) updates existing items instead of duplicating them.
+                </div>
+              </div>
+            </div>
+          </v-card>
+        </v-col>
 
-          <div class="sheet-wrap">
-            <table class="sheet">
+        <!-- ═══════════════ RIGHT: IMPORT ═══════════════ -->
+        <v-col cols="12" md="8">
+          <v-card rounded="lg" elevation="0" class="xl-card overflow-hidden">
+            <div class="xl-section-head">
+              <div class="d-flex align-center" style="gap:10px">
+                <v-avatar size="32" color="primary" variant="tonal">
+                  <v-icon size="17">mdi-file-upload-outline</v-icon>
+                </v-avatar>
+                <div>
+                  <div class="xl-section-title">Import</div>
+                  <div class="xl-section-sub">.xlsx or .csv · editable review before anything is saved</div>
+                </div>
+              </div>
+              <v-chip
+                v-if="rows.length"
+                size="small"
+                :color="countByStatus('error') ? 'error' : 'success'"
+                variant="tonal"
+                class="font-weight-bold"
+              >
+                {{ rows.length }} rows in review
+              </v-chip>
+            </div>
+            <v-divider />
+
+            <!-- Drop zone -->
+            <div
+              v-if="!rows.length"
+              class="dropzone"
+              :class="{ 'dropzone-active': dragging }"
+              @dragover.prevent="dragging = true"
+              @dragleave.prevent="dragging = false"
+              @drop.prevent="onDrop"
+              @click="openPicker"
+            >
+              <input ref="fileInput" type="file" accept=".xlsx,.csv" class="d-none" @change="onFileInput" />
+              <svg class="dropzone-ants" aria-hidden="true">
+                <rect x="1.25" y="1.25" width="calc(100% - 2.5px)" height="calc(100% - 2.5px)" rx="16" />
+              </svg>
+              <v-avatar size="72" color="primary" variant="tonal" class="mb-3">
+                <v-icon size="36">{{ dragging ? 'mdi-file-upload-outline' : 'mdi-cloud-upload-outline' }}</v-icon>
+              </v-avatar>
+              <div class="text-h6 mb-1">{{ dragging ? 'Drop your file here' : 'Drag &amp; drop your spreadsheet' }}</div>
+              <div class="text-body-2 text-medium-emphasis mb-3">
+                or <span class="text-primary font-weight-medium">browse files</span> · .xlsx / .csv · up to ~5,000 rows
+              </div>
+              <div class="d-flex flex-wrap justify-center" style="gap:8px">
+                <v-btn variant="tonal" color="primary" rounded="lg" class="text-none"
+                       prepend-icon="mdi-file-download-outline" :loading="busy === 'template'"
+                       @click.stop="download('template')">
+                  Download the template first
+                </v-btn>
+              </div>
+            </div>
+
+            <v-progress-linear v-if="uploading" color="primary" indeterminate height="3" />
+
+            <!-- Parse error -->
+            <v-alert v-if="parseError" type="error" variant="tonal" rounded="lg" density="compact" class="ma-3">
+              <template #prepend><v-icon>mdi-alert-circle</v-icon></template>
+              {{ parseError }}
+            </v-alert>
+
+            <!-- Review table -->
+            <template v-if="rows.length">
+              <!-- Summary chips -->
+              <div class="xl-review-bar">
+                <v-chip size="small" variant="tonal" color="primary" prepend-icon="mdi-table">
+                  {{ rows.length }} rows
+                </v-chip>
+                <v-chip size="small" variant="tonal" color="success" prepend-icon="mdi-plus-circle-outline">
+                  {{ countByStatus('new') }} new
+                </v-chip>
+                <v-chip size="small" variant="tonal" color="info" prepend-icon="mdi-pencil-circle-outline">
+                  {{ countByStatus('update') }} updates
+                </v-chip>
+                <v-chip v-if="countByStatus('error')" size="small" variant="tonal" color="error"
+                        prepend-icon="mdi-alert-circle-outline">
+                  {{ countByStatus('error') }} with errors
+                </v-chip>
+                <v-spacer />
+                <v-text-field v-model="search" placeholder="Search rows…" prepend-inner-icon="mdi-magnify"
+                              density="compact" variant="outlined" rounded="lg" hide-details single-line
+                              clearable style="max-width: 240px" />
+                <v-btn variant="text" color="primary" size="small" rounded="lg" class="text-none"
+                       prepend-icon="mdi-plus" @click="addBlankRow">Add row</v-btn>
+                <v-btn variant="text" color="error" size="small" rounded="lg" class="text-none"
+                       prepend-icon="mdi-close-circle-outline" @click="reset">Start over</v-btn>
+              </div>
+
+              <div class="helper-strip">
+                <v-icon size="14" color="primary" class="mr-1">mdi-information-outline</v-icon>
+                Click any cell to edit · rows marked
+                <v-chip size="x-small" variant="tonal" color="success" class="mx-1">New</v-chip>/
+                <v-chip size="x-small" variant="tonal" color="info" class="mx-1">Update</v-chip>
+                will be applied on submit · fix red rows before submitting
+              </div>
+
+              <div class="sheet-wrap">
+                <table class="sheet">
               <thead>
                 <tr>
                   <th class="col-row">Row</th>
@@ -264,10 +388,16 @@
 
           <!-- Submit bar -->
           <div class="submit-bar">
-            <span class="text-caption text-medium-emphasis">
-              {{ countByStatus('new') }} new · {{ countByStatus('update') }} updates ·
-              {{ countByStatus('error') }} to fix
-            </span>
+            <div class="d-flex flex-column">
+              <span class="text-body-2 font-weight-medium">
+                {{ countByStatus('new') }} new · {{ countByStatus('update') }} updates
+              </span>
+              <span class="text-caption" :class="countByStatus('error') ? 'text-error' : 'text-medium-emphasis'">
+                {{ countByStatus('error')
+                  ? `${countByStatus('error')} row(s) need fixing before you can submit`
+                  : 'All rows valid — ready to commit' }}
+              </span>
+            </div>
             <v-spacer />
             <v-btn variant="text" rounded="lg" class="text-none" @click="reset">Cancel</v-btn>
             <v-btn color="success" rounded="lg" class="text-none" size="large"
@@ -277,42 +407,51 @@
             </v-btn>
           </div>
         </template>
-      </v-card>
+          </v-card>
+        </v-col>
+      </v-row>
 
       <!-- Result dialog -->
       <v-dialog v-model="resultDialog" max-width="560" persistent>
-        <v-card rounded="xl">
-          <div class="result-banner" :class="result.failed ? 'result-warn' : 'result-ok'">
-            <v-avatar size="64" :color="result.failed ? 'warning' : 'success'" variant="tonal">
-              <v-icon size="32">{{ result.failed ? 'mdi-alert-circle-check' : 'mdi-check-circle' }}</v-icon>
-            </v-avatar>
+        <v-card rounded="lg" class="overflow-hidden">
+          <BrandDialogHeader
+            :icon="result.failed ? 'mdi-alert-circle-check' : 'mdi-check-decagram'"
+            :title="result.failed ? 'Import finished with issues' : 'Import complete'"
+            :subtitle="`${result.created} created · ${result.updated} updated${result.failed ? ` · ${result.failed} failed` : ''}`"
+            @close="resultDialog = false"
+          />
+          <div class="pa-5">
+            <div class="xl-result-grid mb-3">
+              <div class="xl-result-tile xl-result-tile--ok">
+                <div class="xl-result-value">{{ result.created }}</div>
+                <div class="xl-result-label">created</div>
+              </div>
+              <div class="xl-result-tile xl-result-tile--info">
+                <div class="xl-result-value">{{ result.updated }}</div>
+                <div class="xl-result-label">updated</div>
+              </div>
+              <div v-if="result.failed" class="xl-result-tile xl-result-tile--err">
+                <div class="xl-result-value">{{ result.failed }}</div>
+                <div class="xl-result-label">failed</div>
+              </div>
+            </div>
+
+            <div v-if="failedRows.length" class="xl-failed">
+              <div class="xl-failed-head">
+                <v-icon size="15" color="error">mdi-alert-circle-outline</v-icon>
+                Rows that could not be applied
+              </div>
+              <div v-for="f in failedRows" :key="f.row" class="xl-failed-row">
+                <span class="xl-failed-num">#{{ f.row }}</span>
+                <span class="xl-failed-name">{{ f.name || '—' }}</span>
+                <span class="xl-failed-err">{{ f.error }}</span>
+              </div>
+            </div>
           </div>
-          <v-card-title class="text-center pt-2">Import complete</v-card-title>
-          <v-card-text class="text-center">
-            <div class="d-flex justify-center ga-4 mb-3">
-              <div>
-                <div class="text-h5 font-weight-bold text-success">{{ result.created }}</div>
-                <div class="text-caption text-medium-emphasis">created</div>
-              </div>
-              <div>
-                <div class="text-h5 font-weight-bold text-info">{{ result.updated }}</div>
-                <div class="text-caption text-medium-emphasis">updated</div>
-              </div>
-              <div v-if="result.failed">
-                <div class="text-h5 font-weight-bold text-error">{{ result.failed }}</div>
-                <div class="text-caption text-medium-emphasis">failed</div>
-              </div>
-            </div>
-            <div v-if="failedRows.length" class="text-left">
-              <div class="text-caption font-weight-bold mb-1">Failed rows:</div>
-              <div v-for="f in failedRows" :key="f.row" class="text-caption text-error">
-                Row {{ f.row }} · {{ f.name }} — {{ f.error }}
-              </div>
-            </div>
-          </v-card-text>
-          <v-card-actions class="pa-4">
-            <v-btn variant="text" rounded="lg" class="text-none" block @click="resultDialog = false">Close</v-btn>
-            <v-btn color="primary" rounded="lg" class="text-none" block to="/inventory">
+          <v-card-actions class="px-5 pb-4">
+            <v-btn variant="text" rounded="lg" class="text-none" @click="resultDialog = false">Close</v-btn>
+            <v-spacer />
+            <v-btn color="primary" rounded="lg" class="text-none" :to="p('/inventory')">
               Back to inventory
             </v-btn>
           </v-card-actions>
@@ -350,9 +489,84 @@ const snack = ref({ show: false, text: '', color: 'success', icon: 'mdi-check-ci
 let uidSeq = 1
 
 // Inventory tenants use their own /ims API namespace.
-const { branches: branchesApi } = useTenantEndpoints()
+const { branches: branchesApi, isInventory } = useTenantEndpoints()
+
+// Keep every link inside the tenant namespace this page was reached from
+// (/ims for warehouses, /pharmacy for pharmacies).
+const base = computed(() => (isInventory.value ? '/ims' : '/pharmacy'))
+const p = (suffix) => `${base.value}${suffix}`
+
+// Tenant palette → hero CSS variables (same bridge as the rest of the IMS UI).
+const brand = useBranding()
+const heroTheme = computed(() => ({
+  '--hero-deep': brand.secondary.value,
+  '--hero-main': brand.primary.value,
+  '--hero-accent': brand.gradientStops.value[2],
+  '--hero-ink': brand.ink.value,
+  '--hero-glow': brand.tint('primary', 0.3),
+  '--hero-glow-2': brand.tint('accent', 0.2),
+  '--hero-shadow': brand.shadow.value
+}))
+
+// ── Export formats ──────────────────────────────────────────────────
+// Rendered as selectable tiles rather than three loose buttons.
+const exportFormats = [
+  {
+    kind: 'excel',
+    name: 'Excel workbook (.xlsx)',
+    description: 'Full catalogue, formatted for editing',
+    icon: 'mdi-microsoft-excel',
+    tone: '#16A34A'
+  },
+  {
+    kind: 'csv',
+    name: 'CSV (.csv)',
+    description: 'Plain text, ideal for other systems',
+    icon: 'mdi-file-delimited-outline',
+    tone: '#0284C7'
+  },
+  {
+    kind: 'template',
+    name: 'Blank import template',
+    description: 'Column headers only — start from scratch',
+    icon: 'mdi-file-document-outline',
+    tone: '#7C3AED'
+  }
+]
+
+// ── Workflow steps ──────────────────────────────────────────────────
+// Reflects the live state of the review sheet, so the strip doubles as a
+// progress indicator instead of static decoration.
+const steps = computed(() => {
+  const hasRows = rows.value.length > 0
+  const errors = countByStatus('error')
+  return [
+    {
+      key: 'upload',
+      title: 'Upload',
+      sub: hasRows ? 'File parsed' : 'Choose or drop a spreadsheet',
+      done: hasRows,
+      active: !hasRows
+    },
+    {
+      key: 'review',
+      title: 'Review & fix',
+      sub: hasRows ? `${rows.value.length} rows loaded` : 'Nothing loaded yet',
+      done: hasRows && !errors,
+      active: hasRows && !!errors
+    },
+    {
+      key: 'commit',
+      title: 'Commit',
+      sub: hasRows && !errors ? 'Ready to submit' : 'Resolve errors first',
+      done: false,
+      active: hasRows && !errors
+    }
+  ]
+})
 
 onMounted(async () => {
+  brand.load()
   try {
     const [stocksRes, catsRes, classRes, unitsRes, branchesRes] = await Promise.all([
       $api.get('/inventory/stocks/', { params: { page_size: 1 } }),
@@ -582,6 +796,264 @@ const failedRows = computed(() =>
   min-height: 100vh;
   background: rgb(var(--v-theme-background));
 }
+.xl-page { max-width: 1600px; margin: 0 auto; }
+
+/* ═══════════════ Hero ═══════════════ */
+.xl-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  padding: 20px 22px 16px;
+  color: #fff;
+  background: linear-gradient(
+    120deg,
+    var(--hero-deep, #143ce1) 0%,
+    var(--hero-main, #2f6dff) 52%,
+    var(--hero-accent, #37d6ff) 100%
+  );
+  box-shadow: var(--hero-shadow, 0 14px 34px rgba(47, 109, 255, 0.24));
+}
+.xl-glow {
+  position: absolute;
+  width: 340px;
+  height: 340px;
+  border-radius: 50%;
+  right: -110px;
+  top: -170px;
+  background: radial-gradient(circle, var(--hero-glow, rgba(255, 255, 255, 0.28)), transparent 68%);
+  pointer-events: none;
+}
+.xl-glow-2 {
+  right: auto;
+  left: -140px;
+  top: auto;
+  bottom: -220px;
+  width: 300px;
+  height: 300px;
+  background: radial-gradient(circle, var(--hero-glow-2, rgba(55, 214, 255, 0.24)), transparent 70%);
+}
+.xl-hero-top { position: relative; }
+.xl-hero-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  backdrop-filter: blur(6px);
+}
+.xl-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.78);
+}
+.xl-title {
+  font-size: 26px;
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  margin: 2px 0;
+}
+.xl-sub {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.82);
+  max-width: 760px;
+}
+.xl-hero-iconbtn { color: #fff !important; }
+
+.xl-btn-strong {
+  background: #ffffff !important;
+  color: var(--hero-ink, #143ce1) !important;
+  font-weight: 700 !important;
+  border: 1px solid rgba(255, 255, 255, 0.95) !important;
+  box-shadow: 0 6px 18px rgba(6, 44, 40, 0.28) !important;
+}
+.xl-btn-strong:hover { background: #ffffff !important; filter: brightness(0.94); }
+.xl-btn-strong :deep(.v-icon) { color: var(--hero-ink, #143ce1) !important; opacity: 1 !important; }
+.xl-btn-glass {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  border: 1px solid rgba(255, 255, 255, 0.34) !important;
+  backdrop-filter: blur(6px);
+}
+.xl-btn-glass:hover {
+  background: rgba(255, 255, 255, 0.26) !important;
+  border-color: rgba(255, 255, 255, 0.6) !important;
+}
+.xl-btn-glass :deep(.v-icon) { color: #fff !important; opacity: 1 !important; }
+
+.xl-hero-foot {
+  position: relative;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+.xl-hero-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.94);
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+}
+.xl-hero-chip-warn {
+  background: rgba(245, 158, 11, 0.34);
+  border-color: rgba(255, 255, 255, 0.42);
+}
+
+/* ═══════════════ Workflow steps ═══════════════ */
+.xl-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+.xl-step {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgb(var(--v-theme-surface));
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+.xl-step--done {
+  border-color: rgba(34, 197, 94, 0.32);
+  background: rgba(34, 197, 94, 0.055);
+}
+.xl-step--active {
+  border-color: rgba(var(--v-theme-primary), 0.42);
+  background: rgba(var(--v-theme-primary), 0.055);
+}
+.xl-step-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  background: rgba(15, 23, 42, 0.05);
+}
+.xl-step--done .xl-step-num { color: #15803d; background: rgba(34, 197, 94, 0.16); }
+.xl-step--active .xl-step-num {
+  color: rgb(var(--v-theme-primary));
+  background: rgba(var(--v-theme-primary), 0.14);
+}
+.xl-step-title {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.xl-step-sub {
+  font-size: 11.5px;
+  color: rgba(var(--v-theme-on-surface), 0.58);
+  line-height: 1.3;
+}
+
+/* ═══════════════ Cards / section heads ═══════════════ */
+.xl-card {
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+  background: rgb(var(--v-theme-surface));
+}
+.xl-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+}
+.xl-section-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.xl-section-sub {
+  font-size: 11.5px;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+}
+
+/* ═══════════════ Export format tiles ═══════════════ */
+.xl-format {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 11px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgb(var(--v-theme-surface));
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+.xl-format:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--fmt-tone, #2563eb) 40%, transparent);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+.xl-format:disabled { cursor: wait; opacity: 0.65; }
+.xl-format-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--fmt-tone, #2563eb);
+  background: color-mix(in srgb, var(--fmt-tone, #2563eb) 14%, transparent);
+}
+.xl-format-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.xl-format-name {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.xl-format-desc {
+  font-size: 11px;
+  line-height: 1.3;
+  color: rgba(var(--v-theme-on-surface), 0.58);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.xl-format-go { color: rgba(var(--v-theme-on-surface), 0.35); flex-shrink: 0; }
+.xl-format:hover:not(:disabled) .xl-format-go { color: rgb(var(--v-theme-primary)); }
+
+.xl-note {
+  display: flex;
+  gap: 9px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: rgba(var(--v-theme-on-surface), 0.62);
+  background: rgba(13, 148, 136, 0.06);
+  border: 1px solid rgba(13, 148, 136, 0.16);
+}
 
 /* ── Drop zone ──────────────────────────────────────────────────────── */
 .dropzone {
@@ -591,7 +1063,8 @@ const failedRows = computed(() =>
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 48px 16px;
+  padding: 44px 16px;
+  margin: 12px;
   border: 2px dashed rgba(var(--v-theme-primary), 0.18);
   border-radius: 16px;
   background: rgba(var(--v-theme-primary), 0.02);
@@ -630,6 +1103,17 @@ const failedRows = computed(() =>
 }
 @media (prefers-reduced-motion: reduce) {
   .dropzone-ants rect { animation: none; }
+}
+
+/* ═══════════════ Review bar ═══════════════ */
+.xl-review-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  background: rgba(var(--v-theme-primary), 0.02);
 }
 
 /* ── Review sheet ───────────────────────────────────────────────────── */
@@ -765,13 +1249,84 @@ select.cell-input option {
   gap: 12px;
   padding: 12px 16px;
   border-top: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+  background: rgba(15, 23, 42, 0.015);
 }
 
-.result-banner {
-  display: flex;
-  justify-content: center;
-  padding-top: 24px;
+/* ═══════════════ Result dialog ═══════════════ */
+.xl-result-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 10px;
 }
-.result-warn { color: rgb(var(--v-theme-warning)); }
-.result-ok { color: rgb(var(--v-theme-success)); }
+.xl-result-tile {
+  padding: 12px;
+  border-radius: 11px;
+  text-align: center;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  background: rgba(var(--v-theme-surface-variant), 0.2);
+}
+.xl-result-tile--ok { border-color: rgba(34, 197, 94, 0.3); background: rgba(34, 197, 94, 0.08); }
+.xl-result-tile--info { border-color: rgba(14, 165, 233, 0.3); background: rgba(14, 165, 233, 0.08); }
+.xl-result-tile--err { border-color: rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.08); }
+.xl-result-value {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.4px;
+}
+.xl-result-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+}
+.xl-failed {
+  border-radius: 10px;
+  border: 1px solid rgba(239, 68, 68, 0.24);
+  background: rgba(239, 68, 68, 0.05);
+  overflow: hidden;
+}
+.xl-failed-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 11px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #b91c1c;
+  border-bottom: 1px solid rgba(239, 68, 68, 0.18);
+}
+.xl-failed-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 11px;
+  font-size: 11.5px;
+  border-bottom: 1px solid rgba(239, 68, 68, 0.1);
+}
+.xl-failed-row:last-child { border-bottom: none; }
+.xl-failed-num {
+  font-weight: 800;
+  color: #b91c1c;
+  flex-shrink: 0;
+}
+.xl-failed-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 40%;
+}
+.xl-failed-err {
+  color: rgba(var(--v-theme-on-surface), 0.62);
+  margin-left: auto;
+  text-align: right;
+}
+
+@media (max-width: 700px) {
+  .xl-title { font-size: 21px; }
+  .xl-hero { padding: 16px 16px 14px; border-radius: 16px; }
+  .dropzone { padding: 32px 14px; margin: 10px; }
+}
 </style>

@@ -12,6 +12,8 @@ PHARMACY_ROLES = [
     'doctor', 'clinical_officer', 'nurse', 'midwife',
     # Inventory / warehouse tenant roles
     'inventory_admin', 'storekeeper',
+    # Occupational Health & Safety (OHSMS) tenant roles
+    'hse_manager', 'safety_officer', 'occ_health_nurse', 'supervisor',
 ]
 
 
@@ -58,15 +60,19 @@ class StaffCreateSerializer(serializers.Serializer):
     email = serializers.EmailField()
     first_name = serializers.CharField(max_length=150)
     last_name = serializers.CharField(max_length=150)
-    phone = serializers.CharField(max_length=20, required=False, default='')
+    phone = serializers.CharField(max_length=20, required=False, allow_blank=True, default='')
     role = serializers.ChoiceField(choices=[(r, r) for r in PHARMACY_ROLES])
     password = serializers.CharField(min_length=8, write_only=True)
 
     specialization = serializers.PrimaryKeyRelatedField(
         queryset=Specialization.objects.all(), required=False, allow_null=True, default=None,
     )
-    license_number = serializers.CharField(max_length=100, required=False, default='')
-    qualification = serializers.CharField(max_length=255, required=False, default='')
+    license_number = serializers.CharField(
+        max_length=100, required=False, allow_blank=True, default='',
+    )
+    qualification = serializers.CharField(
+        max_length=255, required=False, allow_blank=True, default='',
+    )
     years_of_experience = serializers.IntegerField(required=False, default=0)
     is_available = serializers.BooleanField(required=False, default=True)
     branch_id = serializers.IntegerField(required=False, allow_null=True)

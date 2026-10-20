@@ -40,15 +40,25 @@ class ClassificationSerializer(serializers.ModelSerializer):
 class StockBatchSerializer(serializers.ModelSerializer):
     supplier_name = serializers.CharField(source='supplier.name', read_only=True)
     stock_name = serializers.CharField(source='stock.medication_name', read_only=True)
+    stock_unit = serializers.CharField(
+        source='stock.unit.abbreviation', read_only=True, default='')
+    stock_barcode = serializers.CharField(
+        source='stock.barcode', read_only=True, default='')
+    stock_total_quantity = serializers.IntegerField(
+        source='stock.total_quantity', read_only=True, default=0)
+    branch_name = serializers.CharField(
+        source='branch.name', read_only=True, default=None)
     is_expired = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = StockBatch
         fields = [
-            'id', 'stock', 'stock_name', 'batch_number',
+            'id', 'stock', 'stock_name', 'stock_unit', 'stock_barcode',
+            'stock_total_quantity', 'batch_number',
             'quantity_received', 'quantity_remaining',
             'cost_price_per_unit', 'expiry_date', 'received_date',
-            'supplier', 'supplier_name', 'is_expired',
+            'supplier', 'supplier_name',
+            'branch', 'branch_name', 'is_expired',
         ]
         read_only_fields = ['id', 'received_date']
 
@@ -213,6 +223,10 @@ class InventoryCountSerializer(serializers.ModelSerializer):
 class StockTransferLineSerializer(serializers.ModelSerializer):
     stock_name = serializers.CharField(source='stock.medication_name', read_only=True)
     stock_unit = serializers.CharField(source='stock.unit.abbreviation', read_only=True, default='')
+    batch_number = serializers.CharField(source='batch.batch_number', read_only=True, default=None)
+    batch_expiry = serializers.DateField(source='batch.expiry_date', read_only=True, default=None)
+    batch_quantity_remaining = serializers.IntegerField(
+        source='batch.quantity_remaining', read_only=True, default=None)
     in_stock = serializers.SerializerMethodField()
     variance = serializers.IntegerField(read_only=True)
     line_value = serializers.SerializerMethodField()
@@ -220,6 +234,7 @@ class StockTransferLineSerializer(serializers.ModelSerializer):
     class Meta:
         model = StockTransferLine
         fields = ['id', 'stock', 'stock_name', 'stock_unit',
+                  'batch', 'batch_number', 'batch_expiry', 'batch_quantity_remaining',
                   'quantity', 'quantity_received', 'variance', 'notes',
                   'in_stock', 'line_value']
 
@@ -243,6 +258,9 @@ class StockTransferSerializer(serializers.ModelSerializer):
     requested_by_name = serializers.CharField(source='requested_by.full_name', read_only=True, default=None)
     approved_by_name = serializers.CharField(source='approved_by.full_name', read_only=True, default=None)
     received_by_name = serializers.CharField(source='received_by.full_name', read_only=True, default=None)
+    assigned_driver_name = serializers.CharField(source='assigned_driver.full_name', read_only=True, default=None)
+    assigned_carrier_name = serializers.CharField(source='assigned_carrier.name', read_only=True, default=None)
+    assigned_vehicle_label = serializers.SerializerMethodField()
     lines = StockTransferLineSerializer(many=True)
     total_items = serializers.IntegerField(read_only=True)
     total_quantity = serializers.IntegerField(read_only=True)
@@ -253,14 +271,22 @@ class StockTransferSerializer(serializers.ModelSerializer):
         model = StockTransfer
         fields = ['id', 'reference', 'source_branch', 'source_branch_name',
                   'dest_branch', 'dest_branch_name', 'status', 'notes',
+                  'priority', 'parcel_count', 'weight_kg',
+                  'scheduled_pickup', 'scheduled_delivery',
+                  'assigned_driver', 'assigned_driver_name',
+                  'assigned_carrier', 'assigned_carrier_name',
+                  'assigned_vehicle', 'assigned_vehicle_label',
+                  'assigned_vehicle_note',
                   'requested_by', 'requested_by_name',
                   'approved_by', 'approved_by_name',
                   'received_by', 'received_by_name',
                   'requested_at', 'shipped_at', 'received_at',
+                  'approved_signature', 'received_signature',
                   'lines', 'total_items', 'total_quantity',
                   'total_value', 'total_variance']
         read_only_fields = ['id', 'reference', 'requested_by', 'approved_by',
-                            'received_by', 'requested_at', 'shipped_at', 'received_at']
+                            'received_by', 'requested_at', 'shipped_at', 'received_at',
+                            'approved_signature', 'received_signature']
 
     def get_total_value(self, obj):
         return round(sum(
@@ -271,6 +297,9 @@ class StockTransferSerializer(serializers.ModelSerializer):
     def get_total_variance(self, obj):
         return sum(l.variance for l in obj.lines.all())
 
+    def get_assigned_vehicle_label(self, obj):
+        return str(obj.assigned_vehicle) if obj.assigned_vehicle_id else None
+
     def validate(self, data):
         src = data.get('source_branch') or getattr(self.instance, 'source_branch', None)
         dst = data.get('dest_branch') or getattr(self.instance, 'dest_branch', None)
@@ -278,13 +307,20 @@ class StockTransferSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'dest_branch': 'Destination must differ from source.'})
         lines = data.get('lines', [])
         if lines:
-            seen = set()
+            seen = set()  # (stock_pk, batch_pk_or_None) — same stock with a
+            # different batch is allowed so a transfer can drain multiple
+            # batches of one item in a single shipment.
             for line in lines:
                 stock = line.get('stock')
-                if stock and stock.pk in seen:
+                batch = line.get('batch')
+                stock_pk = stock.pk if stock else None
+                batch_pk = batch.pk if batch else None
+                key = (stock_pk, batch_pk)
+                if stock_pk and key in seen:
                     raise serializers.ValidationError(
-                        {'lines': f'Duplicate item "{stock.medication_name}" — merge the quantities into one line.'})
-                seen.add(stock.pk if stock else None)
+                        {'lines': f'Duplicate item "{stock.medication_name}" with the same batch — '
+                                  f'merge the quantities into one line.'})
+                seen.add(key)
         return data
 
     def create(self, validated_data):
@@ -298,11 +334,17 @@ class StockTransferSerializer(serializers.ModelSerializer):
         return transfer
 
     def update(self, instance, validated_data):
+        if instance.status != StockTransfer.Status.DRAFT:
+            raise serializers.ValidationError({
+                'detail': f'Only draft transfers can be edited. {instance.reference} '
+                          f'is currently "{instance.get_status_display()}".'
+            })
         lines = validated_data.pop('lines', None)
         for k, v in validated_data.items():
             setattr(instance, k, v)
         instance.save()
-        if lines is not None and instance.status == StockTransfer.Status.DRAFT:
+        if lines is not None:
+            # The client sends the complete line set, so replace wholesale.
             instance.lines.all().delete()
             for line in lines:
                 StockTransferLine.objects.create(transfer=instance, **line)

@@ -384,8 +384,28 @@ class RFQQuoteSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'submitted_at']
 
+    def create(self, validated_data):
+        quote = super().create(validated_data)
+        # Recording a response moves the RFQ out of draft/sent so the award
+        # action (which requires `sent` or `quoted`) becomes available.
+        rfq = quote.rfq
+        if rfq.status in (
+            RequestForQuotation.Status.DRAFT,
+            RequestForQuotation.Status.SENT,
+        ):
+            rfq.status = RequestForQuotation.Status.QUOTED
+            rfq.save(update_fields=['status'])
+        return quote
+
 
 class RequestForQuotationSerializer(serializers.ModelSerializer):
+    # Auto-generated in `create()` when the client omits it, so it must not be
+    # treated as a required input (DRF validates before `create()` runs, which
+    # previously rejected every "New RFQ" submission with
+    # {"rfq_number": ["This field is required."]}).
+    rfq_number = serializers.CharField(
+        max_length=50, required=False, allow_blank=True,
+    )
     created_by_name = serializers.CharField(source='created_by.full_name', read_only=True, default=None)
     branch_name = serializers.CharField(source='branch.name', read_only=True, default=None)
     awarded_supplier_name = serializers.CharField(source='awarded_supplier.name', read_only=True, default=None)
@@ -404,12 +424,16 @@ class RequestForQuotationSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'created_by']
 
+    def _generate_number(self):
+        """Human-readable reference, e.g. RFQ-202610-7F3A9C21."""
+        return f'RFQ-{timezone.now():%Y%m}-{uuid.uuid4().hex[:8].upper()}'
+
     def create(self, validated_data):
         request = self.context.get('request')
         if request and getattr(request, 'user', None) and request.user.is_authenticated:
             validated_data['created_by'] = request.user
         if not validated_data.get('rfq_number'):
-            validated_data['rfq_number'] = f'RFQ-{uuid.uuid4().hex[:8].upper()}'
+            validated_data['rfq_number'] = self._generate_number()
         return super().create(validated_data)
 
 

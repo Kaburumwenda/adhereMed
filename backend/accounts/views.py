@@ -173,6 +173,33 @@ class VerifyPinView(APIView):
         })
 
 
+class VerifyPasswordView(APIView):
+    """Confirm the currently logged-in user's password.
+
+    Used by the frontend as a re-authentication step before destructive actions
+    (e.g. approving or cancelling a stock transfer). Pure precondition check —
+    does NOT issue new JWT tokens or modify session state.
+    """
+
+    def post(self, request):
+        password = str(request.data.get('password', ''))
+        if not password:
+            return Response(
+                {'detail': 'Password is required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not request.user.check_password(password):
+            return Response(
+                {'detail': 'Incorrect password.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return Response({
+            'valid': True,
+            'user_id': request.user.id,
+            'full_name': request.user.full_name,
+        })
+
+
 class RegeneratePinView(APIView):
     """Issue a fresh unique PIN for the current user."""
 
