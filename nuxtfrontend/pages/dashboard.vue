@@ -11,7 +11,7 @@ import DoctorDashboard from '~/components/dashboards/DoctorDashboard.vue'
 import PatientDashboard from '~/components/dashboards/PatientDashboard.vue'
 import HomecareDashboard from '~/components/dashboards/HomecareDashboard.vue'
 import CaregiverDashboard from '~/components/dashboards/CaregiverDashboard.vue'
-import ClinicDashboard from '~/components/dashboards/ClinicDashboard.vue'
+import ClinicCommandCentre from '~/components/dashboards/ClinicCommandCentre.vue'
 import InventoryDashboard from '~/components/dashboards/InventoryDashboard.vue'
 import OhsmsDashboard from '~/components/dashboards/OhsmsDashboard.vue'
 import GenericDashboard from '~/components/dashboards/GenericDashboard.vue'
@@ -58,7 +58,7 @@ const component = computed(() => {
   if (auth.tenantType === 'homecare') return HomecareDashboard
   if (['doctor', 'clinical_officer', 'dentist'].includes(auth.role)) return DoctorDashboard
   if (auth.tenantType === 'hospital') return HospitalDashboard
-  if (auth.tenantType === 'clinic') return ClinicDashboard
+  if (auth.tenantType === 'clinic') return ClinicCommandCentre
   if (auth.tenantType === 'pharmacy') return PharmacyDashboard
   if (auth.tenantType === 'lab') return LabDashboard
   if (auth.tenantType === 'inventory') return InventoryDashboard

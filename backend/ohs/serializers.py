@@ -2,6 +2,8 @@
 from rest_framework import serializers
 
 from .models import (
+    AssessmentFinding,
+    AssessmentLabResult,
     Certification,
     ComplianceAudit,
     Contractor,
@@ -16,11 +18,13 @@ from .models import (
     ExposureMonitoring,
     Hazard,
     HazardCategory,
+    HealthAssessment,
     HealthSurveillance,
     Incident,
     IncidentAction,
     Inspection,
     InspectionItem,
+    JobDemandProfile,
     LegalRequirement,
     ManagementReview,
     MeetingAttendance,
@@ -341,6 +345,131 @@ class HealthSurveillanceSerializer(serializers.ModelSerializer):
     class Meta:
         model = HealthSurveillance
         fields = '__all__'
+
+
+# ─────────────────────────────────────────────────────────────────────────
+#  Pre-employment & post-employment assessment
+# ─────────────────────────────────────────────────────────────────────────
+class JobDemandProfileSerializer(serializers.ModelSerializer):
+    site_name = serializers.CharField(source='site.name', read_only=True)
+    physical_demand_display = serializers.CharField(
+        source='get_physical_demand_display', read_only=True,
+    )
+    vision_standard_display = serializers.CharField(
+        source='get_vision_standard_display', read_only=True,
+    )
+    hearing_standard_display = serializers.CharField(
+        source='get_hearing_standard_display', read_only=True,
+    )
+    surveillance_tier_display = serializers.CharField(
+        source='get_surveillance_tier_display', read_only=True,
+    )
+    review_interval_months = serializers.IntegerField(read_only=True)
+    assessment_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = JobDemandProfile
+        fields = '__all__'
+
+    def get_assessment_count(self, obj):
+        return obj.assessments.count()
+
+
+class AssessmentFindingSerializer(serializers.ModelSerializer):
+    system_display = serializers.CharField(source='get_system_display', read_only=True)
+    severity_display = serializers.CharField(source='get_severity_display', read_only=True)
+
+    class Meta:
+        model = AssessmentFinding
+        fields = '__all__'
+
+
+class AssessmentLabResultSerializer(serializers.ModelSerializer):
+    flag_display = serializers.CharField(source='get_flag_display', read_only=True)
+    reference_range = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AssessmentLabResult
+        fields = '__all__'
+
+    def get_reference_range(self, obj):
+        lo, hi = obj.reference_low, obj.reference_high
+        if lo is None and hi is None:
+            return ''
+        if lo is None:
+            return f'< {hi:g}'
+        if hi is None:
+            return f'> {lo:g}'
+        return f'{lo:g} – {hi:g}'
+
+
+class HealthAssessmentListSerializer(serializers.ModelSerializer):
+    """Lightweight payload for the assessment register."""
+
+    kind_display = serializers.CharField(source='get_kind_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    fitness_display = serializers.CharField(source='get_fitness_display', read_only=True)
+    site_name = serializers.CharField(source='site.name', read_only=True)
+    job_demand_title = serializers.CharField(source='job_demand.job_title', read_only=True)
+    bmi = serializers.FloatField(read_only=True)
+    bmi_band = serializers.CharField(read_only=True)
+    blood_pressure = serializers.CharField(read_only=True)
+    bp_band = serializers.CharField(read_only=True)
+    is_certified = serializers.BooleanField(read_only=True)
+    is_certificate_expired = serializers.BooleanField(read_only=True)
+    days_to_expiry = serializers.IntegerField(read_only=True)
+    is_overdue = serializers.BooleanField(read_only=True)
+    abnormal_labs = serializers.IntegerField(read_only=True)
+    critical_findings = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = HealthAssessment
+        fields = [
+            'id', 'reference', 'kind', 'kind_display', 'status', 'status_display',
+            'employee_name', 'employee_ref', 'job_title', 'department',
+            'site', 'site_name', 'job_demand', 'job_demand_title',
+            'scheduled_on', 'examined_on', 'examiner_name', 'provider',
+            'fitness', 'fitness_display',
+            'bmi', 'bmi_band', 'blood_pressure', 'bp_band',
+            'work_related', 'compensation_claim', 'exit_reason',
+            'certificate_no', 'issued_on', 'valid_until', 'next_due',
+            'is_certified', 'is_certificate_expired', 'days_to_expiry',
+            'is_overdue', 'abnormal_labs', 'critical_findings',
+            'baseline', 'updated_at',
+        ]
+
+
+class HealthAssessmentSerializer(serializers.ModelSerializer):
+    kind_display = serializers.CharField(source='get_kind_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    fitness_display = serializers.CharField(source='get_fitness_display', read_only=True)
+    exit_reason_display = serializers.CharField(
+        source='get_exit_reason_display', read_only=True,
+    )
+    site_name = serializers.CharField(source='site.name', read_only=True)
+    job_demand_title = serializers.CharField(source='job_demand.job_title', read_only=True)
+    # The drawer shows the role's standards next to the measured values, so the
+    # whole profile travels with the record instead of needing a second call.
+    job_demand_detail = JobDemandProfileSerializer(source='job_demand', read_only=True)
+    baseline_reference = serializers.CharField(source='baseline.reference', read_only=True)
+    findings = AssessmentFindingSerializer(many=True, read_only=True)
+    lab_results = AssessmentLabResultSerializer(many=True, read_only=True)
+
+    bmi = serializers.FloatField(read_only=True)
+    bmi_band = serializers.CharField(read_only=True)
+    blood_pressure = serializers.CharField(read_only=True)
+    bp_band = serializers.CharField(read_only=True)
+    is_certified = serializers.BooleanField(read_only=True)
+    is_certificate_expired = serializers.BooleanField(read_only=True)
+    days_to_expiry = serializers.IntegerField(read_only=True)
+    is_overdue = serializers.BooleanField(read_only=True)
+    abnormal_labs = serializers.IntegerField(read_only=True)
+    critical_findings = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = HealthAssessment
+        fields = '__all__'
+        read_only_fields = ['reference']
 
 
 # ─────────────────────────────────────────────────────────────────────────

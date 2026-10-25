@@ -13,7 +13,7 @@
       </div>
       <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
         <v-btn variant="tonal" color="primary" prepend-icon="mdi-refresh" rounded="lg" class="text-none" :loading="loading" @click="reload">{{ $t('common.refresh') }}</v-btn>
-        <v-btn color="primary" prepend-icon="mdi-plus" rounded="lg" class="text-none" to="/inventory/units/new">{{ $t('unitsPage.newUnit') }}</v-btn>
+        <v-btn color="primary" prepend-icon="mdi-plus" rounded="lg" class="text-none" :to="invBase + '/inventory/units/new'">{{ $t('unitsPage.newUnit') }}</v-btn>
       </div>
     </div>
 
@@ -85,7 +85,7 @@
       <v-icon size="64" color="grey">mdi-inbox-outline</v-icon>
       <div class="text-h6 mt-3">No units</div>
       <div class="text-body-2 mb-4">{{ search ? 'Try a different search.' : 'Create your first unit of measurement.' }}</div>
-      <v-btn color="primary" variant="flat" rounded="lg" class="text-none" prepend-icon="mdi-plus" to="/inventory/units/new">{{ $t('unitsPage.newUnit') }}</v-btn>
+      <v-btn color="primary" variant="flat" rounded="lg" class="text-none" prepend-icon="mdi-plus" :to="invBase + '/inventory/units/new'">{{ $t('unitsPage.newUnit') }}</v-btn>
     </div>
 
     <!-- Table -->
@@ -126,7 +126,7 @@
                 <div class="text-caption text-medium-emphasis mt-1">{{ usagePct(u.id) }}% of SKUs</div>
               </td>
               <td class="text-right">
-                <v-btn icon="mdi-pencil" variant="text" size="small" :to="`/inventory/units/${u.id}/edit`" />
+                <v-btn icon="mdi-pencil" variant="text" size="small" :to="`${invBase}/inventory/units/${u.id}/edit`" />
               </td>
             </tr>
           </tbody>
@@ -154,6 +154,17 @@ const { t } = useI18n()
 
 import { ref, computed, onMounted, watch } from 'vue'
 import { useResource } from '~/composables/useResource'
+
+const route = useRoute()
+
+// Namespace-aware base for create/edit links — keeps the clinic catalog
+// (/clinics/catalog) and IMS (/ims) namespaces inside their own URL spaces.
+const invBase = computed(() => {
+  const p = route.path
+  if (p.startsWith('/ims')) return '/ims'
+  if (p.startsWith('/clinics/catalog')) return '/clinics/catalog'
+  return ''
+})
 
 const unitRes = useResource('/inventory/units/')
 const stockRes = useResource('/inventory/stocks/')

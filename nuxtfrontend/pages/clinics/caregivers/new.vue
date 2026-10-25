@@ -1,5 +1,5 @@
 <template>
-  <v-container fluid class="pa-4 pa-md-6" style="max-width: 960px;">
+  <v-container fluid class="pa-4 pa-md-6">
     <PageHeader title="New Caregiver" subtitle="Assign a caregiver to a patient"
       icon="mdi-account-heart-plus" color="pink">
       <template #actions>

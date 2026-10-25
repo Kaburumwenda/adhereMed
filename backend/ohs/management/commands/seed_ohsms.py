@@ -22,6 +22,8 @@ from staff_profiles.models import StaffProfile
 from tenants.models import Tenant
 
 from ohs.models import (
+    AssessmentFinding,
+    AssessmentLabResult,
     Certification,
     ComplianceAudit,
     Contractor,
@@ -36,11 +38,13 @@ from ohs.models import (
     ExposureMonitoring,
     Hazard,
     HazardCategory,
+    HealthAssessment,
     HealthSurveillance,
     Incident,
     IncidentAction,
     Inspection,
     InspectionItem,
+    JobDemandProfile,
     LegalRequirement,
     ManagementReview,
     MeetingAttendance,
@@ -108,6 +112,8 @@ class Command(BaseCommand):
 
         if options['clear']:
             for model in (
+                AssessmentLabResult, AssessmentFinding, HealthAssessment,
+                JobDemandProfile,
                 StaffProfile,
                 EquipmentDefect, EquipmentInspection, SafetyEquipment,
                 Certification, ManagementReview, MeetingAttendance, SafetyMeeting,
@@ -1298,6 +1304,438 @@ class Command(BaseCommand):
                     repair_cost=Decimal(rng.choice([0, 2500, 6000, 18000])) if resolved else 0,
                 )
             self.stdout.write(f'  equipment defects: {EquipmentDefect.objects.count()}')
+
+        # ── Medical assessment (HEALTH & COMPETENCE → Medical Assessment) ──
+        if _want('assessments'):
+            all_sites = list(Site.objects.all())
+            site_by_code = {s.code: s for s in all_sites}
+
+            job_specs = [
+                # code, title, dept, site code, physical, vision, hearing,
+                # surveillance, exposures, tests, immunisations
+                ('OPS-FORKLIFT', 'Forklift Operator', 'Logistics', 'MSA-WH', 'medium',
+                 'standard', 'standard', 'annual',
+                 ['noise', 'whole-body vibration', 'diesel exhaust'],
+                 ['audiometry', 'vision screening'], []),
+                ('PLT-PRESS', 'Press Shop Operator', 'Production', 'KSM-PL', 'heavy',
+                 'basic', 'strict', 'six_monthly',
+                 ['noise', 'hand-arm vibration', 'metalworking fluid mist'],
+                 ['audiometry', 'spirometry', 'respirator fit test'], ['tetanus']),
+                ('PLT-BOILER', 'Boiler Attendant', 'Utilities', 'KSM-PL', 'medium',
+                 'basic', 'standard', 'annual',
+                 ['heat', 'noise', 'steam', 'carbon monoxide'],
+                 ['audiometry', 'spirometry'], []),
+                ('LAB-ANALYST', 'Laboratory Analyst', 'Laboratory', 'NRB-LAB', 'light',
+                 'strict', 'basic', 'annual',
+                 ['chemical reagents', 'biological agents', 'formaldehyde'],
+                 ['vision screening', 'hepatitis B serology', 'baseline serum'],
+                 ['hepatitis B', 'tetanus']),
+                ('WHS-PICKER', 'Warehouse Picker', 'Warehousing', 'NKR-DH', 'medium',
+                 'basic', 'basic', 'annual',
+                 ['manual handling', 'repetitive strain'],
+                 ['vision screening'], []),
+                ('FUEL-ATTENDANT', 'Fuel Station Attendant', 'Retail', 'ELD-FT', 'light',
+                 'basic', 'basic', 'annual',
+                 ['benzene', 'petroleum vapour', 'noise'],
+                 ['spirometry', 'urinary mandelic acid'], []),
+                ('CON-RIGGER', 'Construction Rigger', 'Construction', 'THK-CS', 'very_heavy',
+                 'strict', 'strict', 'quarterly',
+                 ['work at height', 'noise', 'silica dust', 'manual handling'],
+                 ['audiometry', 'spirometry', 'vision screening', 'vertigo screen'],
+                 ['tetanus']),
+                ('OFC-ANALYST', 'Risk Analyst', 'Head Office', 'NRB-HO', 'sedentary',
+                 'basic', 'none', 'none',
+                 ['display screen equipment', 'sedentary posture'],
+                 ['vision screening'], []),
+                ('DRV-TRUCK', 'Heavy Truck Driver', 'Logistics', 'NKR-DH', 'medium',
+                 'strict', 'basic', 'annual',
+                 ['whole-body vibration', 'diesel exhaust', 'fatigue'],
+                 ['vision screening', 'audiometry', 'fasting glucose'], []),
+            ]
+
+            profiles = []
+            for (code, title, dept, site_code, physical, vis, hear, tier,
+                 exposures, tests, imms) in job_specs:
+                profile, _ = JobDemandProfile.objects.get_or_create(
+                    code=code,
+                    defaults=dict(
+                        job_title=title, department=dept,
+                        site=site_by_code.get(site_code),
+                        physical_demand=physical,
+                        vision_standard=vis, hearing_standard=hear,
+                        surveillance_tier=tier,
+                        min_vision_left='6/9' if vis == 'strict' else '6/12',
+                        min_vision_right='6/9' if vis == 'strict' else '6/12',
+                        max_hearing_loss_db=25 if hear == 'strict' else 30,
+                        hazard_exposures=exposures,
+                        mandatory_tests=tests,
+                        mandatory_immunisations=imms,
+                        required_ppe=[
+                            'hi-vis vest', 'safety boots',
+                        ] + (['hearing protection'] if 'noise' in exposures else [])
+                        + (['respirator'] if any(
+                            k in ' '.join(exposures) for k in ('dust', 'vapour', 'mist', 'fume')
+                        ) else []),
+                        inherent_requirements=(
+                            f'Sustained {physical.replace("_", " ")} work; ability to follow '
+                            'permit-to-work controls; clear communication for radio and alarm '
+                            'response; no uncontrolled chronic condition affecting alertness.'
+                        ),
+                    ),
+                )
+                profiles.append(profile)
+            self.stdout.write(f'  job demand profiles: {len(profiles)}')
+
+            examiners = ['Dr. Wanjiru Kamau', 'Dr. Peter Ochieng', 'Dr. Fatuma Ali',
+                         'Dr. Samuel Kiptoo']
+            providers = ['Aegis Occupational Health Clinic',
+                         'Nairobi Occupational Health Centre',
+                         'Mombasa Maritime Clinic']
+
+            findings_pool = [
+                ('cardiovascular', 'Raised blood pressure, 148/94 on two readings', 'major', False,
+                 'Repeat BP in 4 weeks; salt reduction; review if sustained'),
+                ('respiratory', 'Reduced FEV1/FVC ratio consistent with early obstruction',
+                 'major', True, 'Spirometry in 6 months; dust control review'),
+                ('audiology', 'Bilateral 4 kHz notch, 28 dB right / 32 dB left', 'major', True,
+                 'Hearing protection mandatory; annual audiometry'),
+                ('musculoskeletal', 'Reduced lumbar flexion, positive straight-leg raise',
+                 'minor', False, 'Physiotherapy referral; manual handling training'),
+                ('ophthalmology', 'Corrected acuity 6/9 both eyes, adequate for role',
+                 'normal', False, ''),
+                ('dermatology', 'Contact dermatitis on both forearms', 'minor', True,
+                 'Nitrile gloves; barrier cream; review in 8 weeks'),
+                ('general', 'No abnormality detected', 'normal', False, ''),
+                ('metabolic', 'Fasting glucose 6.4 mmol/L', 'minor', False,
+                 'Dietary advice; repeat fasting glucose in 3 months'),
+                ('neurological', 'Reduced vibration sense in both feet', 'major', False,
+                 'Diabetic screen; restrict lone working until reviewed'),
+                ('mental_health', 'Reported sleep disturbance after night-shift rotation',
+                 'minor', False, 'Shift pattern review; EAP referral'),
+            ]
+
+            lab_pool = [
+                ('Haemoglobin', 13.2, 15.8, 'g/dL', 13.0, 17.0),
+                ('Fasting glucose', 5.4, 6.4, 'mmol/L', 3.9, 5.5),
+                ('Creatinine', 78, 96, 'µmol/L', 62, 106),
+                ('ALT', 24, 61, 'U/L', 10, 40),
+                ('Total cholesterol', 4.2, 5.9, 'mmol/L', 0, 5.2),
+                ('Urinary mandelic acid', 0.2, 1.4, 'g/L', 0, 0.8),
+                ('Blood lead', 18, 34, 'µg/dL', 0, 20),
+                ('Hepatitis B surface antigen', 0, 0, 'index', 0, 1),
+            ]
+
+            created_assessments = 0
+            for idx, (name, ref) in enumerate(people[:78]):
+                profile = profiles[idx % len(profiles)]
+                site = profile.site or (all_sites[0] if all_sites else None)
+
+                if idx % 13 == 4:
+                    kind = 'exit'
+                elif idx % 11 == 7:
+                    kind = 'periodic'
+                elif idx % 17 == 9:
+                    kind = 'return_to_work'
+                elif idx % 19 == 3:
+                    kind = 'transfer'
+                else:
+                    kind = 'pre_employment'
+
+                # Spread the schedule across the last 20 months.
+                scheduled = today - timedelta(days=rng.randint(0, 600))
+                if idx % 9 == 0:
+                    scheduled = today + timedelta(days=rng.randint(1, 45))
+
+                is_future = scheduled > today
+                height = rng.choice([158, 162, 168, 172, 176, 181, 185])
+                weight = height - 100 + rng.choice([-8, -4, 0, 4, 9, 15, 22, 30])
+                systolic = rng.choice([112, 118, 121, 126, 132, 138, 146, 152, 164])
+                diastolic = rng.choice([68, 72, 76, 80, 84, 92, 98])
+                hear_r = rng.choice([8, 10, 12, 15, 18, 22, 26, 30, 34])
+                hear_l = hear_r + rng.choice([-4, 0, 0, 2, 4, 6])
+                fev1 = round(rng.uniform(2.3, 4.4), 2)
+                fvc = round(fev1 + rng.uniform(0.4, 1.1), 2)
+
+                fitness = 'pending'
+                status = 'scheduled'
+                if not is_future:
+                    roll = rng.random()
+                    if roll < 0.56:
+                        fitness = 'fit'
+                    elif roll < 0.80:
+                        fitness = 'fit_with_restrictions'
+                    elif roll < 0.92:
+                        fitness = 'temporarily_unfit'
+                    else:
+                        fitness = 'unfit'
+                    if idx % 7 == 0:
+                        status = 'in_progress'
+                        fitness = 'pending'
+                    elif idx % 5 == 0:
+                        status = 'completed'
+                    else:
+                        status = 'certified'
+
+                work_related = kind == 'exit' and idx % 26 == 4
+                compensation = work_related and idx % 52 == 4
+
+                assessment = HealthAssessment.objects.create(
+                    kind=kind, status=status,
+                    employee_name=name, employee_ref=ref,
+                    national_id=f'{rng.randint(20000000, 39999999)}',
+                    date_of_birth=date(
+                        rng.randint(1968, 2001), rng.randint(1, 12), rng.randint(1, 28)
+                    ),
+                    gender=rng.choice(['Female', 'Male']),
+                    phone=f'+2547{rng.randint(10000000, 99999999)}',
+                    job_title=profile.job_title, department=profile.department,
+                    site=site, job_demand=profile,
+                    scheduled_on=scheduled,
+                    examined_on=None if is_future or status == 'scheduled'
+                    else scheduled + timedelta(days=rng.randint(0, 6)),
+                    examiner_name=rng.choice(examiners),
+                    provider=rng.choice(providers),
+                    provider_ref=f'PRV-{rng.randint(1000, 9999)}',
+                    vital_signs={} if is_future else {
+                        'height_cm': height, 'weight_kg': weight,
+                        'bp_systolic': systolic, 'bp_diastolic': diastolic,
+                        'pulse': rng.choice([58, 62, 68, 72, 76, 84, 96]),
+                        'resp_rate': rng.choice([14, 16, 16, 18, 20]),
+                        'temperature_c': round(rng.uniform(36.2, 37.4), 1),
+                        'spo2': rng.choice([94, 96, 97, 98, 99]),
+                        'waist_cm': round(weight * 1.02 + rng.choice([-6, 0, 4, 9])),
+                    },
+                    vision={} if is_future else {
+                        'right_unaided': rng.choice(['6/9', '6/12', '6/18', '6/24']),
+                        'left_unaided': rng.choice(['6/9', '6/12', '6/18', '6/24']),
+                        'right_corrected': rng.choice(['6/6', '6/6', '6/9']),
+                        'left_corrected': rng.choice(['6/6', '6/6', '6/9']),
+                        'colour_vision': rng.choice(
+                            ['Normal', 'Normal', 'Normal', 'Deficient (red-green)']
+                        ),
+                        'near_vision': 'N5 both eyes',
+                    },
+                    hearing={} if is_future else {
+                        'right_db': hear_r, 'left_db': hear_l,
+                        'audiogram_shape': rng.choice(
+                            ['Normal', 'Normal', 'High-frequency notch', 'Presbyacusis']
+                        ),
+                        'noise_induced': hear_r >= 26,
+                    },
+                    spirometry={} if is_future else {
+                        'fev1_l': fev1, 'fvc_l': fvc,
+                        'fev1_fvc_pct': round(fev1 / fvc * 100, 1),
+                        'predicted_pct': rng.randint(78, 108),
+                    },
+                    history={} if is_future else {
+                        'past_medical': rng.choice(
+                            ['Nil significant', 'Hypertension on amlodipine',
+                             'Asthma — inhaler as needed', 'Type 2 diabetes, diet controlled']
+                        ),
+                        'surgical': rng.choice(['Nil', 'Appendicectomy 2014', 'Nil']),
+                        'medications': rng.choice(['Nil', 'Amlodipine 5 mg od', 'Salbutamol PRN']),
+                        'allergies': rng.choice(['Nil known', 'Penicillin', 'Nil known']),
+                        'occupational': f'{rng.randint(1, 14)} years in {profile.department}',
+                        'smoker': rng.choice(['Never', 'Never', 'Ex-smoker', 'Current, 8/day']),
+                        'alcohol': rng.choice(['Nil', 'Occasional', 'Weekly']),
+                        'exercise': rng.choice(['Walks daily', 'Sedentary', 'Gym 2×/week']),
+                    },
+                    immunisations=(
+                        [{'name': i, 'status': 'current',
+                          'given_on': str(today - timedelta(days=rng.randint(90, 900)))}
+                         for i in profile.mandatory_immunisations]
+                    ),
+                    fitness=fitness,
+                    restrictions={
+                        'fit_with_restrictions': rng.choice([
+                            'No work at height above 2 m',
+                            'Hearing protection mandatory in all production areas; no lone '
+                            'working in the press shop',
+                            'Maximum manual lift 15 kg; avoid repetitive overhead work',
+                            'No night-shift rotation for 3 months',
+                        ]),
+                        'temporarily_unfit': 'Fit to resume after specialist review and '
+                                              'control of blood pressure',
+                        'unfit': 'Unfit for this role; redeployment to a sedentary position '
+                                 'recommended',
+                    }.get(fitness, ''),
+                    recommendations={
+                        'fit': 'Routine surveillance per role tier',
+                        'fit_with_restrictions': 'Restrictions communicated to the line '
+                                                 'supervisor; review at next surveillance',
+                        'temporarily_unfit': 'Review in 6 weeks with specialist report',
+                        'unfit': 'Occupational physician review; redeployment assessment',
+                    }.get(fitness, ''),
+                    work_related=work_related,
+                    attributable_condition=(
+                        'Bilateral noise-induced hearing loss, 12 dB shift at 4 kHz, '
+                        'consistent with sustained press-shop exposure'
+                        if work_related else ''
+                    ),
+                    compensation_claim=compensation,
+                    exit_reason=rng.choice([
+                        'resignation', 'retirement', 'redundancy', 'contract_end',
+                        'medical', 'transfer_out',
+                    ]) if kind == 'exit' else '',
+                    clearance_notes=(
+                        'All PPE returned; no outstanding medical follow-up. '
+                        'Exit certificate issued for the compensation file.'
+                        if kind == 'exit' else ''
+                    ),
+                    notes='' if is_future else 'Reviewed by the occupational physician.',
+                )
+
+                # Certificates on completed & certified records.
+                if status in ('completed', 'certified') and assessment.examined_on:
+                    months = profile.review_interval_months or 12
+                    if status == 'certified':
+                        assessment.certificate_no = (
+                            f'FIT/{assessment.examined_on.year}/'
+                            f'{assessment.pk:05d}'
+                        )
+                        assessment.issued_on = assessment.examined_on
+                        assessment.valid_until = assessment.examined_on + timedelta(
+                            days=int(months * 30.4)
+                        )
+                    if profile.review_interval_months:
+                        assessment.next_due = assessment.examined_on + timedelta(
+                            days=int(months * 30.4)
+                        )
+                    assessment.save(update_fields=[
+                        'certificate_no', 'issued_on', 'valid_until', 'next_due',
+                    ])
+
+                # Findings & investigations on examined records only.
+                if not is_future and status != 'scheduled':
+                    for f_spec in rng.sample(findings_pool, rng.randint(1, 3)):
+                        system, text, severity, wr, rec = f_spec
+                        AssessmentFinding.objects.create(
+                            assessment=assessment, system=system, finding=text,
+                            severity=severity,
+                            work_related=wr and kind == 'exit',
+                            fit_impact='restrict' if severity in (
+                                'major', 'critical') else 'none',
+                            recommendation=rec,
+                        )
+                    for l_spec in rng.sample(lab_pool, rng.randint(2, 4)):
+                        analyte, low_v, high_v, unit, ref_low, ref_high = l_spec
+                        AssessmentLabResult.objects.create(
+                            assessment=assessment, analyte=analyte,
+                            value=str(rng.choice([low_v, high_v])), unit=unit,
+                            reference_low=ref_low, reference_high=ref_high,
+                        )
+
+                created_assessments += 1
+
+            # ── Baseline linkage for exit records ────────────────────────
+            # Without this an exit medical cannot demonstrate drift, which is
+            # the whole point of the statutory record.
+            by_employee = {}
+            for a in HealthAssessment.objects.filter(
+                kind='pre_employment', examined_on__isnull=False,
+            ).order_by('examined_on'):
+                by_employee.setdefault(a.employee_name, a)
+
+            linked = 0
+            for exit_assessment in HealthAssessment.objects.filter(kind='exit'):
+                baseline = by_employee.get(exit_assessment.employee_name)
+                if baseline and baseline.pk != exit_assessment.pk:
+                    # Re-derive the exit measurements from the baseline so the
+                    # pair describes one person: skeletal height cannot change,
+                    # and a hearing threshold that "improved" by 20 dB across a
+                    # decade of noise exposure is not a story a clinician can
+                    # defend on the witness stand.
+                    base_vitals = dict(baseline.vital_signs or {})
+                    exit_vitals = dict(exit_assessment.vital_signs or {})
+                    base_hear = dict(baseline.hearing or {})
+                    exit_hear = dict(exit_assessment.hearing or {})
+
+                    if base_vitals.get('height_cm'):
+                        exit_vitals['height_cm'] = base_vitals['height_cm']
+                    if base_vitals.get('weight_kg'):
+                        exit_vitals['weight_kg'] = int(base_vitals['weight_kg']) + rng.randint(
+                            1, 9
+                        )
+                    if base_vitals.get('bp_systolic'):
+                        exit_vitals['bp_systolic'] = int(base_vitals['bp_systolic']) + rng.randint(
+                            2, 18
+                        )
+                    for ear in ('right_db', 'left_db'):
+                        if base_hear.get(ear) is not None:
+                            exit_hear[ear] = int(base_hear[ear]) + rng.choice([0, 2, 6, 10, 14])
+
+                    exit_assessment.vital_signs = exit_vitals
+                    exit_assessment.hearing = exit_hear
+                    exit_assessment.baseline = baseline
+                    exit_assessment.save(update_fields=[
+                        'vital_signs', 'hearing', 'baseline',
+                    ])
+                    linked += 1
+                elif baseline is None:
+                    # No prior pre-employment record exists for this person, so
+                    # synthesise one so the drift comparison has a benchmark.
+                    synthetic = HealthAssessment.objects.create(
+                        kind='pre_employment', status='certified',
+                        employee_name=exit_assessment.employee_name,
+                        employee_ref=exit_assessment.employee_ref,
+                        job_title=exit_assessment.job_title,
+                        department=exit_assessment.department,
+                        site=exit_assessment.site,
+                        job_demand=exit_assessment.job_demand,
+                        scheduled_on=exit_assessment.scheduled_on - timedelta(
+                            days=rng.randint(900, 2200)
+                        ),
+                        examiner_name=rng.choice(examiners),
+                        provider=rng.choice(providers),
+                        vital_signs={
+                            **{k: v for k, v in (exit_assessment.vital_signs or {}).items()},
+                            'weight_kg': max(
+                                55,
+                                int((exit_assessment.vital_signs or {})
+                                    .get('weight_kg', 78)) - rng.randint(2, 9),
+                            ),
+                            'bp_systolic': max(
+                                105, int((exit_assessment.vital_signs or {})
+                                         .get('bp_systolic', 128)) - rng.randint(4, 14)
+                            ),
+                        },
+                        vision=exit_assessment.vision,
+                        hearing={
+                            **(exit_assessment.hearing or {}),
+                            'right_db': max(
+                                4, int((exit_assessment.hearing or {})
+                                       .get('right_db', 16)) - rng.randint(4, 12)
+                            ),
+                            'left_db': max(
+                                4, int((exit_assessment.hearing or {})
+                                       .get('left_db', 18)) - rng.randint(4, 12)
+                            ),
+                        },
+                        spirometry={
+                            **(exit_assessment.spirometry or {}),
+                            'fev1_l': round(
+                                float((exit_assessment.spirometry or {}).get('fev1_l') or 3.2)
+                                + rng.uniform(0.1, 0.5), 2
+                            ),
+                        },
+                        fitness='fit',
+                        recommendations='Baseline established on entry',
+                    )
+                    synthetic.examined_on = synthetic.scheduled_on
+                    synthetic.certificate_no = f'FIT/{synthetic.scheduled_on.year}/{synthetic.pk:05d}'
+                    synthetic.issued_on = synthetic.scheduled_on
+                    synthetic.valid_until = synthetic.scheduled_on + timedelta(days=730)
+                    synthetic.save(update_fields=[
+                        'examined_on', 'certificate_no', 'issued_on', 'valid_until',
+                    ])
+                    exit_assessment.baseline = synthetic
+                    exit_assessment.save(update_fields=['baseline'])
+                    linked += 1
+
+            self.stdout.write(
+                f'  health assessments: {created_assessments} '
+                f'({linked} exit records baselined)'
+            )
 
         # ── Staff & access (SECURITY & SETTINGS → Staff) ─────────────────
         if _want('staff'):

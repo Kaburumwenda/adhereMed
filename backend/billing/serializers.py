@@ -17,6 +17,7 @@ class PaymentSerializer(serializers.ModelSerializer):
 
 class InvoiceSerializer(serializers.ModelSerializer):
     patient_name = serializers.CharField(source='patient.user.full_name', read_only=True)
+    clinic_site_name = serializers.CharField(source='clinic_site.name', read_only=True, default=None)
     balance = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     payments = PaymentSerializer(many=True, read_only=True)
 
@@ -24,7 +25,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
         model = Invoice
         fields = [
             'id', 'invoice_number', 'patient', 'patient_name',
-            'consultation', 'items',
+            'consultation', 'clinic_site', 'clinic_site_name', 'items',
             'subtotal', 'tax', 'discount', 'total', 'amount_paid',
             'balance', 'status', 'due_date', 'notes',
             'payments', 'created_at', 'updated_at',
@@ -34,13 +35,14 @@ class InvoiceSerializer(serializers.ModelSerializer):
 
 class InvoiceCreateSerializer(serializers.ModelSerializer):
     patient_name = serializers.CharField(source='patient.user.full_name', read_only=True)
+    clinic_site_name = serializers.CharField(source='clinic_site.name', read_only=True, default=None)
     balance = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
 
     class Meta:
         model = Invoice
         fields = [
             'id', 'invoice_number', 'patient', 'patient_name',
-            'consultation', 'items',
+            'consultation', 'clinic_site', 'clinic_site_name', 'items',
             'subtotal', 'tax', 'discount', 'total', 'amount_paid',
             'balance', 'status', 'due_date', 'notes',
             'created_at', 'updated_at',

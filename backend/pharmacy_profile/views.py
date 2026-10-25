@@ -17,8 +17,8 @@ from .serializers import PharmacyDetailSerializer, DeliverySerializer, BranchSer
 class BranchViewSet(viewsets.ModelViewSet):
     serializer_class = BranchSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['is_active', 'is_main']
-    search_fields = ['name', 'address']
+    filterset_fields = ['is_active', 'is_main', 'site']
+    search_fields = ['name', 'address', 'place_name', 'site__name']
     ordering_fields = ['name', 'created_at']
 
     # RBAC: warehouses/branches are org-level structure — every member may
@@ -31,11 +31,191 @@ class BranchViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         # transfer / stock counts are annotated so the serializer avoids N+1 queries
         from django.db.models import Count
-        return Branch.objects.annotate(
+        from config.branch_scope import get_user_branch, is_branch_scoped_user
+
+        qs = Branch.objects.select_related('site').annotate(
             transfer_out_count=Count('transfers_out', distinct=True),
             transfer_in_count=Count('transfers_in', distinct=True),
             stock_count=Count('stocks', distinct=True),
         )
+
+        # Branch-scoped staff (e.g. a pharmacist) only ever see their own drug
+        # store. Admins (tenant_admin / superuser) see every store across every
+        # clinic branch — that is the merged-network view.
+        user = self.request.user
+        if is_branch_scoped_user(user):
+            branch_id = get_user_branch(user)
+            if branch_id:
+                qs = qs.filter(id=branch_id)
+
+        return qs
+
+    def _attach_med_stats(self, branches):
+        """One grouped query for medication counters across all listed stores."""
+        ids = [b.pk for b in branches]
+        if not ids:
+            return
+
+        from django.db.models import Sum
+        from inventory.models import MedicationStock
+
+        stats = {pk: {'count': 0, 'units': 0, 'low': 0, 'out': 0} for pk in ids}
+        rows = (
+            MedicationStock.objects
+            .filter(branch_id__in=ids, is_active=True)
+            .values('id', 'branch_id', 'reorder_level')
+            .annotate(on_hand=Sum('batches__quantity_remaining'))
+        )
+        for row in rows:
+            bucket = stats.get(row['branch_id'])
+            if bucket is None:
+                continue
+            bucket['count'] += 1
+            qty = int(row['on_hand'] or 0)
+            bucket['units'] += qty
+            if qty <= 0:
+                bucket['out'] += 1
+            elif qty <= int(row['reorder_level'] or 0):
+                bucket['low'] += 1
+
+        for branch in branches:
+            branch._med_stats = stats.get(branch.pk, {'count': 0, 'units': 0, 'low': 0, 'out': 0})
+
+    def list(self, request, *args, **kwargs):
+        """List drug stores with their medication counters.
+
+        Statistics are attached before serialisation so the whole list costs one
+        grouped query instead of one per store.
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        rows = list(page) if page is not None else list(queryset)
+        self._attach_med_stats(rows)
+        serializer = self.get_serializer(rows, many=True)
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self._attach_med_stats([instance])
+        return Response(self.get_serializer(instance).data)
+
+    @action(detail=False, methods=['get'], url_path='clinic-branches')
+    def clinic_branches(self, request):
+        """Clinic branches (sites) available to attach a drug store to.
+
+        Used by the merged drug-store page when creating a store so every store
+        is bound to a real branch of the clinic.
+        """
+        try:
+            from clinic_sites.models import ClinicSite
+            sites = (
+                ClinicSite.objects
+                .filter(is_active=True)
+                .order_by('-is_hq', 'name')
+                .values('id', 'name', 'code', 'is_hq', 'is_active')
+            )
+        except Exception:
+            sites = []
+
+        linked = {
+            row['site_id']
+            for row in Branch.objects.exclude(site__isnull=True).values('site_id')
+        }
+
+        return Response([
+            {
+                'id': s['id'],
+                'name': s['name'],
+                'code': s['code'],
+                'is_hq': s['is_hq'],
+                'has_store': s['id'] in linked,
+            }
+            for s in sites
+        ])
+
+    @action(detail=True, methods=['get'], url_path='medications')
+    def medications(self, request, pk=None):
+        """Medication stock held by this drug store.
+
+        This is what the merged drug-store page renders: the store's own stock
+        lines (catalog name, strength, form, category, price) with live on-hand
+        quantities from batches and a per-line status of ok / low / out.
+        """
+        store = self.get_object()
+
+        from django.db.models import Sum
+        from inventory.models import MedicationStock
+
+        rows = (
+            MedicationStock.objects
+            .filter(branch=store, is_active=True)
+            .select_related('category', 'unit', 'classification')
+            .annotate(on_hand=Sum('batches__quantity_remaining'))
+            .order_by('medication_name')
+        )
+
+        results = []
+        totals = {'count': 0, 'units': 0, 'low': 0, 'out': 0, 'value': 0}
+        for item in rows:
+            on_hand = int(item.on_hand or 0)
+            reorder = int(item.reorder_level or 0)
+            if on_hand <= 0:
+                status_key = 'out'
+            elif on_hand <= reorder:
+                status_key = 'low'
+            else:
+                status_key = 'ok'
+
+            price = float(item.selling_price or 0)
+            value = price * on_hand
+
+            totals['count'] += 1
+            totals['units'] += on_hand
+            totals['value'] += value
+            if status_key == 'out':
+                totals['out'] += 1
+            elif status_key == 'low':
+                totals['low'] += 1
+
+            results.append({
+                'id': item.id,
+                'medication_id': item.medication_id,
+                'name': item.medication_name,
+                'generic_name': item.generic_name or item.medication_name,
+                'abbreviation': item.abbreviation,
+                'barcode': item.barcode or '',
+                'brand_name': item.brand_name or '',
+                'strength': item.strength or '',
+                'dosage_form': item.dosage_form or '',
+                'category': item.category.name if item.category_id else '',
+                'unit': item.unit.name if item.unit_id else '',
+                'classification': item.classification.name if item.classification_id else '',
+                'selling_price': price,
+                'on_hand': on_hand,
+                'reorder_level': reorder,
+                'committed_qty': item.committed_qty or 0,
+                'available': max(0, on_hand - int(item.committed_qty or 0)),
+                'location_in_store': item.location_in_store or '',
+                'prescription_required': item.prescription_required,
+                'is_active': item.is_active,
+                'status': status_key,
+                'stock_value': round(value, 2),
+            })
+
+        return Response({
+            'store': {
+                'id': store.pk,
+                'name': store.name,
+                'site': store.site_id,
+                'site_name': store.site.name if store.site_id and store.site else None,
+                'is_main': store.is_main,
+                'is_active': store.is_active,
+            },
+            'totals': {**totals, 'value': round(totals['value'], 2)},
+            'results': results,
+        })
 
     def destroy(self, request, *args, **kwargs):
         """Block deletion when the branch is still referenced by protected

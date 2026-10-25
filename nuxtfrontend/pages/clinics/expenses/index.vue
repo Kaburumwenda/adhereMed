@@ -100,7 +100,7 @@
     <!-- ═══ New expense dialog ═══════════════════════════════════ -->
     <v-dialog v-model="newDialog" max-width="600">
       <v-card rounded="lg" class="pa-4">
-        <div class="text-h6 font-weight-bold mb-4">New Expense</div>
+        <BrandDialogHeader icon="mdi-cash-plus" title="New Expense" />
         <v-form ref="formRef" @submit.prevent="saveNew">
           <v-row dense>
             <v-col cols="12">

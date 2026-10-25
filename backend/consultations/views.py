@@ -6,13 +6,14 @@ from django.utils import timezone
 
 from .models import Consultation, ConsultationAddendum
 from .serializers import ConsultationSerializer, ConsultationDetailSerializer, ConsultationAddendumSerializer
+from clinic_sites.mixins import ClinicSiteScopedMixin
 
 
-class ConsultationViewSet(viewsets.ModelViewSet):
+class ConsultationViewSet(ClinicSiteScopedMixin, viewsets.ModelViewSet):
     queryset = Consultation.objects.select_related('patient__user', 'doctor', 'appointment', 'triage', 'draft_owner').all()
     serializer_class = ConsultationSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['patient', 'doctor', 'status', 'disposition']
+    filterset_fields = ['patient', 'doctor', 'status', 'disposition', 'clinic_site']
     search_fields = ['chief_complaint', 'diagnosis']
     ordering_fields = ['created_at', 'status']
 

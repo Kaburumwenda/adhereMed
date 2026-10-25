@@ -1978,6 +1978,441 @@ class EquipmentDefect(TimeStampedModel):
 
 
 # ─────────────────────────────────────────────────────────────────────────
+#  Pre-employment & post-employment medical assessment
+#
+#  A statutory medical is only defensible if it is measured against something.
+#  `JobDemandProfile` records the inherent requirements of a role (physical
+#  demand, hazard exposures, sensory standards, mandatory immunisations), and
+#  every `HealthAssessment` is scored against the profile for the job the
+#  person is entering — or leaving.
+#
+#  Linking an exit assessment to its pre-employment baseline is what turns
+#  "a medical" into an attributable record: it lets a clinician show whether a
+#  measured loss (hearing shift, lung function, blood lead) happened during
+#  this employment, which is the question a compensation claim actually asks.
+# ─────────────────────────────────────────────────────────────────────────
+class JobDemandProfile(TimeStampedModel):
+    """Inherent requirements of a role — the yardstick for a fitness decision."""
+
+    class PhysicalDemand(models.TextChoices):
+        SEDENTARY = 'sedentary', 'Sedentary'
+        LIGHT = 'light', 'Light'
+        MEDIUM = 'medium', 'Medium'
+        HEAVY = 'heavy', 'Heavy'
+        VERY_HEAVY = 'very_heavy', 'Very heavy'
+
+    class SensoryStandard(models.TextChoices):
+        NONE = 'none', 'Not required'
+        BASIC = 'basic', 'Basic'
+        STANDARD = 'standard', 'Standard'
+        STRICT = 'strict', 'Strict (safety critical)'
+
+    class SurveillanceTier(models.TextChoices):
+        NONE = 'none', 'Baseline only'
+        ANNUAL = 'annual', 'Annual'
+        SIX_MONTHLY = 'six_monthly', 'Six-monthly'
+        QUARTERLY = 'quarterly', 'Quarterly'
+        HAZARD_DRIVEN = 'hazard_driven', 'Driven by exposure monitoring'
+
+    code = models.CharField(max_length=32, blank=True, help_text='e.g. OPS-FORKLIFT')
+    job_title = models.CharField(max_length=160)
+    department = models.CharField(max_length=120, blank=True)
+    site = models.ForeignKey(
+        Site, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='job_demands',
+    )
+    physical_demand = models.CharField(
+        max_length=12, choices=PhysicalDemand.choices, default=PhysicalDemand.LIGHT,
+    )
+    vision_standard = models.CharField(
+        max_length=10, choices=SensoryStandard.choices, default=SensoryStandard.BASIC,
+    )
+    hearing_standard = models.CharField(
+        max_length=10, choices=SensoryStandard.choices, default=SensoryStandard.NONE,
+    )
+    min_vision_left = models.CharField(
+        max_length=20, blank=True, default='6/12',
+        help_text='Minimum corrected acuity, left eye',
+    )
+    min_vision_right = models.CharField(max_length=20, blank=True, default='6/12')
+    max_hearing_loss_db = models.PositiveSmallIntegerField(
+        null=True, blank=True, default=30,
+        help_text='Maximum acceptable hearing threshold, better ear (dB)',
+    )
+    hazard_exposures = models.JSONField(
+        default=list, blank=True,
+        help_text='Agents this role is exposed to, e.g. ["noise", "respirable dust"]',
+    )
+    required_ppe = models.JSONField(default=list, blank=True)
+    mandatory_immunisations = models.JSONField(default=list, blank=True)
+    mandatory_tests = models.JSONField(
+        default=list, blank=True,
+        help_text='Investigations required for this role, e.g. ["audiometry", "spirometry"]',
+    )
+    surveillance_tier = models.CharField(
+        max_length=16, choices=SurveillanceTier.choices, default=SurveillanceTier.ANNUAL,
+    )
+    inherent_requirements = models.TextField(
+        blank=True, help_text='Plain-language list of the role’s essential demands',
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['job_title']
+        verbose_name = 'Job demand profile'
+
+    def __str__(self):
+        return f'{self.job_title} ({self.get_physical_demand_display()})'
+
+    @property
+    def review_interval_months(self):
+        return {
+            self.SurveillanceTier.QUARTERLY: 3,
+            self.SurveillanceTier.SIX_MONTHLY: 6,
+            self.SurveillanceTier.ANNUAL: 12,
+            self.SurveillanceTier.HAZARD_DRIVEN: 12,
+            self.SurveillanceTier.NONE: None,
+        }.get(self.surveillance_tier)
+
+
+class HealthAssessment(TimeStampedModel):
+    """A pre-employment, periodic, exit or return-to-work medical assessment.
+
+    Clinical data is split between three places on purpose:
+
+    * ``vital_signs`` / ``vision`` / ``hearing`` / ``spirometry`` — fixed-shape
+      measurement blocks, compared numerically against the baseline.
+    * ``history`` — free-form anamnesis, never aggregated.
+    * ``AssessmentFinding`` / ``AssessmentLabResult`` — normalised rows so the
+      register can flag, count and trend individual abnormalities.
+    """
+
+    class Kind(models.TextChoices):
+        PRE_EMPLOYMENT = 'pre_employment', 'Pre-employment'
+        PERIODIC = 'periodic', 'Periodic / statutory'
+        EXIT = 'exit', 'Post-employment (exit)'
+        RETURN_TO_WORK = 'return_to_work', 'Return to work'
+        TRANSFER = 'transfer', 'Transfer / redeployment'
+
+    class Status(models.TextChoices):
+        SCHEDULED = 'scheduled', 'Scheduled'
+        IN_PROGRESS = 'in_progress', 'In progress'
+        COMPLETED = 'completed', 'Completed'
+        CERTIFIED = 'certified', 'Certificate issued'
+        CANCELLED = 'cancelled', 'Cancelled'
+        DECLINED = 'declined', 'Declined by employee'
+
+    class Fitness(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        FIT = 'fit', 'Fit for duty'
+        FIT_WITH_RESTRICTIONS = 'fit_with_restrictions', 'Fit with restrictions'
+        TEMPORARILY_UNFIT = 'temporarily_unfit', 'Temporarily unfit'
+        UNFIT = 'unfit', 'Unfit'
+
+    class ExitReason(models.TextChoices):
+        RESIGNATION = 'resignation', 'Resignation'
+        RETIREMENT = 'retirement', 'Retirement'
+        REDUNDANCY = 'redundancy', 'Redundancy'
+        CONTRACT_END = 'contract_end', 'Contract end'
+        MEDICAL = 'medical', 'Medical grounds'
+        DISMISSAL = 'dismissal', 'Dismissal'
+        TRANSFER_OUT = 'transfer_out', 'Transfer to another employer'
+
+    reference = models.CharField(max_length=32, unique=True, blank=True)
+    kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.PRE_EMPLOYMENT)
+    status = models.CharField(max_length=14, choices=Status.choices, default=Status.SCHEDULED)
+
+    # ── Candidate / employee ──
+    employee_name = models.CharField(max_length=160)
+    employee_ref = models.CharField(max_length=60, blank=True, help_text='Payroll / staff number')
+    national_id = models.CharField(max_length=40, blank=True)
+    date_of_birth = models.DateField(null=True, blank=True)
+    gender = models.CharField(max_length=16, blank=True)
+    phone = models.CharField(max_length=40, blank=True)
+    job_title = models.CharField(max_length=160, blank=True)
+    department = models.CharField(max_length=120, blank=True)
+    site = models.ForeignKey(
+        Site, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='health_assessments',
+    )
+    job_demand = models.ForeignKey(
+        JobDemandProfile, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='assessments',
+    )
+
+    # ── Scheduling & provider ──
+    scheduled_on = models.DateField(default=date.today)
+    examined_on = models.DateField(null=True, blank=True)
+    examiner_name = models.CharField(max_length=160, blank=True)
+    provider = models.CharField(max_length=180, blank=True, help_text='Clinic / hospital')
+    provider_ref = models.CharField(max_length=80, blank=True)
+
+    # ── Measurements (fixed shape, comparable to baseline) ──
+    vital_signs = models.JSONField(
+        default=dict, blank=True,
+        help_text='height_cm, weight_kg, bp_systolic, bp_diastolic, pulse, '
+                  'resp_rate, temperature_c, spo2, waist_cm',
+    )
+    vision = models.JSONField(
+        default=dict, blank=True,
+        help_text='left_unaided, right_unaided, left_corrected, right_corrected, '
+                  'colour_vision, near_vision',
+    )
+    hearing = models.JSONField(
+        default=dict, blank=True,
+        help_text='left_db, right_db, audiogram_shape, noise_induced',
+    )
+    spirometry = models.JSONField(
+        default=dict, blank=True,
+        help_text='fev1_l, fvc_l, fev1_fvc_pct, predicted_pct',
+    )
+    history = models.JSONField(
+        default=dict, blank=True,
+        help_text='past_medical, surgical, medications, allergies, family, '
+                  'occupational, smoker, alcohol, exercise',
+    )
+    immunisations = models.JSONField(
+        default=list, blank=True,
+        help_text='[{name, status, given_on}]',
+    )
+
+    # ── Outcome ──
+    fitness = models.CharField(max_length=22, choices=Fitness.choices, default=Fitness.PENDING)
+    restrictions = models.TextField(
+        blank=True, help_text='Restrictions that must be honoured on the job',
+    )
+    recommendations = models.TextField(blank=True)
+    work_related = models.BooleanField(
+        default=False,
+        help_text='Findings are attributable to this employment',
+    )
+    attributable_condition = models.TextField(blank=True)
+    compensation_claim = models.BooleanField(
+        default=False, help_text='Referred for statutory compensation (e.g. WIBA)',
+    )
+    exit_reason = models.CharField(
+        max_length=16, choices=ExitReason.choices, blank=True,
+    )
+    clearance_notes = models.TextField(
+        blank=True, help_text='Handover / clearance remarks for an exit assessment',
+    )
+
+    # ── Certificate ──
+    certificate_no = models.CharField(max_length=60, blank=True)
+    issued_on = models.DateField(null=True, blank=True)
+    valid_until = models.DateField(null=True, blank=True)
+    next_due = models.DateField(null=True, blank=True)
+
+    # ── Baseline linkage ──
+    baseline = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='follow_ups',
+        help_text='The pre-employment assessment this one is measured against',
+    )
+
+    reviewed_by = models.CharField(max_length=160, blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['-scheduled_on', '-id']
+        verbose_name = 'Health assessment'
+
+    def __str__(self):
+        return f'{self.reference or "MDA"} · {self.employee_name}'
+
+    def save(self, *args, **kwargs):
+        if not self.reference:
+            self.reference = self._next_reference()
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def _next_reference(cls):
+        year = timezone.now().year
+        prefix = f'MDA-{year}-'
+        last = (
+            cls.objects.filter(reference__startswith=prefix)
+            .order_by('-reference').values_list('reference', flat=True).first()
+        )
+        seq = int(last.rsplit('-', 1)[-1]) + 1 if last else 1
+        return f'{prefix}{seq:04d}'
+
+    # ── Derived values ──
+    @property
+    def bmi(self):
+        v = self.vital_signs or {}
+        try:
+            h = float(v.get('height_cm') or 0) / 100
+            w = float(v.get('weight_kg') or 0)
+        except (TypeError, ValueError):
+            return None
+        if h <= 0 or w <= 0:
+            return None
+        return round(w / (h * h), 1)
+
+    @property
+    def bmi_band(self):
+        bmi = self.bmi
+        if bmi is None:
+            return ''
+        if bmi < 18.5:
+            return 'underweight'
+        if bmi < 25:
+            return 'normal'
+        if bmi < 30:
+            return 'overweight'
+        if bmi < 35:
+            return 'obese_1'
+        if bmi < 40:
+            return 'obese_2'
+        return 'obese_3'
+
+    @property
+    def blood_pressure(self):
+        v = self.vital_signs or {}
+        sys, dia = v.get('bp_systolic'), v.get('bp_diastolic')
+        if not sys or not dia:
+            return ''
+        return f'{sys}/{dia}'
+
+    @property
+    def bp_band(self):
+        v = self.vital_signs or {}
+        try:
+            s = int(v.get('bp_systolic') or 0)
+            d = int(v.get('bp_diastolic') or 0)
+        except (TypeError, ValueError):
+            return ''
+        if not s or not d:
+            return ''
+        if s >= 180 or d >= 110:
+            return 'crisis'
+        if s >= 140 or d >= 90:
+            return 'high'
+        if s >= 130 or d >= 85:
+            return 'elevated'
+        if s < 90 or d < 60:
+            return 'low'
+        return 'normal'
+
+    @property
+    def is_certified(self):
+        return bool(self.certificate_no) and self.issued_on is not None
+
+    @property
+    def is_certificate_expired(self):
+        return bool(self.valid_until) and self.valid_until < date.today()
+
+    @property
+    def days_to_expiry(self):
+        if not self.valid_until:
+            return None
+        return (self.valid_until - date.today()).days
+
+    @property
+    def is_overdue(self):
+        """Scheduled but past its date and not yet examined."""
+        if self.status in (self.Status.COMPLETED, self.Status.CERTIFIED, self.Status.CANCELLED):
+            return False
+        return self.scheduled_on < date.today()
+
+    @property
+    def abnormal_labs(self):
+        return self.lab_results.exclude(flag='normal').count()
+
+    @property
+    def critical_findings(self):
+        return self.findings.filter(severity='critical').count()
+
+
+class AssessmentFinding(TimeStampedModel):
+    """A single clinical finding, normalised so it can be flagged and counted."""
+
+    class System(models.TextChoices):
+        GENERAL = 'general', 'General'
+        CARDIOVASCULAR = 'cardiovascular', 'Cardiovascular'
+        RESPIRATORY = 'respiratory', 'Respiratory'
+        MUSCULOSKELETAL = 'musculoskeletal', 'Musculoskeletal'
+        NEUROLOGICAL = 'neurological', 'Neurological'
+        AUDIOLOGY = 'audiology', 'Hearing'
+        OPHTHALMOLOGY = 'ophthalmology', 'Vision'
+        DERMATOLOGY = 'dermatology', 'Skin'
+        ABDOMINAL = 'abdominal', 'Abdominal'
+        ENDOCRINE = 'endocrine', 'Endocrine'
+        MENTAL_HEALTH = 'mental_health', 'Mental health'
+        LABORATORY = 'laboratory', 'Laboratory'
+
+    class Severity(models.TextChoices):
+        NORMAL = 'normal', 'Normal'
+        MINOR = 'minor', 'Minor'
+        MAJOR = 'major', 'Significant'
+        CRITICAL = 'critical', 'Critical'
+
+    assessment = models.ForeignKey(
+        HealthAssessment, on_delete=models.CASCADE, related_name='findings',
+    )
+    system = models.CharField(max_length=18, choices=System.choices, default=System.GENERAL)
+    finding = models.CharField(max_length=220)
+    severity = models.CharField(max_length=10, choices=Severity.choices, default=Severity.NORMAL)
+    work_related = models.BooleanField(default=False)
+    fit_impact = models.CharField(
+        max_length=12, blank=True,
+        help_text='none | restrict | unfit — how this finding drove the outcome',
+    )
+    recommendation = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['system', 'id']
+        verbose_name = 'Assessment finding'
+
+    def __str__(self):
+        return f'{self.get_system_display()} · {self.finding}'
+
+
+class AssessmentLabResult(TimeStampedModel):
+    """An analyte measured during the assessment, with its reference range."""
+
+    class Flag(models.TextChoices):
+        NORMAL = 'normal', 'Normal'
+        LOW = 'low', 'Low'
+        HIGH = 'high', 'High'
+        CRITICAL = 'critical', 'Critical'
+
+    assessment = models.ForeignKey(
+        HealthAssessment, on_delete=models.CASCADE, related_name='lab_results',
+    )
+    analyte = models.CharField(max_length=120)
+    value = models.CharField(max_length=60)
+    unit = models.CharField(max_length=30, blank=True)
+    reference_low = models.FloatField(null=True, blank=True)
+    reference_high = models.FloatField(null=True, blank=True)
+    flag = models.CharField(max_length=10, choices=Flag.choices, default=Flag.NORMAL)
+    notes = models.CharField(max_length=220, blank=True)
+
+    class Meta:
+        ordering = ['analyte']
+        verbose_name = 'Assessment lab result'
+
+    def __str__(self):
+        return f'{self.analyte}: {self.value} {self.unit}'.strip()
+
+    def save(self, *args, **kwargs):
+        # Derive the flag from the numeric value when the lab did not say.
+        if self.flag == self.Flag.NORMAL and self.reference_low is not None \
+                and self.reference_high is not None:
+            try:
+                n = float(self.value)
+            except (TypeError, ValueError):
+                n = None
+            if n is not None:
+                if n < self.reference_low:
+                    self.flag = self.Flag.LOW
+                elif n > self.reference_high:
+                    self.flag = self.Flag.HIGH
+        super().save(*args, **kwargs)
+
+
+# ─────────────────────────────────────────────────────────────────────────
 #  Demo data (SECURITY & SETTINGS → Demo data)
 #
 #  A production tenant may want to explore OHSMS with realistic records

@@ -97,10 +97,7 @@
     <!-- ═══ New agreement dialog ═══════════════════════════════════ -->
     <v-dialog v-model="dialog" max-width="600" persistent scrollable>
       <v-card rounded="lg">
-        <v-card-title class="text-h6 d-flex align-center">
-          <v-icon color="cyan" class="mr-2">mdi-share-variant</v-icon>
-          New Data Sharing Agreement
-        </v-card-title>
+        <BrandDialogHeader icon="mdi-share-variant" title="New Data Sharing Agreement" />
         <v-card-text>
           <v-form ref="formRef" @submit.prevent="save">
             <v-row dense>
@@ -153,7 +150,7 @@
     <!-- ═══ Revoke confirmation dialog ══════════════════════════════ -->
     <v-dialog v-model="revokeDialog" max-width="420">
       <v-card rounded="lg">
-        <v-card-title class="text-h6">Revoke Agreement</v-card-title>
+        <BrandDialogHeader icon="mdi-share-off" title="Revoke Agreement" />
         <v-card-text>
           Revoke the data sharing agreement for
           <strong>{{ revokeTarget?.patient_name || 'this patient' }}</strong>?

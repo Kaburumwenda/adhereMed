@@ -35,6 +35,7 @@ class PrescriptionSerializer(serializers.ModelSerializer):
     patient_insurance_provider = serializers.CharField(source='patient.insurance_provider', read_only=True, default='')
     patient_insurance_number = serializers.CharField(source='patient.insurance_number', read_only=True, default='')
     doctor_name = serializers.CharField(source='doctor.full_name', read_only=True)
+    clinic_site_name = serializers.CharField(source='clinic_site.name', read_only=True, default=None)
     doctor_license_number = serializers.SerializerMethodField()
     doctor_practice_type = serializers.SerializerMethodField()
     doctor_signature_url = serializers.SerializerMethodField()
@@ -64,6 +65,7 @@ class PrescriptionSerializer(serializers.ModelSerializer):
             'patient_allergies', 'patient_chronic_conditions',
             'patient_insurance_provider', 'patient_insurance_number',
             'doctor', 'doctor_name',
+            'clinic_site', 'clinic_site_name',
             'doctor_license_number', 'doctor_practice_type', 'doctor_signature_url',
             'status', 'notes', 'items', 'created_at',
         ]
@@ -98,6 +100,7 @@ class PrescriptionCreateSerializer(serializers.ModelSerializer):
     patient_insurance_provider = serializers.CharField(source='patient.insurance_provider', read_only=True, default='')
     patient_insurance_number = serializers.CharField(source='patient.insurance_number', read_only=True, default='')
     doctor_name = serializers.CharField(source='doctor.full_name', read_only=True)
+    clinic_site_name = serializers.CharField(source='clinic_site.name', read_only=True, default=None)
     doctor_license_number = serializers.SerializerMethodField()
     doctor_practice_type = serializers.SerializerMethodField()
     doctor_signature_url = serializers.SerializerMethodField()
@@ -127,6 +130,7 @@ class PrescriptionCreateSerializer(serializers.ModelSerializer):
             'patient_allergies', 'patient_chronic_conditions',
             'patient_insurance_provider', 'patient_insurance_number',
             'doctor', 'doctor_name',
+            'clinic_site', 'clinic_site_name',
             'doctor_license_number', 'doctor_practice_type', 'doctor_signature_url',
             'status', 'notes', 'items', 'created_at',
         ]

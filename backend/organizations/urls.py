@@ -7,6 +7,7 @@ app_name = 'organizations'
 urlpatterns = [
     path('me/', views.organization_me, name='org-me'),
     path('stats/', views.organization_stats, name='org-stats'),
+    path('traffic/', views.organization_traffic, name='org-traffic'),
     path('switch-tenant/', views.switch_tenant, name='switch-tenant'),
     path('switch-back/', views.switch_back, name='switch-back'),
 

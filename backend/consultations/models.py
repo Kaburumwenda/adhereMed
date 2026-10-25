@@ -21,6 +21,11 @@ class Consultation(models.Model):
         'appointments.Appointment', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='consultation',
     )
+    clinic_site = models.ForeignKey(
+        'clinic_sites.ClinicSite', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='consultations',
+        help_text='Clinic location this consultation happened at (null = HQ).',
+    )
     patient = models.ForeignKey('patients.Patient', on_delete=models.CASCADE, related_name='consultations')
     doctor = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='consultations_as_doctor',

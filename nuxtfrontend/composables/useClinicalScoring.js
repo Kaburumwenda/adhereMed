@@ -8,12 +8,16 @@ export function calculateNEWS2(vitals) {
   let score = 0
 
   // Respiratory Rate
+  // Guard on `> 0` first: an unrecorded RR must score 0, not 3. The old
+  // `rr <= 8` branch treated a blank field as bradypnoea.
   const rr = Number(vitals.respiratory_rate || vitals.rr || 0)
-  if (rr >= 25) score += 3
-  else if (rr >= 21) score += 2
-  else if (rr <= 8 || (rr >= 12 && rr <= 20)) score += rr <= 8 ? 3 : 0
-  else if (rr === 0) score += 0
-  else if (rr >= 9 && rr <= 11) score += 1
+  if (rr > 0) {
+    if (rr <= 8) score += 3
+    else if (rr <= 11) score += 1
+    else if (rr <= 20) score += 0
+    else if (rr <= 24) score += 2
+    else score += 3
+  }
 
   // SpO2 (Scale 1 — air)
   const spo2 = Number(vitals.oxygen_saturation || vitals.spo2 || 0)

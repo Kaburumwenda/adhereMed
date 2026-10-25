@@ -28,6 +28,15 @@ const ORG_ROUTES = new Set([
   '/command-center/settings',
 ])
 
+// Roles that practise medicine rather than run the clinic. In a clinic tenant
+// they own a personal practice workspace and must never land on the admin
+// command centre, nor see its modules in the sidebar.
+const CLINIC_CLINICIAN_ROLES = ['doctor', 'clinical_officer', 'dentist']
+
+function isClinicClinician(auth) {
+  return auth.tenantType === 'clinic' && CLINIC_CLINICIAN_ROLES.includes(auth.role)
+}
+
 function getHomePath(auth) {
   // Org admin without an active tenant override → command center
   if (auth.isOrgAdmin && !auth.activeTenantOverride) return '/command-center'
@@ -35,7 +44,12 @@ function getHomePath(auth) {
   if (auth.tenantType === 'lab') return '/lab'
   if (auth.tenantType === 'radiology_center') return '/radiology'
   if (auth.tenantType === 'hospital') return '/hos'
-  if (auth.tenantType === 'clinic') return '/clinics'
+  if (auth.tenantType === 'clinic') {
+    // A clinician's home is their own workspace — `/clinics` is the admin
+    // command centre and returns 403s for a clinical role.
+    if (CLINIC_CLINICIAN_ROLES.includes(auth.role)) return '/clinics/doctor-workspace'
+    return '/clinics'
+  }
   if (auth.tenantType === 'inventory') return '/ims'
   if (auth.tenantType === 'ohsms') return '/ohs'
   return '/dashboard'
@@ -105,7 +119,7 @@ const CLINIC_PREFIXED_ROUTES = [
   '/triage', '/wards', '/invoices', '/accounts', '/expenses', '/departments',
   '/billing/commission', '/billing/locked', '/billing/overdue', '/billing/usage',
   '/alerts', '/messages', '/doctors', '/doctor-profile', '/my-profile',
-  '/my-prescriptions', '/staff', '/analytics',
+  '/my-prescriptions', '/my-lab-results', '/staff', '/analytics',
   '/caregivers', '/care-notes', '/vitals', '/patient-care', '/escalations',
   '/consents', '/data-sharing', '/audit', '/medications',
 ]
@@ -239,6 +253,12 @@ export default defineNuxtRouteMiddleware(async (to) => {
       const query = to.fullPath.includes('?') ? to.fullPath.slice(to.fullPath.indexOf('?')) : ''
       return navigateTo(clinicPath + query, { replace: true })
     }
+  }
+
+  // A clinician must not open the clinic command centre: `/clinics` is the
+  // admin dashboard and its API calls return 403 for a clinical role.
+  if (auth.isLoggedIn && isClinicClinician(auth) && path === '/clinics') {
+    return navigateTo('/clinics/doctor-workspace', { replace: true })
   }
 
   // Inventory tenant namespace redirect: inventory users accessing unprefixed

@@ -1,7 +1,11 @@
 from django.urls import path
 from . import views
+from .clinic_analytics import ClinicAnalyticsView
+from .clinic_dashboard import ClinicDashboardView
 
 urlpatterns = [
+    path('clinic-dashboard/', ClinicDashboardView.as_view(), name='reports-clinic-dashboard'),
+    path('clinic-analytics/', ClinicAnalyticsView.as_view(), name='reports-clinic-analytics'),
     path('sales-summary/', views.SalesSummaryView.as_view(), name='reports-sales'),
     path('top-products/', views.TopProductsView.as_view(), name='reports-top-products'),
     path('cashier-performance/', views.CashierPerformanceView.as_view(), name='reports-cashiers'),

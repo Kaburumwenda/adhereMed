@@ -1,5 +1,5 @@
 <template>
-  <v-container fluid class="pa-4 pa-md-6" style="max-width: 960px;">
+  <v-container fluid class="pa-4 pa-md-6">
     <PageHeader title="Edit Consultation"
       :subtitle="consultation ? consultation.patient_name : ''"
       icon="mdi-medical-bag" color="success">
@@ -183,7 +183,7 @@
     <!-- ── Delete confirmation dialog ────────────────────────────── -->
     <v-dialog v-model="deleteDialog" max-width="420">
       <v-card rounded="lg">
-        <v-card-title class="text-h6">Delete Consultation</v-card-title>
+        <BrandDialogHeader icon="mdi-delete-alert" title="Delete Consultation" />
         <v-card-text>
           <div class="d-flex align-center mb-3">
             <v-avatar color="error-lighten-5" size="40" class="mr-3">

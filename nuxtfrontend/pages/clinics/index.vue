@@ -1,6 +1,6 @@
 <script setup>
-import ClinicDashboard from '~/components/dashboards/ClinicDashboard.vue'
+import ClinicCommandCentre from '~/components/dashboards/ClinicCommandCentre.vue'
 </script>
 <template>
-  <ClinicDashboard />
+  <ClinicCommandCentre />
 </template>

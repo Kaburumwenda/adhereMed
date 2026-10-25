@@ -124,7 +124,7 @@
     <!-- Picture preview dialog -->
     <v-dialog v-model="picturePreview" max-width="400">
       <v-card rounded="lg">
-        <v-card-title class="text-h6">Profile Picture</v-card-title>
+        <BrandDialogHeader icon="mdi-image" title="Profile Picture" />
         <v-card-text class="text-center">
           <v-img v-if="pendingPicture" :src="pendingPicture" max-height="200" contain />
         </v-card-text>

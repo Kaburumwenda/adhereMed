@@ -307,10 +307,7 @@
     <!-- ── Sign Encounter Dialog ── -->
     <v-dialog v-model="signDialog" max-width="520">
       <v-card rounded="xl">
-        <v-card-title class="text-h6 d-flex align-center">
-          <v-icon color="primary" class="mr-2">mdi-draw-pen</v-icon>
-          Sign Encounter
-        </v-card-title>
+        <BrandDialogHeader icon="mdi-draw-pen" title="Sign Encounter" />
         <v-card-text>
           <v-alert type="info" variant="tonal" class="mb-3">
             Once signed, the encounter will be locked and immutable. Further changes require an addendum.
@@ -335,7 +332,7 @@
     <!-- ── ICD-10 Search Dialog ── -->
     <v-dialog v-model="icdSearch" max-width="600">
       <v-card rounded="xl">
-        <v-card-title class="text-h6"><v-icon class="mr-2">mdi-magnify</v-icon>ICD-10 Code Search</v-card-title>
+        <BrandDialogHeader icon="mdi-magnify" title="ICD-10 Code Search" />
         <v-card-text>
           <v-text-field v-model="icdQuery" prepend-inner-icon="mdi-magnify" placeholder="Search ICD-10…" variant="outlined" density="compact" @update:model-value="searchICD" autofocus />
           <v-list density="compact" max-height="400" class="overflow-y-auto">
@@ -353,6 +350,7 @@
     <!-- ── Command Palette ── -->
     <v-dialog v-model="cmdPalette" max-width="600">
       <v-card rounded="xl">
+        <BrandDialogHeader icon="mdi-console" title="Command Palette" />
         <v-text-field v-model="cmdQuery" prepend-inner-icon="mdi-magnify" placeholder="Jump to section, insert template…" variant="outlined" density="compact" autofocus class="px-4 pt-4" @keydown.enter="executeCmd" />
         <v-list density="compact">
           <v-list-item v-for="cmd in filteredCmds" :key="cmd.id" :prepend-icon="cmd.icon" :title="cmd.label" @click="runCmd(cmd)" />

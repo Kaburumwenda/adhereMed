@@ -14,6 +14,11 @@ class Prescription(models.Model):
         null=True, blank=True,
     )
     patient = models.ForeignKey('patients.Patient', on_delete=models.CASCADE, related_name='prescriptions')
+    clinic_site = models.ForeignKey(
+        'clinic_sites.ClinicSite', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='prescriptions',
+        help_text='Clinic location that issued this prescription (null = HQ).',
+    )
     doctor = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='prescriptions_written',
     )

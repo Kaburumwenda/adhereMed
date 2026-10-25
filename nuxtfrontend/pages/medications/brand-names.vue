@@ -818,6 +818,7 @@ const route = useRoute()
 const ns = computed(() => {
   const p = route.path
   if (p.includes('/ims/')) return '/ims'
+  if (p.includes('/clinics/')) return '/clinics/catalog'
   return '/pharmacy'
 })
 

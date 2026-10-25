@@ -94,6 +94,18 @@ BUILTIN_ROLE_CAPS = {
     'tenant_admin': ALL_CAP_KEYS,
     'inventory_admin': ALL_CAP_KEYS,
     'admin': ALL_CAP_KEYS,
+    # Clinic tenants share the catalog endpoints (medications, categories,
+    # units) inside their own schema — the clinic owner role gets full caps
+    # and clinical/staff roles get read-only stock access (mirroring IMS
+    # staff roles) so the shared catalog pages load for them.
+    'clinic_admin': ALL_CAP_KEYS,
+    'doctor': {'stock.view'},
+    'clinical_officer': {'stock.view'},
+    'dentist': {'stock.view'},
+    'nurse': {'stock.view'},
+    'midwife': {'stock.view'},
+    'lab_tech': {'stock.view'},
+    'radiologist': {'stock.view'},
     'branch_admin': ALL_CAP_KEYS - {
         'stock.delete', 'controlled.manage', 'warehouse.manage', 'org.manage',
         'rbac.manage',

@@ -1,5 +1,5 @@
 <template>
-  <v-container fluid class="pa-4 pa-md-6" style="max-width: 1200px;">
+  <v-container fluid class="pa-4 pa-md-6">
     <!-- ── Toolbar ──────────────────────────────────────────────── -->
     <PageHeader :title="pageTitle" :subtitle="patientName || ''"
       icon="mdi-receipt-text" color="indigo">
@@ -179,7 +179,7 @@
     <!-- ═══ Payment dialog ════════════════════════════════════════ -->
     <v-dialog v-model="paymentDialog" max-width="500">
       <v-card rounded="lg" class="pa-4">
-        <div class="text-h6 font-weight-bold mb-4">Record Payment</div>
+        <BrandDialogHeader icon="mdi-cash" title="Record Payment" />
         <v-row dense>
           <v-col cols="12">
             <v-text-field v-model="paymentForm.amount" label="Amount" type="number"

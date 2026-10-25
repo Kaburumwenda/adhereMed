@@ -437,11 +437,13 @@ const route = useRoute()
 const bulkBase = computed(() => {
   const p = route.path
   if (p.includes('/ims/')) return '/ims/medications/bulk'
+  if (p.includes('/clinics/')) return '/clinics/catalog/medications/bulk'
   return '/pharmacy/medications/bulk'
 })
 const excelBase = computed(() => {
   const p = route.path
   if (p.includes('/ims/')) return '/ims/medications/excel'
+  if (p.includes('/clinics/')) return '/clinics/catalog/medications/excel'
   return '/pharmacy/medications/excel'
 })
 

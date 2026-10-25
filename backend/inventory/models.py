@@ -536,3 +536,47 @@ class ControlledSubstanceLog(models.Model):
     def __str__(self):
         return f'{self.medication_name} {self.get_action_display()} {self.quantity} @ {self.created_at:%Y-%m-%d}'
 
+
+# ─────────────────────────────────────────────────────────────────────────
+#  Catalog seed run history (persisted audit of seed operations)
+# ─────────────────────────────────────────────────────────────────────────
+class CatalogSeedRun(models.Model):
+    """One executed catalog-seed command inside this tenant.
+
+    The clinic Catalog → Seed Data page used to keep its run history in
+    component state only, so reloading the page lost everything. This
+    model persists each attempt (success or failure) so the page can show
+    a durable, auditable history of what was seeded, by whom and when.
+    """
+
+    class Status(models.TextChoices):
+        SUCCESS = 'success', 'Success'
+        FAILED = 'failed', 'Failed'
+
+    command_key = models.CharField(max_length=50, db_index=True,
+                                   help_text='Seed key, e.g. categories_units')
+    label = models.CharField(max_length=150, blank=True,
+                             help_text='Human-readable label at run time')
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.SUCCESS)
+    detail = models.TextField(blank=True, help_text='Success message or error trace')
+    duration_ms = models.PositiveIntegerField(default=0)
+    records_created = models.PositiveIntegerField(default=0)
+    run_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='catalog_seed_runs',
+    )
+    run_by_label = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['command_key', '-created_at']),
+            models.Index(fields=['status', '-created_at']),
+        ]
+        verbose_name = 'Catalog Seed Run'
+        verbose_name_plural = 'Catalog Seed Runs'
+
+    def __str__(self):
+        return f'{self.command_key} · {self.status} @ {self.created_at:%Y-%m-%d %H:%M}'
+

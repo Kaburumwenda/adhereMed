@@ -13,7 +13,7 @@
       </div>
       <div class="d-flex align-center mt-2 mt-md-0" style="gap:8px">
         <v-btn variant="tonal" color="primary" prepend-icon="mdi-refresh" rounded="lg" class="text-none" :loading="loading" @click="reload">{{ $t('common.refresh') }}</v-btn>
-        <v-btn color="primary" prepend-icon="mdi-plus" rounded="lg" class="text-none" to="/inventory/categories/new">{{ $t('categoriesPage.newCategory') }}</v-btn>
+        <v-btn color="primary" prepend-icon="mdi-plus" rounded="lg" class="text-none" :to="invBase + '/inventory/categories/new'">{{ $t('categoriesPage.newCategory') }}</v-btn>
       </div>
     </div>
 
@@ -90,7 +90,7 @@
       <v-icon size="64" color="grey">mdi-inbox-outline</v-icon>
       <div class="text-h6 mt-3">No categories</div>
       <div class="text-body-2 mb-4">{{ search ? 'Try a different search.' : 'Get started by creating your first category.' }}</div>
-      <v-btn color="primary" variant="flat" rounded="lg" class="text-none" prepend-icon="mdi-plus" to="/inventory/categories/new">{{ $t('categoriesPage.newCategory') }}</v-btn>
+      <v-btn color="primary" variant="flat" rounded="lg" class="text-none" prepend-icon="mdi-plus" :to="invBase + '/inventory/categories/new'">{{ $t('categoriesPage.newCategory') }}</v-btn>
     </div>
 
     <!-- Grid view -->
@@ -106,8 +106,8 @@
                 <v-btn v-bind="p" icon="mdi-dots-vertical" variant="text" size="small" />
               </template>
               <v-list density="compact">
-                <v-list-item :to="`/inventory/categories/${cat.id}/edit`" prepend-icon="mdi-pencil" title="Edit" />
-                <v-list-item :to="`/inventory?category=${cat.id}`" prepend-icon="mdi-eye" title="View items" />
+                <v-list-item :to="`${invBase}/inventory/categories/${cat.id}/edit`" prepend-icon="mdi-pencil" title="Edit" />
+                <v-list-item :to="viewItemsPath(cat.id)" prepend-icon="mdi-eye" title="View items" />
               </v-list>
             </v-menu>
           </div>
@@ -176,7 +176,7 @@
                 <div class="text-caption text-medium-emphasis mt-1">{{ sharePctByCategory(cat.id) }}%</div>
               </td>
               <td class="text-right">
-                <v-btn icon="mdi-pencil" variant="text" size="small" :to="`/inventory/categories/${cat.id}/edit`" />
+                <v-btn icon="mdi-pencil" variant="text" size="small" :to="`${invBase}/inventory/categories/${cat.id}/edit`" />
               </td>
             </tr>
           </tbody>
@@ -206,6 +206,23 @@ const { t } = useI18n()
 import { ref, computed, onMounted, watch } from 'vue'
 import { formatMoney } from '~/utils/format'
 import { useResource } from '~/composables/useResource'
+
+const route = useRoute()
+
+// Namespace-aware base for create/edit links — keeps the clinic catalog
+// (/clinics/catalog) and IMS (/ims) namespaces inside their own URL spaces.
+const invBase = computed(() => {
+  const p = route.path
+  if (p.startsWith('/ims')) return '/ims'
+  if (p.startsWith('/clinics/catalog')) return '/clinics/catalog'
+  return ''
+})
+
+// Clinics have no stock-items page — point "View items" at the medication catalog.
+function viewItemsPath(id) {
+  if (invBase.value === '/clinics/catalog') return '/clinics/catalog/medications'
+  return `/inventory?category=${id}`
+}
 
 const catRes = useResource('/inventory/categories/')
 const stockRes = useResource('/inventory/stocks/')

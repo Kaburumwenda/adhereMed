@@ -1,5 +1,5 @@
 <template>
-  <v-container fluid class="pa-4 pa-md-6" style="max-width: 1200px;">
+  <v-container fluid class="pa-4 pa-md-6">
     <!-- ── Toolbar ──────────────────────────────────────────────── -->
     <PageHeader :title="consultation?.patient_name || 'Consultation'"
       :subtitle="consultation ? formatDateTime(consultation.created_at) : ''"

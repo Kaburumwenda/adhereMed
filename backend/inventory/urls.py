@@ -2,6 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 from . import views
+from . import catalog_seed_views
 
 router = DefaultRouter()
 router.register('categories', views.CategoryViewSet, basename='category')
@@ -22,5 +23,9 @@ urlpatterns = [
     path('rbac/', views.RBACMatrixView.as_view(), name='inventory-rbac'),
     path('rbac/users/<int:user_id>/role/', views.RBACSetUserRoleView.as_view(), name='inventory-rbac-set-role'),
     path('rbac/builtin-roles/<str:key>/', views.RBACBuiltinRoleOverrideView.as_view(), name='inventory-rbac-builtin-override'),
+    # Clinic catalog seed (categories & units) — shared models, clinic schema
+    path('catalog/seed/', catalog_seed_views.clinic_seed_catalog, name='clinic-catalog-seed'),
+    path('catalog/seed/run/', catalog_seed_views.clinic_run_seed, name='clinic-catalog-seed-run'),
+    path('catalog/seed/history/', catalog_seed_views.clinic_seed_history, name='clinic-catalog-seed-history'),
     path('', include(router.urls)),
 ]

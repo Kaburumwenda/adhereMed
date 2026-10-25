@@ -8,6 +8,7 @@ class TriageSerializer(serializers.ModelSerializer):
     patient_number = serializers.CharField(source='patient.patient_number', read_only=True, default='')
     nurse_name = serializers.CharField(source='nurse.full_name', read_only=True)
     doctor_name = serializers.CharField(source='doctor.full_name', read_only=True, default='')
+    clinic_site_name = serializers.CharField(source='clinic_site.name', read_only=True, default=None)
 
     class Meta:
         model = Triage
@@ -15,19 +16,21 @@ class TriageSerializer(serializers.ModelSerializer):
             'id', 'patient', 'patient_name', 'patient_number',
             'nurse', 'nurse_name',
             'doctor', 'doctor_name',
+            'clinic_site', 'clinic_site_name',
             'esi_level', 'suggested_esi', 'esi_override_reason',
             'chief_complaint', 'vital_signs',
             'arrival_mode', 'pain_scale', 'avpu',
             'news2_score', 'bmi',
             'allergies_confirmed', 'allergies_updated',
+            'chronic_conditions_updated',
             'medication_history',
             'pregnancy_status', 'mental_health_screen',
             'smoking_status', 'alcohol_use', 'substance_use',
             'nutrition_screen', 'fall_risk', 'infection_risk',
             'nursing_assessment', 'interventions', 'patient_education',
-            'notes', 'status', 'triage_time', 'completed_at',
+            'notes', 'status', 'triage_time', 'completed_at', 'assigned_at',
         ]
-        read_only_fields = ['id', 'triage_time']
+        read_only_fields = ['id', 'triage_time', 'assigned_at']
         extra_kwargs = {
             'nurse': {'required': False, 'allow_null': True},
             'doctor': {'required': False, 'allow_null': True},

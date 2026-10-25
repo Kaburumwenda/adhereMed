@@ -3,10 +3,10 @@
     :resource="r"
     :title="loadId ? 'Edit Unit' : 'New Unit'"
     icon="mdi-ruler"
-    back-path="/inventory"
+    :back-path="backPath()"
     :load-id="loadId"
     :initial="initial"
-    @saved="() => router.push('/inventory')"
+    @saved="() => router.push(backPath())"
   >
     <template #default="{ form }">
       <v-row dense>
@@ -55,4 +55,9 @@ const loadId = computed(() => route.params.id || null)
 const r = useResource('/inventory/units/')
 const req = [v => !!v || 'Required']
 const initial = { name: '', abbreviation: '' }
+// Clinic catalog namespace returns to the units list inside /clinics/catalog.
+function backPath() {
+  if (route.path.startsWith('/clinics/catalog')) return '/clinics/catalog/units'
+  return '/inventory'
+}
 </script>

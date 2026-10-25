@@ -14,6 +14,11 @@ class Appointment(models.Model):
     patient = models.ForeignKey('patients.Patient', on_delete=models.CASCADE, related_name='appointments')
     staff = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='appointments_as_staff')
     department = models.ForeignKey('departments.Department', on_delete=models.SET_NULL, null=True, blank=True)
+    clinic_site = models.ForeignKey(
+        'clinic_sites.ClinicSite', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='appointments',
+        help_text='Clinic location this appointment belongs to (null = HQ).',
+    )
     appointment_date = models.DateField()
     appointment_time = models.TimeField()
     duration_minutes = models.PositiveIntegerField(default=30)

@@ -27,7 +27,7 @@
 
     <v-dialog v-model="dialog" max-width="500">
       <v-card rounded="lg">
-        <v-card-title class="text-h6">New Expense Category</v-card-title>
+        <BrandDialogHeader icon="mdi-tag-plus" title="New Expense Category" />
         <v-card-text>
           <v-text-field v-model="newCategory.name" label="Name" required variant="outlined" density="compact" />
           <v-textarea v-model="newCategory.description" label="Description" variant="outlined" density="compact" rows="2" class="mt-2" />

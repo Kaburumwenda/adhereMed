@@ -20,6 +20,12 @@ router.register('training-records', views.TrainingRecordViewSet, basename='ohs-t
 router.register('ppe-items', views.PpeItemViewSet, basename='ohs-ppe-item')
 router.register('ppe-issues', views.PpeIssueViewSet, basename='ohs-ppe-issue')
 router.register('health-surveillance', views.HealthSurveillanceViewSet, basename='ohs-health')
+router.register('job-demands', views.JobDemandProfileViewSet, basename='ohs-job-demand')
+router.register('assessments', views.HealthAssessmentViewSet, basename='ohs-assessment')
+router.register('assessment-findings', views.AssessmentFindingViewSet,
+                basename='ohs-assessment-finding')
+router.register('assessment-labs', views.AssessmentLabResultViewSet,
+                basename='ohs-assessment-lab')
 router.register('observations', views.ObservationViewSet, basename='ohs-observation')
 router.register('exposure', views.ExposureMonitoringViewSet, basename='ohs-exposure')
 router.register('drills', views.EmergencyDrillViewSet, basename='ohs-drill')
@@ -51,6 +57,8 @@ urlpatterns = [
     path('search/', views.OhsSearchView.as_view(), name='ohs-search'),
     path('lookups/', views.OhsLookupsView.as_view(), name='ohs-lookups'),
     path('equipment-summary/', views.OhsEquipmentSummaryView.as_view(), name='ohs-equipment-summary'),
+    path('assessment-summary/', views.OhsAssessmentSummaryView.as_view(),
+         name='ohs-assessment-summary'),
     # Roles & Access (RBAC)
     path('rbac/', rbac_views.OhsRBACMatrixView.as_view(), name='ohs-rbac'),
     path('rbac/users/<int:user_id>/role/', rbac_views.OhsRBACSetUserRoleView.as_view(),

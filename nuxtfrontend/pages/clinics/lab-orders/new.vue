@@ -1,5 +1,5 @@
 <template>
-  <v-container fluid class="pa-4 pa-md-6" style="max-width: 1100px">
+  <v-container fluid class="pa-4 pa-md-6">
     <!-- Header -->
     <div class="d-flex align-center flex-wrap ga-3 mb-5">
       <v-btn icon="mdi-arrow-left" variant="text" to="/clinics/lab-orders" />

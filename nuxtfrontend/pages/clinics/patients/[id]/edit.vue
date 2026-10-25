@@ -1,5 +1,5 @@
 <template>
-  <v-container fluid class="pa-4 pa-md-6" style="max-width: 960px;">
+  <v-container fluid class="pa-4 pa-md-6">
     <PageHeader :title="'Edit Patient'" :subtitle="patient?.patient_number || ''"
       icon="mdi-account-edit" color="primary">
       <template #actions>
@@ -114,7 +114,7 @@
     <!-- ── Delete confirmation dialog ────────────────────────────── -->
     <v-dialog v-model="deleteDialog" max-width="420">
       <v-card rounded="lg">
-        <v-card-title class="text-h6">Delete Patient</v-card-title>
+        <BrandDialogHeader icon="mdi-delete-alert" title="Delete Patient" />
         <v-card-text>
           <div class="d-flex align-center mb-3">
             <v-avatar color="error-lighten-5" size="40" class="mr-3">

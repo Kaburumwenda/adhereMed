@@ -4,13 +4,18 @@ from datetime import date, timedelta
 
 from django.db.models import Count, F, Q, Sum
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from config.cache import tenant_cache
+
 from .models import (
+    AssessmentFinding,
+    AssessmentLabResult,
     Certification,
     ComplianceAudit,
     Contractor,
@@ -25,11 +30,13 @@ from .models import (
     ExposureMonitoring,
     Hazard,
     HazardCategory,
+    HealthAssessment,
     HealthSurveillance,
     Incident,
     IncidentAction,
     Inspection,
     InspectionItem,
+    JobDemandProfile,
     LegalRequirement,
     ManagementReview,
     MeetingAttendance,
@@ -48,6 +55,8 @@ from .models import (
     risk_band,
 )
 from .serializers import (
+    AssessmentFindingSerializer,
+    AssessmentLabResultSerializer,
     CertificationSerializer,
     ComplianceAuditSerializer,
     ContractorEngagementSerializer,
@@ -65,12 +74,15 @@ from .serializers import (
     HazardCategorySerializer,
     HazardListSerializer,
     HazardSerializer,
+    HealthAssessmentListSerializer,
+    HealthAssessmentSerializer,
     HealthSurveillanceSerializer,
     IncidentActionSerializer,
     IncidentListSerializer,
     IncidentSerializer,
     InspectionItemSerializer,
     InspectionSerializer,
+    JobDemandProfileSerializer,
     LegalRequirementSerializer,
     ManagementReviewSerializer,
     MeetingAttendanceSerializer,
@@ -99,6 +111,23 @@ def _actor_name(request):
     if not user or not user.is_authenticated:
         return ''
     return getattr(user, 'full_name', '') or user.get_username()
+
+
+def _as_date(value):
+    """Coerce a JSON body value into a ``date``, or ``None``.
+
+    ``request.data`` is raw on custom actions, so an ISO string arrives as a
+    string. Doing date arithmetic on it raises ``TypeError`` deep inside the
+    view; normalising at the boundary keeps the failure mode a 400 instead.
+    """
+    if not value:
+        return None
+    if isinstance(value, date) and not hasattr(value, 'hour'):
+        return value
+    try:
+        return parse_date(str(value)[:10])
+    except (TypeError, ValueError):
+        return None
 
 
 class OhsBaseViewSet(viewsets.ModelViewSet):
@@ -550,6 +579,7 @@ def _pct(part, whole):
 class OhsDashboardView(APIView):
     """Single-call OHSMS cockpit payload."""
 
+    @tenant_cache('ohsms.dashboard', timeout=60)
     def get(self, request):
         try:
             days = int(request.query_params.get('days', 90))
@@ -884,6 +914,7 @@ class OhsDashboardView(APIView):
 class OhsLookupsView(APIView):
     """Compact option lists used to populate forms across the OHS UI."""
 
+    @tenant_cache('ohsms.dashboard', timeout=300)
     def get(self, request):
         sites = SiteSerializer(Site.objects.filter(is_active=True), many=True).data
         categories = HazardCategorySerializer(HazardCategory.objects.all(), many=True).data
@@ -938,6 +969,419 @@ class OhsLookupsView(APIView):
             'defect_status': [
                 {'value': v, 'label': l} for v, l in EquipmentDefect.Status.choices
             ],
+            # ── Pre/post-employment assessment ──
+            'assessment_kinds': [
+                {'value': v, 'label': l} for v, l in HealthAssessment.Kind.choices
+            ],
+            'assessment_statuses': [
+                {'value': v, 'label': l} for v, l in HealthAssessment.Status.choices
+            ],
+            'fitness_outcomes': [
+                {'value': v, 'label': l} for v, l in HealthAssessment.Fitness.choices
+            ],
+            'exit_reasons': [
+                {'value': v, 'label': l} for v, l in HealthAssessment.ExitReason.choices
+            ],
+            'finding_systems': [
+                {'value': v, 'label': l} for v, l in AssessmentFinding.System.choices
+            ],
+            'finding_severities': [
+                {'value': v, 'label': l} for v, l in AssessmentFinding.Severity.choices
+            ],
+            'lab_flags': [
+                {'value': v, 'label': l} for v, l in AssessmentLabResult.Flag.choices
+            ],
+            'physical_demands': [
+                {'value': v, 'label': l} for v, l in JobDemandProfile.PhysicalDemand.choices
+            ],
+            'sensory_standards': [
+                {'value': v, 'label': l} for v, l in JobDemandProfile.SensoryStandard.choices
+            ],
+            'surveillance_tiers': [
+                {'value': v, 'label': l} for v, l in JobDemandProfile.SurveillanceTier.choices
+            ],
+            'job_demands': JobDemandProfileSerializer(
+                JobDemandProfile.objects.filter(is_active=True), many=True,
+            ).data,
+        })
+
+
+# ─────────────────────────────────────────────────────────────────────────
+#  Pre-employment & post-employment assessment
+# ─────────────────────────────────────────────────────────────────────────
+MEASURED_VITALS = (
+    'height_cm', 'weight_kg', 'bp_systolic', 'bp_diastolic',
+    'pulse', 'resp_rate', 'temperature_c', 'spo2', 'waist_cm',
+)
+MEASURED_HEARING = ('left_db', 'right_db')
+MEASURED_SPIROMETRY = ('fev1_l', 'fvc_l', 'fev1_fvc_pct', 'predicted_pct')
+
+
+class JobDemandProfileViewSet(OhsBaseViewSet):
+    queryset = JobDemandProfile.objects.select_related('site')
+    serializer_class = JobDemandProfileSerializer
+    search_fields = ['code', 'job_title', 'department', 'inherent_requirements']
+    filterset_fields = ['site', 'physical_demand', 'surveillance_tier', 'is_active']
+    ordering_fields = ['job_title', 'department', 'physical_demand', 'created_at']
+
+
+class AssessmentFindingViewSet(OhsBaseViewSet):
+    queryset = AssessmentFinding.objects.select_related('assessment')
+    serializer_class = AssessmentFindingSerializer
+    search_fields = ['finding', 'recommendation']
+    filterset_fields = ['assessment', 'system', 'severity', 'work_related']
+    ordering_fields = ['system', 'severity', 'created_at']
+
+
+class AssessmentLabResultViewSet(OhsBaseViewSet):
+    queryset = AssessmentLabResult.objects.select_related('assessment')
+    serializer_class = AssessmentLabResultSerializer
+    search_fields = ['analyte', 'notes']
+    filterset_fields = ['assessment', 'flag']
+    ordering_fields = ['analyte', 'flag', 'created_at']
+
+
+class HealthAssessmentViewSet(OhsBaseViewSet):
+    queryset = HealthAssessment.objects.select_related(
+        'site', 'job_demand', 'baseline',
+    ).prefetch_related('findings', 'lab_results')
+    serializer_class = HealthAssessmentSerializer
+    list_serializer_class = HealthAssessmentListSerializer
+    search_fields = ['reference', 'employee_name', 'employee_ref', 'job_title',
+                     'department', 'examiner_name', 'provider', 'certificate_no']
+    filterset_fields = ['kind', 'status', 'fitness', 'site', 'job_demand',
+                        'work_related', 'compensation_claim']
+    ordering_fields = ['reference', 'employee_name', 'scheduled_on', 'examined_on',
+                       'valid_until', 'fitness', 'kind']
+
+    def filter_queryset(self, queryset):
+        qs = super().filter_queryset(queryset)
+        params = self.request.query_params
+        if params.get('overdue') in ('1', 'true'):
+            qs = qs.filter(
+                scheduled_on__lt=date.today(),
+            ).exclude(status__in=['completed', 'certified', 'cancelled', 'declined'])
+        if params.get('expiring') in ('1', 'true'):
+            horizon = date.today() + timedelta(days=60)
+            qs = qs.filter(valid_until__isnull=False, valid_until__lte=horizon)
+        if params.get('needs_certificate') in ('1', 'true'):
+            qs = qs.filter(status='completed', certificate_no='')
+        return qs
+
+    def perform_create(self, serializer):
+        # An exit/periodic assessment defaults to the most recent
+        # pre-employment record for the same employee, so the baseline
+        # comparison works without the operator hunting for the reference.
+        data = serializer.validated_data
+        baseline = data.get('baseline')
+        if not baseline and data.get('kind') in ('exit', 'periodic', 'return_to_work'):
+            name = data.get('employee_name') or ''
+            if name:
+                baseline = (
+                    HealthAssessment.objects
+                    .filter(kind='pre_employment', employee_name__iexact=name)
+                    .order_by('-scheduled_on').first()
+                )
+        serializer.save(baseline=baseline)
+
+    # ── child rows ──
+    @action(detail=True, methods=['post'], url_path='add-finding')
+    def add_finding(self, request, pk=None):
+        assessment = self.get_object()
+        serializer = AssessmentFindingSerializer(
+            data={**request.data, 'assessment': assessment.id},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        assessment.refresh_from_db()
+        return Response(self.get_serializer(assessment).data, status=201)
+
+    @action(detail=True, methods=['post'], url_path='add-lab-result')
+    def add_lab_result(self, request, pk=None):
+        assessment = self.get_object()
+        serializer = AssessmentLabResultSerializer(
+            data={**request.data, 'assessment': assessment.id},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        assessment.refresh_from_db()
+        return Response(self.get_serializer(assessment).data, status=201)
+
+    @action(detail=True, methods=['delete'], url_path=r'findings/(?P<finding_id>[^/.]+)')
+    def delete_finding(self, request, pk=None, finding_id=None):
+        assessment = self.get_object()
+        assessment.findings.filter(id=finding_id).delete()
+        return Response(self.get_serializer(assessment).data)
+
+    @action(detail=True, methods=['delete'], url_path=r'lab-results/(?P<result_id>[^/.]+)')
+    def delete_lab_result(self, request, pk=None, result_id=None):
+        assessment = self.get_object()
+        assessment.lab_results.filter(id=result_id).delete()
+        return Response(self.get_serializer(assessment).data)
+
+    # ── lifecycle ──
+    @action(detail=True, methods=['post'])
+    def complete(self, request, pk=None):
+        """Record the clinical outcome and close the assessment.
+
+        Sets the exam date, fitness decision and — when the role has a
+        surveillance tier — the next statutory due date, so the register can
+        chase it without anyone re-entering the interval.
+        """
+        assessment = self.get_object()
+        payload = request.data or {}
+
+        # JSON dates arrive as strings. Adding a timedelta to one raises
+        # TypeError, so coerce once at the boundary instead of trusting the body.
+        assessment.examined_on = (
+            _as_date(payload.get('examined_on'))
+            or assessment.examined_on
+            or date.today()
+        )
+        if payload.get('fitness'):
+            assessment.fitness = payload['fitness']
+        if assessment.fitness == HealthAssessment.Fitness.PENDING:
+            assessment.fitness = HealthAssessment.Fitness.FIT
+        assessment.restrictions = payload.get('restrictions', assessment.restrictions)
+        assessment.recommendations = payload.get('recommendations', assessment.recommendations)
+        assessment.work_related = bool(payload.get('work_related', assessment.work_related))
+        assessment.attributable_condition = payload.get(
+            'attributable_condition', assessment.attributable_condition,
+        )
+        assessment.compensation_claim = bool(
+            payload.get('compensation_claim', assessment.compensation_claim),
+        )
+        assessment.clearance_notes = payload.get('clearance_notes', assessment.clearance_notes)
+        assessment.examiner_name = payload.get('examiner_name') or assessment.examiner_name
+        assessment.status = HealthAssessment.Status.COMPLETED
+        assessment.reviewed_by = payload.get('reviewed_by') or _actor_name(request)
+        assessment.reviewed_at = timezone.now()
+
+        interval = assessment.job_demand.review_interval_months if assessment.job_demand else None
+        if interval:
+            assessment.next_due = assessment.examined_on + timedelta(days=30 * interval)
+
+        assessment.save()
+        return Response(self.get_serializer(assessment).data)
+
+    @action(detail=True, methods=['post'], url_path='issue-certificate')
+    def issue_certificate(self, request, pk=None):
+        """Issue the fitness certificate that the employee carries."""
+        assessment = self.get_object()
+        payload = request.data or {}
+        issued = _as_date(payload.get('issued_on')) or date.today()
+
+        months = payload.get('valid_months')
+        try:
+            months = int(months) if months else None
+        except (TypeError, ValueError):
+            months = None
+        if not months and assessment.job_demand and assessment.job_demand.review_interval_months:
+            months = assessment.job_demand.review_interval_months
+        months = months or 12
+
+        assessment.certificate_no = (
+            payload.get('certificate_no')
+            or f'{assessment.reference}/C'
+        )
+        assessment.issued_on = issued
+        assessment.valid_until = issued + timedelta(days=30 * months)
+        assessment.next_due = _as_date(payload.get('next_due')) or assessment.valid_until
+        assessment.status = HealthAssessment.Status.CERTIFIED
+        assessment.save()
+        return Response(self.get_serializer(assessment).data)
+
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        assessment = self.get_object()
+        assessment.status = HealthAssessment.Status.CANCELLED
+        assessment.notes = (request.data or {}).get('notes') or assessment.notes
+        assessment.save(update_fields=['status', 'notes', 'updated_at'])
+        return Response(self.get_serializer(assessment).data)
+
+    @action(detail=True, methods=['get'])
+    def baseline_comparison(self, request, pk=None):
+        """Numeric drift between this assessment and its pre-employment baseline.
+
+        This is the whole point of linking the two records: a raw exit value
+        ("left ear 45 dB") only means something next to the value on the day
+        the person was hired.
+        """
+        assessment = self.get_object()
+        baseline = assessment.baseline
+        if baseline is None:
+            # Fall back to the earliest *other* pre-employment record for this
+            # person. Excluding self matters: for a pre-employment record the
+            # fallback would otherwise select the record being compared and
+            # report a table of zero deltas, which reads as a clean bill of
+            # health when nothing was compared at all.
+            baseline = (
+                HealthAssessment.objects
+                .filter(kind='pre_employment', employee_name__iexact=assessment.employee_name)
+                .exclude(pk=assessment.pk)
+                .order_by('scheduled_on').first()
+            )
+        if baseline is None:
+            return Response({
+                'has_baseline': False,
+                'assessment': self.get_serializer(assessment).data,
+                'baseline': None,
+                'deltas': [],
+            })
+
+        deltas = []
+
+        def collect(group, keys, unit_map):
+            current = getattr(assessment, group) or {}
+            previous = getattr(baseline, group) or {}
+            for key in keys:
+                try:
+                    now_v = float(current.get(key))
+                    then_v = float(previous.get(key))
+                except (TypeError, ValueError):
+                    continue
+                delta = round(now_v - then_v, 2)
+                deltas.append({
+                    'group': group,
+                    'key': key,
+                    'unit': unit_map.get(key, ''),
+                    'baseline': then_v,
+                    'current': now_v,
+                    'delta': delta,
+                    'direction': 'up' if delta > 0 else 'down' if delta < 0 else 'flat',
+                })
+
+        collect('vital_signs', MEASURED_VITALS, {
+            'height_cm': 'cm', 'weight_kg': 'kg', 'bp_systolic': 'mmHg',
+            'bp_diastolic': 'mmHg', 'pulse': 'bpm', 'resp_rate': '/min',
+            'temperature_c': '°C', 'spo2': '%', 'waist_cm': 'cm',
+        })
+        collect('hearing', MEASURED_HEARING, {'left_db': 'dB', 'right_db': 'dB'})
+        collect('spirometry', MEASURED_SPIROMETRY, {
+            'fev1_l': 'L', 'fvc_l': 'L', 'fev1_fvc_pct': '%', 'predicted_pct': '%',
+        })
+
+        # Weight change is only meaningful alongside the BMI it produces.
+        if assessment.bmi is not None and baseline.bmi is not None:
+            deltas.append({
+                'group': 'derived', 'key': 'bmi', 'unit': 'kg/m²',
+                'baseline': baseline.bmi, 'current': assessment.bmi,
+                'delta': round(assessment.bmi - baseline.bmi, 1),
+                'direction': ('up' if assessment.bmi > baseline.bmi
+                              else 'down' if assessment.bmi < baseline.bmi else 'flat'),
+            })
+
+        worsened_hearing = any(
+            d['key'] in MEASURED_HEARING and d['delta'] >= 10 for d in deltas
+        )
+
+        return Response({
+            'has_baseline': True,
+            'baseline': {
+                'id': baseline.id,
+                'reference': baseline.reference,
+                'examined_on': baseline.examined_on,
+                'scheduled_on': baseline.scheduled_on,
+                'fitness': baseline.fitness,
+                'bmi': baseline.bmi,
+            },
+            'assessment': self.get_serializer(assessment).data,
+            'deltas': deltas,
+            'flags': {
+                'hearing_shift': worsened_hearing,
+                'bmi_change_significant': any(
+                    d['key'] == 'bmi' and abs(d['delta']) >= 3 for d in deltas
+                ),
+            },
+        })
+
+
+class OhsAssessmentSummaryView(APIView):
+    """KPI card + roll-ups for the assessment workspace (single call)."""
+
+    @tenant_cache('ohsms.dashboard', timeout=60)
+    def get(self, request):
+        today = date.today()
+        horizon = today + timedelta(days=60)
+        qs = HealthAssessment.objects.all()
+
+        by_kind = {k: 0 for k, _ in HealthAssessment.Kind.choices}
+        for row in qs.values('kind').annotate(n=Count('id')):
+            by_kind[row['kind']] = row['n']
+
+        by_fitness = {f: 0 for f, _ in HealthAssessment.Fitness.choices}
+        for row in qs.values('fitness').annotate(n=Count('id')):
+            by_fitness[row['fitness']] = row['n']
+
+        done_statuses = ['completed', 'certified']
+        completed = qs.filter(status__in=done_statuses).count()
+
+        overdue = qs.filter(scheduled_on__lt=today).exclude(
+            status__in=['completed', 'certified', 'cancelled', 'declined'],
+        ).count()
+
+        expiring = qs.filter(
+            valid_until__isnull=False,
+            valid_until__gte=today,
+            valid_until__lte=horizon,
+        ).count()
+        expired = qs.filter(valid_until__isnull=False, valid_until__lt=today).count()
+
+        awaiting = qs.filter(status='completed', certificate_no='').count()
+
+        work_related = qs.filter(work_related=True).count()
+        claims = qs.filter(compensation_claim=True).count()
+
+        # Site roll-up for the "where is the load" strip.
+        sites = []
+        for row in (qs.values('site__id', 'site__name').annotate(
+                n=Count('id')).order_by('-n')[:8]):
+            if not row['site__id']:
+                continue
+            sites.append({
+                'id': row['site__id'],
+                'name': row['site__name'],
+                'count': row['n'],
+            })
+
+        # Fitness outcome mix restricted to assessments that reached an outcome.
+        assessed = [k for k in by_fitness if k != 'pending']
+        assessed_total = sum(by_fitness[k] for k in assessed) or 0
+        fitness_mix = [
+            {
+                'value': k,
+                'label': dict(HealthAssessment.Fitness.choices)[k],
+                'count': by_fitness[k],
+                'pct': round(by_fitness[k] / assessed_total * 100) if assessed_total else 0,
+            }
+            for k in assessed
+        ]
+
+        fit = by_fitness.get('fit', 0)
+        restricted = by_fitness.get('fit_with_restrictions', 0)
+        unfit = by_fitness.get('unfit', 0) + by_fitness.get('temporarily_unfit', 0)
+
+        return Response({
+            'total': qs.count(),
+            'scheduled': qs.filter(status='scheduled').count(),
+            'in_progress': qs.filter(status='in_progress').count(),
+            'completed': completed,
+            'overdue': overdue,
+            'awaiting_certificate': awaiting,
+            'expiring': expiring,
+            'expired': expired,
+            'work_related': work_related,
+            'compensation_claims': claims,
+            'fit': fit,
+            'fit_with_restrictions': restricted,
+            'unfit': unfit,
+            'fit_rate': round(fit / assessed_total * 100) if assessed_total else 0,
+            'by_kind': [{'value': k, 'label': v, 'count': by_kind[k]}
+                        for k, v in HealthAssessment.Kind.choices],
+            'by_fitness': fitness_mix,
+            'sites': sites,
+            'job_profiles': JobDemandProfile.objects.filter(is_active=True).count(),
+            'generated_at': timezone.now().isoformat(),
         })
 
 
@@ -1277,6 +1721,7 @@ class EquipmentDefectViewSet(OhsBaseViewSet):
 class OhsEquipmentSummaryView(APIView):
     """Fleet-level KPIs and breakdowns for the equipment register page."""
 
+    @tenant_cache('ohsms.dashboard', timeout=60)
     def get(self, request):
         today = date.today()
         qs = SafetyEquipment.objects.prefetch_related('defects')
@@ -1442,6 +1887,7 @@ class OhsIntelligenceView(APIView):
     """Advanced analytics: leading vs lagging indicators, cost of risk,
     benchmarking, forecasting and compliance heat maps."""
 
+    @tenant_cache('ohsms.dashboard', timeout=120)
     def get(self, request):
         today = date.today()
         since_12 = timezone.now() - timedelta(days=365)
@@ -1756,6 +2202,7 @@ class OhsIntelligenceView(APIView):
 #  Alert centre — a single derived feed of everything needing attention
 # ─────────────────────────────────────────────────────────────────────────
 class OhsAlertsView(APIView):
+    @tenant_cache('ohsms.dashboard', timeout=60)
     def get(self, request):
         today = date.today()
         now = timezone.now()

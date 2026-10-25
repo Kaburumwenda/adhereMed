@@ -25,6 +25,23 @@ class PharmacyDetail(models.Model):
 
 
 class Branch(models.Model):
+    """A drug store — one dispensing outlet.
+
+    Every clinic branch (``clinic_sites.ClinicSite``) owns exactly one drug
+    store, so medication stock is always attributed to a real branch of the
+    clinic. ``db_constraint=False`` because ``clinic_sites`` is a tenant app
+    that can also be created in the public schema.
+    """
+
+    site = models.ForeignKey(
+        'clinic_sites.ClinicSite',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        db_constraint=False,
+        related_name='drug_stores',
+        help_text='Clinic branch this drug store dispenses for.',
+    )
+
     name = models.CharField(max_length=255)
     address = models.TextField(blank=True)
     place_name = models.CharField(max_length=255, blank=True)

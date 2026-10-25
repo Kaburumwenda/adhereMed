@@ -1,5 +1,5 @@
 <template>
-  <v-container fluid class="pa-4 pa-md-6" style="max-width: 1200px;">
+  <v-container fluid class="pa-4 pa-md-6">
     <!-- ── Toolbar ──────────────────────────────────────────────── -->
     <PageHeader :title="caregiver?.patient_name || 'Caregiver'"
       :subtitle="caregiver ? `Assigned ${formatDate(caregiver.assigned_date)}` : ''"

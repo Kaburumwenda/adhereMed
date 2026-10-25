@@ -17,6 +17,10 @@ urlpatterns = [
     path('verify-password/', views.VerifyPasswordView.as_view(), name='verify-password'),
     path('regenerate-pin/', views.RegeneratePinView.as_view(), name='regenerate-pin'),
     path('staff/', views.StaffListView.as_view(), name='staff-list'),
+    # Roster + workload aggregates for the staff directory page. Declared before
+    # the detail route so 'overview' is never captured as a pk.
+    path('users/overview/', views.UserManagementViewSet.as_view({'get': 'overview'}),
+         name='user-overview'),
     path('users/', views.UserManagementViewSet.as_view({'get': 'list', 'post': 'create'}), name='user-list'),
     path('users/<int:pk>/', views.UserManagementViewSet.as_view({
         'get': 'retrieve', 'patch': 'partial_update', 'put': 'update', 'delete': 'destroy',

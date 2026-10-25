@@ -449,7 +449,11 @@ onBeforeUnmount(() => observer && observer.disconnect())
 .content-wrapper {
   position: relative;
   z-index: 2;
-  max-width: 1180px;
+  /* 90% of the viewport: 5% of breathing room per side. `max-width: none`
+     also beats the per-breakpoint caps Vuetify puts on `.v-container`. */
+  width: 90%;
+  max-width: none;
+  margin-inline: auto;
 }
 
 /* ---------- Brand lockup ---------- */
@@ -491,8 +495,11 @@ onBeforeUnmount(() => observer && observer.disconnect())
   border-bottom: 1px solid rgba(15, 23, 42, 0.06);
 }
 .nav-inner {
-  max-width: 1180px;
-  margin: 0 auto;
+  /* Matches .content-wrapper so the nav buttons sit on the same optical
+     margin as the hero copy below them. */
+  width: 90%;
+  max-width: none;
+  margin-inline: auto;
 }
 .nav-link {
   color: rgba(15, 23, 42, 0.7) !important;

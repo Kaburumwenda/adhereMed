@@ -3,10 +3,10 @@
     :resource="r"
     :title="loadId ? 'Edit Category' : 'New Category'"
     icon="mdi-shape"
-    back-path="/inventory"
+    :back-path="backPath()"
     :load-id="loadId"
     :initial="initial"
-    @saved="() => router.push('/inventory')"
+    @saved="() => router.push(backPath())"
   >
     <template #default="{ form }">
       <v-row dense>
@@ -55,4 +55,9 @@ const loadId = computed(() => route.params.id || null)
 const r = useResource('/inventory/categories/')
 const req = [v => !!v || 'Required']
 const initial = { name: '', description: '' }
+// Clinic catalog namespace returns to the categories list inside /clinics/catalog.
+function backPath() {
+  if (route.path.startsWith('/clinics/catalog')) return '/clinics/catalog/categories'
+  return '/inventory'
+}
 </script>

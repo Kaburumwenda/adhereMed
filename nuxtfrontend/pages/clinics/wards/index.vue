@@ -47,7 +47,7 @@
 
     <v-dialog v-model="dialog" max-width="500">
       <v-card rounded="lg">
-        <v-card-title class="text-h6">New Ward</v-card-title>
+        <BrandDialogHeader icon="mdi-bed" title="New Ward" />
         <v-card-text>
           <v-form>
             <v-text-field v-model="wardForm.name" label="Ward Name" required variant="outlined" density="compact" class="mb-2" />

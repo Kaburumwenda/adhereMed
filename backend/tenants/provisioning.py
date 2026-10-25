@@ -34,6 +34,7 @@ import logging
 
 from django.core.management import call_command
 from django.db import connection
+from django.db.migrations.exceptions import NodeNotFoundError
 from django.utils import timezone
 from django_tenants.utils import get_tenant_model, schema_context
 
@@ -76,6 +77,56 @@ def _run_migrations(schema_name, verbosity=0):
     """Apply outstanding migrations inside ``schema_name``."""
     with schema_context(schema_name):
         call_command('migrate', interactive=False, verbosity=verbosity)
+
+
+def _run_migrations_subprocess(schema_name, verbosity=0):
+    """Apply migrations from a *fresh* interpreter.
+
+    Long-lived processes (notably the Celery worker) keep the Django app
+    registry they built at start-up. If a deploy adds a new app — or a
+    migration that depends on one — the worker's ``MigrationLoader`` cannot see
+    the new nodes and raises::
+
+        NodeNotFoundError: Migration inventory.0020_... dependencies reference
+        nonexistent parent node ('logistics', '0001_initial')
+
+    even though that migration file is on disk and ``manage.py`` run by hand
+    works fine. A subprocess re-imports everything from disk, so it always sees
+    the deployed migration graph. This makes provisioning self-healing instead
+    of requiring the operator to notice a stale worker.
+    """
+    import subprocess
+    import sys
+
+    from django.conf import settings
+
+    code = (
+        'import os\n'
+        'os.environ.setdefault("DJANGO_SETTINGS_MODULE", %r)\n'
+        'import django\n'
+        'django.setup()\n'
+        'from django.core.management import call_command\n'
+        'from django_tenants.utils import schema_context\n'
+        'with schema_context(%r):\n'
+        '    call_command("migrate", interactive=False, verbosity=%d)\n'
+    ) % (
+        settings.SETTINGS_MODULE, schema_name, verbosity,
+    )
+
+    proc = subprocess.run(
+        [sys.executable, '-c', code],
+        cwd=str(settings.BASE_DIR),
+        capture_output=True,
+        text=True,
+        timeout=1800,
+    )
+    if proc.stdout:
+        logger.info('subprocess migrate %s stdout:\n%s', schema_name, proc.stdout)
+    if proc.returncode != 0:
+        raise RuntimeError(
+            'Subprocess migration failed for schema %s: %s'
+            % (schema_name, (proc.stderr or proc.stdout or '')[-MAX_ERROR_LEN:])
+        )
 
 
 def _seed_defaults(schema_name, verbosity=0):
@@ -168,9 +219,24 @@ def provision_tenant(tenant_id, *, verbosity=0, seed=True):
         if not schema_exists(schema_name):
             # create_schema() also runs the migrations for the new schema.
             # check_if_exists=True keeps this safe to re-run.
-            tenant.create_schema(
-                check_if_exists=True, sync_schema=True, verbosity=verbosity
-            )
+            try:
+                tenant.create_schema(
+                    check_if_exists=True, sync_schema=True, verbosity=verbosity
+                )
+            except NodeNotFoundError:
+                # A stale in-process migration graph must not abort the run:
+                # the schema may already exist (empty) and the subprocess
+                # fallback below will build its tables.
+                logger.warning(
+                    'Stale migration graph while creating schema %s; falling '
+                    'back to a subprocess migration', schema_name,
+                )
+                if not schema_exists(schema_name):
+                    with connection.cursor() as cursor:
+                        cursor.execute(
+                            'CREATE SCHEMA IF NOT EXISTS %s'
+                            % connection.ops.quote_name(schema_name)
+                        )
             result['created_schema'] = True
 
         if not schema_exists(schema_name):
@@ -178,7 +244,14 @@ def provision_tenant(tenant_id, *, verbosity=0, seed=True):
 
         # No-op for a freshly synced schema; the resume path for a partially
         # migrated one.
-        _run_migrations(schema_name, verbosity=verbosity)
+        try:
+            _run_migrations(schema_name, verbosity=verbosity)
+        except NodeNotFoundError:
+            logger.warning(
+                'Stale migration graph in-process for schema %s; re-running '
+                'migrations from a fresh interpreter', schema_name,
+            )
+            _run_migrations_subprocess(schema_name, verbosity=verbosity)
         result['migrated'] = True
 
         if seed:

@@ -379,13 +379,7 @@
     <!-- ═══ Care Note Dialog ════════════════════════════════════════ -->
     <v-dialog v-model="noteDialog" max-width="600" persistent scrollable>
       <v-card rounded="lg">
-        <v-card-title class="text-h6 d-flex align-center">
-          <v-avatar :color="noteEditing ? 'purple-lighten-5' : 'purple'" variant="tonal" size="36" class="mr-3">
-            <v-icon :color="noteEditing ? 'purple' : 'white'">{{ noteEditing ? 'mdi-note-edit' : 'mdi-note-plus' }}</v-icon>
-          </v-avatar>
-          {{ noteEditing ? 'Edit Care Note' : 'New Care Note' }}
-        </v-card-title>
-        <v-divider />
+        <BrandDialogHeader :icon="noteEditing ? 'mdi-note-edit' : 'mdi-note-plus'" :title="noteEditing ? 'Edit Care Note' : 'New Care Note'" />
         <v-card-text class="pa-4">
           <v-form ref="noteFormRef" @submit.prevent="saveNote">
             <v-select v-model="noteForm.patient" :items="patientSelectOptions"
@@ -417,13 +411,7 @@
     <!-- ═══ Note View Dialog ════════════════════════════════════════ -->
     <v-dialog v-model="noteViewDialog" max-width="600" scrollable>
       <v-card rounded="lg">
-        <v-card-title class="text-h6 d-flex align-center">
-          <v-avatar color="purple-lighten-5" variant="tonal" size="36" class="mr-3">
-            <v-icon color="purple">mdi-notebook-edit</v-icon>
-          </v-avatar>
-          {{ viewNoteItem?.patient_name || 'Care Note' }}
-        </v-card-title>
-        <v-divider />
+        <BrandDialogHeader icon="mdi-notebook-edit" :title="viewNoteItem?.patient_name || 'Care Note'" />
         <v-card-text class="pa-4" v-if="viewNoteItem">
           <v-chip size="small" variant="tonal" color="purple" class="text-capitalize mb-2">
             <v-icon start size="14">{{ noteCategoryIcon(viewNoteItem.category) }}</v-icon>
@@ -451,13 +439,7 @@
     <!-- ═══ Vitals Dialog ══════════════════════════════════════════ -->
     <v-dialog v-model="vitalsDialog" max-width="600" persistent scrollable>
       <v-card rounded="lg">
-        <v-card-title class="text-h6 d-flex align-center">
-          <v-avatar color="red-lighten-5" variant="tonal" size="36" class="mr-3">
-            <v-icon color="red">mdi-heart-pulse</v-icon>
-          </v-avatar>
-          {{ vitalsEditing ? 'Edit Vitals' : 'Record Vitals' }}
-        </v-card-title>
-        <v-divider />
+        <BrandDialogHeader icon="mdi-heart-pulse" :title="vitalsEditing ? 'Edit Vitals' : 'Record Vitals'" />
         <v-card-text class="pa-4">
           <v-form ref="vitalsFormRef" @submit.prevent="saveVitals">
             <v-select v-model="vitalsForm.patient" :items="patientSelectOptions"
@@ -490,13 +472,7 @@
     <!-- ═══ Escalation Dialog ══════════════════════════════════════ -->
     <v-dialog v-model="escDialog" max-width="600" persistent scrollable>
       <v-card rounded="lg">
-        <v-card-title class="text-h6 d-flex align-center">
-          <v-avatar color="error-lighten-5" variant="tonal" size="36" class="mr-3">
-            <v-icon color="error">mdi-bell-alert</v-icon>
-          </v-avatar>
-          New Escalation
-        </v-card-title>
-        <v-divider />
+        <BrandDialogHeader icon="mdi-bell-alert" title="New Escalation" />
         <v-card-text class="pa-4">
           <v-form ref="escFormRef" @submit.prevent="saveEscalation">
             <v-select v-model="escForm.patient" :items="patientSelectOptions"
@@ -529,7 +505,7 @@
     <!-- ═══ Delete Confirmations ════════════════════════════════════ -->
     <v-dialog v-model="deleteNoteDialog" max-width="400">
       <v-card rounded="lg">
-        <v-card-title class="text-h6">Delete Note?</v-card-title>
+        <BrandDialogHeader icon="mdi-delete-alert" title="Delete Note?" />
         <v-card-text>Are you sure you want to delete this care note?</v-card-text>
         <v-card-actions>
           <v-spacer />
@@ -541,7 +517,7 @@
 
     <v-dialog v-model="deleteEscDialog" max-width="400">
       <v-card rounded="lg">
-        <v-card-title class="text-h6">Delete Escalation?</v-card-title>
+        <BrandDialogHeader icon="mdi-delete-alert" title="Delete Escalation?" />
         <v-card-text>Are you sure you want to delete this escalation?</v-card-text>
         <v-card-actions>
           <v-spacer />

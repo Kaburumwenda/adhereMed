@@ -180,6 +180,19 @@ DATASETS = [
         'requires': ['sites'],
     },
     {
+        'key': 'assessments',
+        'label': 'Medical assessments',
+        'description': 'Pre-employment, periodic and exit medicals scored against '
+                       'job demand profiles, with baselines for drift comparison.',
+        'icon': 'mdi-clipboard-pulse-outline',
+        'group': 'People & health',
+        'models': [
+            'ohs.AssessmentLabResult', 'ohs.AssessmentFinding',
+            'ohs.HealthAssessment', 'ohs.JobDemandProfile',
+        ],
+        'requires': ['sites'],
+    },
+    {
         'key': 'exposure',
         'label': 'Exposure monitoring',
         'description': 'Noise, dust and chemical sampling results against limits.',
@@ -276,6 +289,8 @@ DELETE_ORDER = [
     'ohs.DocumentAcknowledgement', 'ohs.DocumentRevision', 'ohs.Document',
     'ohs.ComplianceAudit', 'ohs.SafetyObjective', 'ohs.LegalRequirement',
     'ohs.EmergencyDrill', 'ohs.Observation', 'ohs.ExposureMonitoring',
+    'ohs.AssessmentLabResult', 'ohs.AssessmentFinding',
+    'ohs.HealthAssessment', 'ohs.JobDemandProfile',
     'ohs.HealthSurveillance', 'ohs.PpeIssue', 'ohs.PpeItem',
     'ohs.TrainingRecord', 'ohs.TrainingCourse', 'ohs.PermitToWork',
     'ohs.InspectionItem', 'ohs.Inspection', 'ohs.IncidentAction', 'ohs.Incident',

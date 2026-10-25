@@ -280,13 +280,7 @@
          ═════════════════════════════════════════════════════════════ -->
     <v-dialog v-model="createDialog" max-width="900" persistent scrollable>
       <v-card rounded="xl">
-        <v-card-title class="d-flex align-center pa-4">
-          <v-avatar color="purple-lighten-5" size="36" class="mr-3"><v-icon color="purple-darken-2">mdi-pill-plus</v-icon></v-avatar>
-          <span class="text-h6 font-weight-bold">New Prescription</span>
-          <v-spacer />
-          <v-btn icon="mdi-close" variant="text" @click="closeCreate" />
-        </v-card-title>
-        <v-divider />
+        <BrandDialogHeader icon="mdi-pill-plus" title="New Prescription" @close="closeCreate" />
         <v-card-text class="pa-4">
           <!-- Patient selection -->
           <div class="d-flex align-center mb-3">
@@ -401,13 +395,7 @@
     <!-- ═══ Pharmacy walk-in dialog ═══ -->
     <v-dialog v-model="pharmacyDialog" max-width="700" persistent scrollable>
       <v-card rounded="xl">
-        <v-card-title class="d-flex align-center pa-4">
-          <v-avatar color="purple-lighten-5" size="36" class="mr-3"><v-icon color="purple-darken-2">mdi-store</v-icon></v-avatar>
-          <span class="text-h6 font-weight-bold">New Pharmacy Walk-in Rx</span>
-          <v-spacer />
-          <v-btn icon="mdi-close" variant="text" @click="pharmacyDialog = false" />
-        </v-card-title>
-        <v-divider />
+        <BrandDialogHeader icon="mdi-store" title="New Pharmacy Walk-in Rx" @close="pharmacyDialog = false" />
         <v-card-text class="pa-4">
           <v-row dense>
             <v-col cols="12" md="6"><v-text-field v-model="pharmacyForm.patient_name" label="Patient name *" variant="outlined" density="compact" :rules="[v => !!v || 'Required']" /></v-col>
@@ -442,7 +430,7 @@
     <!-- ═══ Delete dialog ═══ -->
     <v-dialog v-model="deleteDialog" max-width="420">
       <v-card rounded="lg">
-        <v-card-title class="text-h6">Delete Prescription</v-card-title>
+        <BrandDialogHeader icon="mdi-delete-alert" title="Delete Prescription" />
         <v-card-text>
           <div class="d-flex align-center mb-3">
             <v-avatar color="error-lighten-5" size="40" class="mr-3"><v-icon color="error">mdi-delete-alert</v-icon></v-avatar>

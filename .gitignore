@@ -1,0 +1,92 @@
+# ── Secrets & local environment ───────────────────────────────
+.env
+.env.*
+!.env.example
+env.py
+*.pem
+*.key
+
+# ── Python ────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+eggs/
+sdist/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ── Virtual environments ──────────────────────────────────────
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# ── Django ────────────────────────────────────────────────────
+*.sqlite3
+*.sqlite3-journal
+*.log
+backend/media/
+backend/staticfiles/
+local_settings.py
+
+# ── Test / lint / type-check caches ───────────────────────────
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# ── Node / Nuxt / Nitro ───────────────────────────────────────
+node_modules/
+.output/
+.nuxt/
+.nitro/
+.cache/
+.data/
+dist/
+.turbo/
+*.tsbuildinfo
+
+# ── Flutter / Dart (mobileapp) ────────────────────────────────
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+*.iml
+
+# ── Logs & temp files ─────────────────────────────────────────
+logs/
+*.log.*
+*.bak
+*.orig
+*.rej
+*.tmp
+*.swp
+*~
+
+# ── OS / editor ───────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.fleet/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json

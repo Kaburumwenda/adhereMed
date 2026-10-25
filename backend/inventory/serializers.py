@@ -4,7 +4,7 @@ from .models import (
     Category, Unit, Classification, MedicationStock, StockBatch, StockAdjustment,
     InventoryCount, InventoryCountLine,
     StockTransfer, StockTransferLine,
-    ControlledSubstanceLog,
+    ControlledSubstanceLog, CatalogSeedRun,
 )
 from .rbac import can_view_cost
 
@@ -26,6 +26,19 @@ class UnitSerializer(serializers.ModelSerializer):
         model = Unit
         fields = ['id', 'name', 'abbreviation', 'created_at']
         read_only_fields = ['id', 'created_at']
+
+
+class CatalogSeedRunSerializer(serializers.ModelSerializer):
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+
+    class Meta:
+        model = CatalogSeedRun
+        fields = [
+            'id', 'command_key', 'label', 'status', 'status_display',
+            'detail', 'duration_ms', 'records_created',
+            'run_by_label', 'created_at',
+        ]
+        read_only_fields = fields
 
 
 class ClassificationSerializer(serializers.ModelSerializer):

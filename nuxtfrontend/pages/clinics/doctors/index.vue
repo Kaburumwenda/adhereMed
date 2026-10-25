@@ -165,13 +165,7 @@
     <!-- ═══ Create dialog ══════════════════════════════════════════ -->
     <v-dialog v-model="createDialog" max-width="700" persistent scrollable>
       <v-card rounded="xl">
-        <v-card-title class="d-flex align-center pa-4">
-          <v-avatar color="blue-lighten-5" size="36" class="mr-3"><v-icon color="blue-darken-2">mdi-doctor-plus</v-icon></v-avatar>
-          <span class="text-h6 font-weight-bold">Add Doctor Profile</span>
-          <v-spacer />
-          <v-btn icon="mdi-close" variant="text" @click="closeCreate" />
-        </v-card-title>
-        <v-divider />
+        <BrandDialogHeader icon="mdi-doctor-plus" title="Add Doctor Profile" @close="closeCreate" />
         <v-card-text class="pa-4">
           <v-alert type="info" variant="tonal" density="compact" class="mb-3" prepend-icon="mdi-information">
             Select an existing staff user to create a doctor profile for.
@@ -223,7 +217,7 @@
     <!-- ═══ Delete dialog ══════════════════════════════════════════ -->
     <v-dialog v-model="deleteDialog" max-width="420">
       <v-card rounded="lg">
-        <v-card-title class="text-h6">Delete Doctor Profile</v-card-title>
+        <BrandDialogHeader icon="mdi-delete-alert" title="Delete Doctor Profile" />
         <v-card-text>
           <div class="d-flex align-center mb-3">
             <v-avatar color="error-lighten-5" size="40" class="mr-3"><v-icon color="error">mdi-delete-alert</v-icon></v-avatar>

@@ -122,17 +122,26 @@ class UserManagementSerializer(serializers.ModelSerializer):
     """Write serializer for tenant admins managing staff users."""
     password = serializers.CharField(min_length=8, write_only=True, required=False, allow_blank=True)
     full_name = serializers.SerializerMethodField(read_only=True)
+    role_label = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = User
         fields = [
-            'id', 'email', 'phone', 'first_name', 'last_name',
-            'role', 'is_active', 'password', 'full_name',
+            'id', 'email', 'phone', 'first_name', 'middle_name', 'last_name',
+            'role', 'role_label', 'is_active', 'password', 'full_name',
+            'date_joined', 'last_login',
         ]
-        read_only_fields = ['id', 'date_joined', 'pin']
+        read_only_fields = ['id', 'date_joined', 'last_login', 'pin']
 
     def get_full_name(self, obj):
-        return f'{obj.first_name} {obj.last_name}'.strip() or obj.email
+        parts = [obj.first_name, obj.middle_name, obj.last_name]
+        return ' '.join(p for p in parts if p).strip() or obj.email
+
+    def get_role_label(self, obj):
+        try:
+            return obj.get_role_display()
+        except Exception:
+            return (obj.role or '').replace('_', ' ').title()
 
     def create(self, validated_data):
         password = validated_data.pop('password', None)

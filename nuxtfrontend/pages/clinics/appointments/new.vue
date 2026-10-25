@@ -1,5 +1,5 @@
 <template>
-  <v-container fluid class="pa-4 pa-md-6" style="max-width: 960px;">
+  <v-container fluid class="pa-4 pa-md-6">
     <PageHeader title="New Appointment" subtitle="Schedule a new clinic appointment"
       icon="mdi-calendar-plus" color="primary">
       <template #actions>

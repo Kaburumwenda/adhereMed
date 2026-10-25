@@ -15,7 +15,11 @@
             </div>
           </div>
         </v-col>
-        <v-col cols="12" md="4" class="d-flex justify-md-end mt-3 mt-md-0">
+        <v-col cols="12" md="4" class="d-flex justify-md-end flex-wrap mt-3 mt-md-0" style="gap:8px">
+          <v-btn variant="flat" color="white" prepend-icon="mdi-store" class="text-red-darken-3"
+                 to="/clinics/drug-stores">Drug stores</v-btn>
+          <v-btn variant="flat" color="white" prepend-icon="mdi-palette" class="text-red-darken-3"
+                 to="/clinics/organization/branding">Branding</v-btn>
           <v-btn variant="flat" color="white" prepend-icon="mdi-refresh" class="text-red-darken-3"
                  :loading="loading" @click="loadProfile">Reload</v-btn>
         </v-col>

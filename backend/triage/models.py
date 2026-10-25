@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
 
 class Triage(models.Model):
@@ -27,6 +28,11 @@ class Triage(models.Model):
         COMPLETED = 'completed', 'Completed'
 
     patient = models.ForeignKey('patients.Patient', on_delete=models.CASCADE, related_name='triages')
+    clinic_site = models.ForeignKey(
+        'clinic_sites.ClinicSite', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='triages',
+        help_text='Clinic location this triage was recorded at (null = HQ).',
+    )
     nurse = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='triages_performed')
     doctor = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -48,6 +54,10 @@ class Triage(models.Model):
     bmi = models.FloatField(null=True, blank=True, help_text='Auto-calculated from height/weight')
     allergies_confirmed = models.BooleanField(default=False)
     allergies_updated = models.JSONField(default=list, blank=True, help_text='Confirmed/updated allergies list')
+    chronic_conditions_updated = models.JSONField(
+        default=list, blank=True,
+        help_text='Confirmed/updated chronic conditions list',
+    )
     medication_history = models.JSONField(default=list, blank=True, help_text='Confirmed medication list')
     pregnancy_status = models.CharField(max_length=20, blank=True, default='')
     mental_health_screen = models.JSONField(default=dict, blank=True, help_text='Mental health screening notes')
@@ -64,9 +74,39 @@ class Triage(models.Model):
     status = models.CharField(max_length=20, choices=TriageStatus.choices, default=TriageStatus.DRAFT)
     triage_time = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)
+    assigned_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text='When the currently assigned doctor received this patient',
+    )
 
     class Meta:
         ordering = ['esi_level', 'triage_time']
 
     def __str__(self):
         return f'{self.patient} - ESI {self.esi_level or "?"}'
+
+    def save(self, *args, **kwargs):
+        """Stamp ``assigned_at`` whenever the assigned doctor changes.
+
+        The doctor handoff queue shows how long a patient has been waiting for
+        *that specific clinician*, which is not the same as the triage arrival
+        time — a patient can be re-assigned minutes after arriving.
+        """
+        if self.doctor_id:
+            previous_doctor = None
+            if self.pk:
+                previous_doctor = (
+                    type(self).objects.filter(pk=self.pk)
+                    .values_list('doctor_id', flat=True)
+                    .first()
+                )
+            if previous_doctor != self.doctor_id:
+                self.assigned_at = timezone.now()
+        elif self.assigned_at is not None:
+            self.assigned_at = None
+
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None:
+            kwargs['update_fields'] = set(update_fields) | {'assigned_at'}
+
+        super().save(*args, **kwargs)

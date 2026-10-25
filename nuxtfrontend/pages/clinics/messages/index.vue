@@ -46,7 +46,7 @@
 
     <v-dialog v-model="dialog" max-width="600">
       <v-card rounded="lg">
-        <v-card-title class="text-h6">{{ replyTo ? 'Reply' : 'New Message' }}</v-card-title>
+        <BrandDialogHeader :icon="replyTo ? 'mdi-reply' : 'mdi-email'" :title="replyTo ? 'Reply' : 'New Message'" />
         <v-card-text>
           <v-form>
             <v-text-field v-if="!replyTo" v-model="msgForm.recipient" label="To (user email or ID)" variant="outlined" density="compact" class="mb-2" />

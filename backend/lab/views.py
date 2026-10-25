@@ -1,10 +1,13 @@
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from django.core.files.base import ContentFile
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db import connection, transaction
+from django.db.models import Q
 from django.utils import timezone
 
+from clinic_sites.mixins import ClinicSiteScopedMixin
 from .models import (
     LabTestCatalog, LabOrder, LabResult, HomeSampleVisit,
     LabPanel, ReferringFacility, ReferringDoctor, Instrument,
@@ -12,9 +15,12 @@ from .models import (
     LabInvoice, LabInvoiceItem, LabInvoicePayment,
     ReportTemplate, LabOrderExtra, LabResultAudit,
     LabReagent, ReagentLot, ReagentTransaction,
+    LabStaffProfile, LabOrderAuthorization, LabAuthorizationEvent,
+    PERFORM_ROLES, VERIFY_ROLES,
 )
 from .serializers import (
     LabTestCatalogSerializer,
+    SeedApplySerializer,
     LabOrderSerializer,
     LabResultSerializer,
     HomeSampleVisitSerializer,
@@ -33,7 +39,52 @@ from .serializers import (
     LabReagentSerializer,
     ReagentLotSerializer,
     ReagentTransactionSerializer,
+    LabStaffProfileSerializer,
+    LabOrderAuthorizationSerializer,
+    LabAuthorizationEventSerializer,
 )
+from .authorisation import (
+    AuthorisationError, decode_signature, resolve_signer, apply_signoff,
+    revoke_signoff as revoke_order_signoff, signer_roster,
+)
+from .patient_share import refresh_order_snapshot, sync_order_to_patient
+
+
+def _truthy(value):
+    """Multipart sends booleans as strings — normalise them."""
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+class LabStaffViewSet(viewsets.ViewSet):
+    """Roster of lab-bench staff who can sign results.
+
+    The laboratory often shares one workstation, so the sign-off dialog lists
+    these people and asks the chosen one for their own password.
+    """
+
+    def list(self, request):
+        role = (request.query_params.get('role') or 'verified').strip()
+        if role not in {'performed', 'verified'}:
+            role = 'verified'
+        roster = signer_roster(request, role)
+        data = LabStaffProfileSerializer(
+            roster, many=True, context={'request': request},
+        ).data
+        return Response({
+            'role': role,
+            'count': len(data),
+            'results': data,
+        })
+
+    @action(detail=False, methods=['get'])
+    def me(self, request):
+        """The caller's own bench profile, so the dialog can pre-select them."""
+        profile, _ = LabStaffProfile.objects.get_or_create(user=request.user)
+        return Response(
+            LabStaffProfileSerializer(profile, context={'request': request}).data
+        )
 
 
 class LabTestCatalogViewSet(viewsets.ModelViewSet):
@@ -44,12 +95,44 @@ class LabTestCatalogViewSet(viewsets.ModelViewSet):
     search_fields = ['name', 'code']
     ordering_fields = ['name', 'code']
 
+    @action(detail=False, methods=['get'], url_path='seed-preview')
+    def seed_preview(self, request):
+        """The demo catalogue merged with this clinic's own edits.
+
+        Nothing is written — this is the page the clinic reviews before adding
+        anything to its lab.
+        """
+        from .seed_service import build_seed_preview
+        return Response(build_seed_preview())
+
+    @action(detail=False, methods=['post'], url_path='seed-apply')
+    def seed_apply(self, request):
+        """Add/refresh the selected demo entries in this clinic's catalogue."""
+        serializer = SeedApplySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        from .seed_service import apply_seed
+        result = apply_seed(
+            tests=serializer.validated_data.get('tests') or [],
+            panels=serializer.validated_data.get('panels') or [],
+            user=request.user,
+        )
+        return Response(result, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='seed-reset')
+    def seed_reset(self, request):
+        """Forget this clinic's seed edits (all, or a single entry)."""
+        from .seed_service import reset_customization
+        code = (request.data.get('code') or '').strip() or None
+        kind = (request.data.get('kind') or '').strip() or None
+        removed = reset_customization(code=code, kind=kind)
+        return Response({
+            'detail': f'{removed} entr{"y" if removed == 1 else "ies"} reset to the template.',
+            'removed': removed,
+        })
+
     @action(detail=False, methods=['post'])
     def seed_demo(self, request):
-        """Seed the current tenant's lab catalog with the standard demo tests and panels.
-
-        Idempotent: existing records are updated in place, new ones are created.
-        """
+        """Add every demo test and panel (kept for backwards compatibility)."""
         from .seed_data import seed_lab_catalog
         result = seed_lab_catalog()
         return Response({
@@ -58,16 +141,41 @@ class LabTestCatalogViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_200_OK)
 
 
-class LabOrderViewSet(viewsets.ModelViewSet):
-    queryset = LabOrder.objects.select_related('patient__user', 'ordered_by', 'consultation').prefetch_related('tests', 'results').all()
+class LabOrderViewSet(ClinicSiteScopedMixin, viewsets.ModelViewSet):
+    queryset = LabOrder.objects.select_related('patient__user', 'ordered_by', 'consultation', 'clinic_site').prefetch_related('tests', 'results').all()
     serializer_class = LabOrderSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['status', 'patient', 'priority', 'is_home_collection', 'ordered_by']
+    filterset_fields = ['status', 'patient', 'priority', 'is_home_collection', 'ordered_by', 'clinic_site']
     search_fields = ['patient__user__first_name', 'patient__user__last_name']
     ordering_fields = ['created_at', 'priority']
 
+    def get_queryset(self):
+        queryset = super().get_queryset().select_related(
+            'authorization__performed_by', 'authorization__verified_by',
+        )
+        # `?authorization=verified|unverified|signed|awaiting` powers the
+        # Authorisation tab on the lab orders page.
+        state = (self.request.query_params.get('authorization') or '').strip().lower()
+        if state in {'verified', 'signed'}:
+            queryset = queryset.filter(authorization__verified_at__isnull=False)
+        elif state in {'unverified', 'awaiting', 'pending'}:
+            # Anything that has no verifier signature yet (including no row at all).
+            queryset = queryset.filter(
+                Q(authorization__isnull=True) | Q(authorization__verified_at__isnull=True),
+            )
+        elif state == 'performed':
+            queryset = queryset.filter(authorization__performed_at__isnull=False)
+        return queryset
+
     def perform_create(self, serializer):
-        serializer.save(ordered_by=self.request.user)
+        lab_order = serializer.save(ordered_by=self.request.user)
+        # Tell the patient portal a test has been requested.
+        sync_order_to_patient(lab_order)
+
+    def perform_update(self, serializer):
+        lab_order = serializer.save()
+        # A PATCH can change status/priority/notes — refresh what the patient sees.
+        refresh_order_snapshot(lab_order.pk)
 
     @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):
@@ -80,6 +188,7 @@ class LabOrderViewSet(viewsets.ModelViewSet):
             )
         lab_order.status = LabOrder.Status.CANCELLED
         lab_order.save(update_fields=['status', 'updated_at'])
+        refresh_order_snapshot(lab_order.pk)
         return Response(LabOrderSerializer(lab_order).data)
 
     @action(detail=True, methods=['post'])
@@ -98,25 +207,189 @@ class LabOrderViewSet(viewsets.ModelViewSet):
             )
         lab_order.status = flow[lab_order.status]
         lab_order.save(update_fields=['status', 'updated_at'])
+        # Keep the patient's pipeline view in step with the bench.
+        refresh_order_snapshot(lab_order.pk)
         return Response(LabOrderSerializer(lab_order).data)
 
     @action(detail=True, methods=['post'])
     def add_result(self, request, pk=None):
-        """Add a result for a single test on this order."""
+        """Add a result for a single test on this order.
+
+        Accepts JSON or multipart. Multipart lets the client attach an
+        optional scanned report (`attachment`) alongside the typed value.
+        """
         lab_order = self.get_object()
         test_id = request.data.get('test')
         if not test_id:
             return Response({'detail': 'test is required.'}, status=status.HTTP_400_BAD_REQUEST)
-        result = LabResult.objects.create(
-            order=lab_order,
-            test_id=test_id,
-            result_value=request.data.get('result_value', ''),
-            unit=request.data.get('unit', ''),
-            is_abnormal=request.data.get('is_abnormal', False),
-            comments=request.data.get('comments', ''),
-            performed_by=request.user,
-        )
+
+        upload = request.FILES.get('attachment')
+
+        payload = {
+            'order': lab_order.pk,
+            'test': test_id,
+            'result_value': request.data.get('result_value', ''),
+            'unit': request.data.get('unit', ''),
+            'is_abnormal': _truthy(request.data.get('is_abnormal', False)),
+            'comments': request.data.get('comments', ''),
+            'performed_by': request.user.pk,
+        }
+        if upload:
+            payload['attachment'] = upload
+
+        serializer = LabResultSerializer(data=payload)
+        serializer.is_valid(raise_exception=True)
+        result = serializer.save()
+        refresh_order_snapshot(lab_order.pk)
         return Response(LabResultSerializer(result).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def sign(self, request, pk=None):
+        """Record a bench sign-off (performer or verifier) for this order.
+
+        Body (JSON)::
+
+            {
+              "role": "performed" | "verified",
+              "user_id": 12,                  # picked from the roster
+              "password": "…",                # that user's own password
+              "signature": "data:image/png;base64,…",   # optional if on file
+              "title": "Senior Medical Laboratory Scientist",
+              "notes": "…",
+              "save_signature": true          # keep this signature on file
+            }
+        """
+        lab_order = self.get_object()
+        role = (request.data.get('role') or '').strip()
+
+        # Only a completed order can be verified — a report that is still being
+        # processed has no results worth releasing.
+        if role == 'verified' and lab_order.status != LabOrder.Status.COMPLETED:
+            return Response({
+                'detail': (
+                    'Complete the order before verification. Only completed '
+                    'orders can be authorised.'
+                ),
+                'code': 'order_not_completed',
+                'field': 'status',
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            upload = decode_signature(request.data.get('signature'))
+            user, profile, identity = resolve_signer(
+                request,
+                role=role,
+                user_id=request.data.get('user_id'),
+                password=request.data.get('password') or '',
+            )
+            # No fresh signature: fall back to the one already on file.
+            if upload is None:
+                if not (profile and profile.signature):
+                    raise AuthorisationError(
+                        'Draw or upload your signature before signing.',
+                        field='signature',
+                    )
+                profile.signature.open('rb')
+                upload = ContentFile(profile.signature.read(), name='signature-on-file.png')
+                profile.signature.close()
+
+            authorization = apply_signoff(
+                request, lab_order, role=role, user=user, profile=profile,
+                signature_upload=upload,
+                title=request.data.get('title') or '',
+                notes=request.data.get('notes') or '',
+                save_signature=_truthy(request.data.get('save_signature')),
+                identity=identity,
+            )
+        except AuthorisationError as exc:
+            return Response(
+                {'detail': exc.message, 'code': exc.code, 'field': exc.field},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        lab_order.refresh_from_db()
+        # A verifier signature releases the report to the patient; a performer
+        # signature alone keeps it hidden.
+        refresh_order_snapshot(lab_order.pk)
+        return Response({
+            'detail': (
+                'Result signed as performed.' if role == 'performed'
+                else 'Result authorised and signed as verified.'
+            ),
+            'authorization': LabOrderAuthorizationSerializer(
+                authorization, context={'request': request},
+            ).data,
+            'order': LabOrderSerializer(lab_order, context={'request': request}).data,
+        })
+
+    @action(detail=True, methods=['post'], url_path='revoke-signoff')
+    def revoke_signoff(self, request, pk=None):
+        """Withdraw a performer/verifier signature from this order."""
+        lab_order = self.get_object()
+        role = (request.data.get('role') or '').strip()
+        if role not in {'performed', 'verified'}:
+            return Response(
+                {'detail': 'role must be "performed" or "verified".'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            authorization = revoke_order_signoff(
+                request, lab_order, role=role, actor=request.user,
+                notes=request.data.get('notes') or '',
+            )
+        except AuthorisationError as exc:
+            return Response({'detail': exc.message}, status=status.HTTP_400_BAD_REQUEST)
+
+        lab_order.refresh_from_db()
+        # Withdrawing the verifier signature pulls the report back in.
+        refresh_order_snapshot(lab_order.pk)
+        return Response({
+            'detail': 'Signature withdrawn.',
+            'authorization': LabOrderAuthorizationSerializer(
+                authorization, context={'request': request},
+            ).data,
+            'order': LabOrderSerializer(lab_order, context={'request': request}).data,
+        })
+
+    @action(detail=True, methods=['get'], url_path='report-pdf')
+    def report_pdf(self, request, pk=None):
+        """Render a premium A4 laboratory report for this order.
+
+        Includes analyte-level results with reference ranges and flags, the
+        specimen trail, clinical notes and an authorisation block. Orders with
+        unverified results come out watermarked ``PRELIMINARY``.
+        """
+        from django.http import HttpResponse
+
+        try:
+            from .pdf_reports import build_lab_order_report
+        except ImportError:
+            return Response({'detail': 'reportlab not installed.'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        lab_order = (
+            LabOrder.objects
+            .select_related(
+                'patient__user', 'ordered_by', 'consultation', 'clinic_site',
+                'authorization',
+            )
+            .prefetch_related(
+                'tests',
+                'specimens',
+                'results__test',
+                'results__performed_by',
+                'results__verified_by',
+            )
+            .filter(pk=self.get_object().pk)
+            .first()
+        )
+        pdf = build_lab_order_report(lab_order, request=request)
+        filename = f'lab_report_{lab_order.id:05d}.pdf'
+        return HttpResponse(
+            pdf,
+            content_type='application/pdf',
+            headers={'Content-Disposition': f'inline; filename="{filename}"'},
+        )
 
     @action(detail=True, methods=['post'])
     def send_to_lab(self, request, pk=None):
@@ -191,10 +464,18 @@ class LabResultViewSet(viewsets.ModelViewSet):
         )
 
     def perform_update(self, serializer):
-        old = serializer.instance.result_value or ''
+        old_value = serializer.instance.result_value or ''
+        old_attachment = serializer.instance.attachment.name if serializer.instance.attachment else ''
         serializer.save()
-        if serializer.instance.result_value != old:
-            self._audit(serializer.instance, serializer.instance.result_value, 'Edited')
+        instance = serializer.instance
+        if instance.result_value != old_value:
+            self._audit(instance, instance.result_value, 'Edited')
+        new_attachment = instance.attachment.name if instance.attachment else ''
+        if new_attachment != old_attachment:
+            self._audit(
+                instance, instance.result_value,
+                'Attachment replaced' if new_attachment else 'Attachment removed',
+            )
 
     @action(detail=True, methods=['post'])
     def verify(self, request, pk=None):

@@ -247,13 +247,7 @@
     <!-- ═══ New/Edit department dialog ═══════════════════════════════ -->
     <v-dialog v-model="dialog" max-width="640" persistent scrollable>
       <v-card rounded="lg">
-        <v-card-title class="text-h6 d-flex align-center">
-          <v-avatar :color="editing ? 'indigo-lighten-5' : 'indigo'" variant="tonal" size="36" class="mr-3">
-            <v-icon :color="editing ? 'indigo' : 'white'">{{ editing ? 'mdi-domain-edit' : 'mdi-domain-plus' }}</v-icon>
-          </v-avatar>
-          {{ editing ? 'Edit Department' : 'New Department' }}
-        </v-card-title>
-        <v-divider />
+        <BrandDialogHeader :icon="editing ? 'mdi-domain-edit' : 'mdi-domain-plus'" :title="editing ? 'Edit Department' : 'New Department'" />
         <v-card-text class="pa-4">
           <v-form ref="formRef" @submit.prevent="save">
             <v-text-field v-model="form.name" label="Department Name" required
@@ -292,7 +286,7 @@
     <!-- ═══ Delete confirmation dialog ═══════════════════════════════ -->
     <v-dialog v-model="deleteDialog" max-width="420">
       <v-card rounded="lg">
-        <v-card-title class="text-h6">Delete Department</v-card-title>
+        <BrandDialogHeader icon="mdi-delete-alert" title="Delete Department" />
         <v-card-text>
           <div class="d-flex align-center mb-3">
             <v-avatar color="error-lighten-5" size="40" class="mr-3" variant="tonal">

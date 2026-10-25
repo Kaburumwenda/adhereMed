@@ -1,5 +1,85 @@
+import os
+import uuid
+
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
+
+# Scanned reports are patient data, so every upload is namespaced by tenant
+# schema. All tenants share one bucket, and a bare `lab/results/<file>` would
+# let one clinic's report overwrite another's on a name collision.
+ALLOWED_RESULT_ATTACHMENT_TYPES = {
+    'application/pdf': 'pdf',
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'image/tiff': 'tiff',
+    'image/heic': 'heic',
+}
+MAX_RESULT_ATTACHMENT_BYTES = 15 * 1024 * 1024  # 15 MB
+
+
+def lab_result_attachment_path(instance, filename):
+    """Tenant-scoped, collision-proof storage key for a result attachment."""
+    from django.db import connection
+
+    schema = getattr(connection, 'schema_name', None) or 'public'
+    ext = os.path.splitext(filename or '')[1].lower()
+    if ext not in {'.pdf', '.jpg', '.jpeg', '.png', '.webp', '.tif', '.tiff', '.heic'}:
+        ext = ''
+    stamp = timezone.now().strftime('%Y/%m')
+    return f'lab/results/{schema}/{stamp}/{uuid.uuid4().hex}{ext}'
+
+
+def attachment_kind(mime_type, filename=''):
+    """Normalise an upload to 'pdf', 'image' or '' (unknown)."""
+    mime = (mime_type or '').split(';')[0].strip().lower()
+    if mime in ALLOWED_RESULT_ATTACHMENT_TYPES:
+        return 'pdf' if mime == 'application/pdf' else 'image'
+    ext = os.path.splitext(filename or '')[1].lower()
+    if ext == '.pdf':
+        return 'pdf'
+    if ext in {'.jpg', '.jpeg', '.png', '.webp', '.tif', '.tiff', '.heic'}:
+        return 'image'
+    return ''
+
+
+# A handwritten signature is captured as a PNG data-URL from the signature pad.
+# 4 MB is generous for an ink stroke yet small enough to keep the row light.
+MAX_SIGNATURE_BYTES = 4 * 1024 * 1024
+SIGNATURE_IMAGE_TYPES = {'image/png', 'image/jpeg', 'image/webp'}
+
+#: Roles that may record a result as ``performed`` in a small-clinic lab.
+PERFORM_ROLES = {'lab_tech', 'tenant_admin', 'branch_admin', 'super_admin'}
+#: Roles that may authorise (release) a result.
+VERIFY_ROLES = {'lab_tech', 'doctor', 'tenant_admin', 'branch_admin', 'super_admin'}
+
+
+def _tenant_schema():
+    from django.db import connection
+    return getattr(connection, 'schema_name', None) or 'public'
+
+
+def lab_signature_path(instance, filename):
+    """Storage key for a staff member's signature *on file*."""
+    ext = os.path.splitext(filename or '')[1].lower()
+    if ext not in {'.png', '.jpg', '.jpeg', '.webp'}:
+        ext = '.png'
+    return f'lab/signatures/{_tenant_schema()}/staff/{uuid.uuid4().hex}{ext}'
+
+
+def lab_signature_snapshot_path(instance, filename):
+    """Immutable copy of the signature actually used on one authorisation.
+
+    Kept separate from the staff profile so a later signature change cannot
+    rewrite the history of an already-released report (ISO 15189 traceability).
+    """
+    ext = os.path.splitext(filename or '')[1].lower()
+    if ext not in {'.png', '.jpg', '.jpeg', '.webp'}:
+        ext = '.png'
+    stamp = timezone.now().strftime('%Y/%m')
+    return f'lab/signatures/{_tenant_schema()}/signed/{stamp}/{uuid.uuid4().hex}{ext}'
 
 
 class LabTestCatalog(models.Model):
@@ -38,6 +118,11 @@ class LabOrder(models.Model):
         null=True, blank=True, related_name='lab_orders',
     )
     patient = models.ForeignKey('patients.Patient', on_delete=models.CASCADE, related_name='lab_orders')
+    clinic_site = models.ForeignKey(
+        'clinic_sites.ClinicSite', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='lab_orders',
+        help_text='Clinic location that ordered this test (null = HQ).',
+    )
     ordered_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='lab_orders_created',
     )
@@ -68,6 +153,15 @@ class LabResult(models.Model):
     unit = models.CharField(max_length=50, blank=True)
     is_abnormal = models.BooleanField(default=False)
     comments = models.TextField(blank=True)
+    # Optional scanned report / analyser printout. Kept alongside the typed
+    # value so a clinician can always fall back to the source document.
+    attachment = models.FileField(
+        upload_to=lab_result_attachment_path, null=True, blank=True,
+        help_text='Optional scanned report — PDF or image.',
+    )
+    attachment_name = models.CharField(max_length=255, blank=True)
+    attachment_type = models.CharField(max_length=100, blank=True)
+    attachment_size = models.PositiveBigIntegerField(default=0)
     performed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, related_name='lab_results_performed',
@@ -77,6 +171,21 @@ class LabResult(models.Model):
         null=True, blank=True, related_name='lab_results_verified',
     )
     result_date = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def attachment_kind(self):
+        return attachment_kind(self.attachment_type, self.attachment_name)
+
+    def stow_attachment(self, upload):
+        """Copy upload metadata onto the row (call before save())."""
+        if upload:
+            self.attachment_name = os.path.basename(getattr(upload, 'name', '') or '')[:255]
+            self.attachment_type = (getattr(upload, 'content_type', '') or '')[:100]
+            self.attachment_size = getattr(upload, 'size', 0) or 0
+        else:
+            self.attachment_name = ''
+            self.attachment_type = ''
+            self.attachment_size = 0
 
     def __str__(self):
         return f'{self.test.name}: {self.result_value}'
@@ -626,3 +735,245 @@ class ReagentTransaction(models.Model):
 
     def __str__(self):
         return f'{self.txn_type} {self.quantity} of lot {self.lot_id}'
+
+
+# =====================================================================
+# Bench authorisation — name + password + handwritten signature
+# =====================================================================
+#
+# In most clinics the laboratory runs off a single shared workstation, so the
+# logged-in account (often a receptionist or an admin) is not the person who
+# ran the test. Releasing a report therefore requires the bench technologist to
+# identify themselves explicitly and prove it with their own password, then
+# sign. Both signatures are snapshotted onto the order so the report keeps
+# showing exactly what was signed months later.
+
+
+class LabStaffProfile(models.Model):
+    """Lab-bench identity: printed title and the signature kept on file."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='lab_staff_profile',
+    )
+    title = models.CharField(
+        max_length=150, blank=True,
+        help_text='Printed under the name on the report, e.g. "Senior Medical '
+                  'Laboratory Scientist".',
+    )
+    signature = models.ImageField(
+        upload_to=lab_signature_path, null=True, blank=True,
+        help_text='Signature on file — reused when the staff member signs.',
+    )
+    signature_updated_at = models.DateTimeField(null=True, blank=True)
+    can_perform = models.BooleanField(
+        default=True, help_text='May be recorded as the performer of a result.',
+    )
+    can_verify = models.BooleanField(
+        default=True, help_text='May authorise (release) a result.',
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['user__first_name', 'user__last_name']
+
+    def __str__(self):
+        return f'{self.user} — lab profile'
+
+    @property
+    def has_signature(self):
+        return bool(self.signature)
+
+
+class LabOrderAuthorization(models.Model):
+    """The two bench sign-offs for one order (performer + verifier)."""
+
+    class Identity(models.TextChoices):
+        """How the signer's identity was proven for that half of the sign-off."""
+
+        PASSWORD = 'password', 'Account password'
+        SESSION = 'session', 'Own signed-in session'
+
+    order = models.OneToOneField(
+        LabOrder, on_delete=models.CASCADE, related_name='authorization',
+    )
+
+    performed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='lab_orders_performed',
+    )
+    performed_by_name = models.CharField(max_length=255, blank=True)
+    performed_by_title = models.CharField(max_length=150, blank=True)
+    performed_signature = models.ImageField(
+        upload_to=lab_signature_snapshot_path, null=True, blank=True,
+    )
+    performed_at = models.DateTimeField(null=True, blank=True)
+    performed_identity = models.CharField(
+        max_length=20, choices=Identity.choices, blank=True,
+    )
+    performed_notes = models.TextField(blank=True)
+
+    verified_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='lab_orders_authorised',
+    )
+    verified_by_name = models.CharField(max_length=255, blank=True)
+    verified_by_title = models.CharField(max_length=150, blank=True)
+    verified_signature = models.ImageField(
+        upload_to=lab_signature_snapshot_path, null=True, blank=True,
+    )
+    verified_at = models.DateTimeField(null=True, blank=True)
+    verified_identity = models.CharField(
+        max_length=20, choices=Identity.choices, blank=True,
+    )
+    verified_notes = models.TextField(blank=True)
+
+    # ── Turnaround tracking (pending → verified) ───────────────────────────
+    pending_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text='When the order entered the pending queue (snapshot of order.created_at).',
+    )
+    turnaround_seconds = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Saved seconds from pending to verified. Set once on verification.',
+    )
+    turnaround_target_seconds = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Expected turnaround for the order priority at verification time.',
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'lab order authorisation'
+
+    def __str__(self):
+        return f'Authorisation for lab order #{self.order_id}'
+
+    @property
+    def is_complete(self):
+        return bool(self.performed_at and self.verified_at)
+
+    # Targets are deliberately generous: a routine panel is a next-day test,
+    # urgent is same-shift, STAT is the "as soon as the analyser frees up" path.
+    TURNAROUND_TARGETS = {'stat': 60 * 60, 'urgent': 6 * 60 * 60, 'routine': 24 * 60 * 60}
+
+    def target_seconds(self):
+        """Expected turnaround for this order's priority."""
+        priority = getattr(self.order, 'priority', 'routine') or 'routine'
+        return self.TURNAROUND_TARGETS.get(priority, self.TURNAROUND_TARGETS['routine'])
+
+    @property
+    def started_at(self):
+        """Queue entry time used as the turnaround clock start."""
+        return self.pending_at or getattr(self.order, 'created_at', None)
+
+    @property
+    def is_verified(self):
+        return bool(self.verified_at)
+
+    @property
+    def elapsed_seconds(self):
+        """Seconds pending → verified (saved) or pending → now (live)."""
+        if self.is_verified:
+            if self.turnaround_seconds is not None:
+                return self.turnaround_seconds
+            start = self.started_at
+            return int((self.verified_at - start).total_seconds()) if start else 0
+        start = self.started_at
+        if not start:
+            return 0
+        return max(0, int((timezone.now() - start).total_seconds()))
+
+
+class LabAuthorizationEvent(models.Model):
+    """Append-only log of sign / revoke actions (who, when, from where)."""
+
+    class Role(models.TextChoices):
+        PERFORMED = 'performed', 'Performed'
+        VERIFIED = 'verified', 'Verified'
+
+    class Action(models.TextChoices):
+        SIGN = 'sign', 'Signed'
+        REVOKE = 'revoke', 'Revoked'
+
+    order = models.ForeignKey(
+        LabOrder, on_delete=models.CASCADE, related_name='authorization_events',
+    )
+    role = models.CharField(max_length=20, choices=Role.choices)
+    action = models.CharField(max_length=20, choices=Action.choices)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='lab_authorization_events',
+    )
+    user_name = models.CharField(max_length=255, blank=True)
+    user_title = models.CharField(max_length=150, blank=True)
+    notes = models.CharField(max_length=255, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.action} {self.role} on order #{self.order_id}'
+
+
+class LabSeedCustomization(models.Model):
+    """One clinic's version of a demo catalog entry.
+
+    The demo catalogue itself lives in ``lab/seed_data.py`` as an immutable
+    template shared by every tenant. This table only records what a clinic
+    changed, hid or deselected, so:
+
+    * the shared template is never mutated by tenant edits;
+    * each tenant sees only its own tweaks (lab is a TENANT_APP, so these rows
+      live in the tenant schema);
+    * re-opening the seed page restores the clinic's own choices.
+    """
+
+    class Kind(models.TextChoices):
+        TEST = 'test', 'Test'
+        PANEL = 'panel', 'Panel'
+
+    code = models.CharField(max_length=50)
+    kind = models.CharField(max_length=10, choices=Kind.choices)
+    #: Should this entry be written into the clinic catalogue?
+    is_selected = models.BooleanField(default=True)
+    #: True once the entry has actually been written for this tenant.
+    is_applied = models.BooleanField(default=False)
+    #: True when the clinic changed any template field.
+    is_customized = models.BooleanField(default=False)
+    #: Hide an entry the clinic never wants to see again.
+    is_dismissed = models.BooleanField(default=False)
+
+    # Overrides — blank/None means "use the template value".
+    name = models.CharField(max_length=255, blank=True)
+    department = models.CharField(max_length=100, blank=True)
+    specimen_type = models.CharField(max_length=100, blank=True)
+    turnaround_time = models.CharField(max_length=50, blank=True)
+    instructions = models.TextField(blank=True)
+    description = models.TextField(blank=True)
+    reference_ranges = models.JSONField(null=True, blank=True)
+    price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    #: Panel membership, as a list of test codes.
+    test_codes = models.JSONField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['kind', 'code']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['code', 'kind'], name='uniq_lab_seed_customization',
+            ),
+        ]
+        verbose_name = 'lab seed customization'
+
+    def __str__(self):
+        return f'{self.kind}:{self.code}'

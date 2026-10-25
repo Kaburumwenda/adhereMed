@@ -1,5 +1,5 @@
 <template>
-  <v-container fluid class="pa-4 pa-md-6" style="max-width: 960px;">
+  <v-container fluid class="pa-4 pa-md-6">
     <PageHeader title="New Invoice" subtitle="Create a patient invoice"
       icon="mdi-receipt-text-plus" color="indigo">
       <template #actions>

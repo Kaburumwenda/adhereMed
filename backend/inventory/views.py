@@ -32,6 +32,7 @@ from .serializers import (
 from config.branch_scope import (
     BranchScopedMixin, get_user_branch, is_branch_scoped_user,
 )
+from config.cache import branch_scope, tenant_cache
 from pharmacy_profile.models import Branch
 from .models import RoleDefinition
 from .rbac import (
@@ -1958,6 +1959,7 @@ class StockAdjustmentViewSet(viewsets.ModelViewSet):
 class InventoryAnalyticsView(APIView):
     """Aggregated inventory analytics for the pharmacy dashboard."""
 
+    @tenant_cache('ims.dashboard', timeout=60, scope=branch_scope)
     def get(self, request):
         branch_id = request.query_params.get('branch_id') or request.query_params.get('branch')
         # Force non-admin users to their own branch
@@ -2028,6 +2030,7 @@ class InventoryOverviewView(APIView):
         except (TypeError, ValueError):
             return None
 
+    @tenant_cache('ims.dashboard', timeout=60, scope=branch_scope)
     def get(self, request):
         now = timezone.now()
         today = now.date()
@@ -8642,6 +8645,7 @@ class StockMovementReportView(APIView):
             headers={'Content-Disposition': f'attachment; filename="{fname}"'},
         )
 
+    @tenant_cache('ims.dashboard', timeout=45, scope=branch_scope)
     def get(self, request):
         from datetime import datetime as _dt
         from django.db.models.functions import TruncDate

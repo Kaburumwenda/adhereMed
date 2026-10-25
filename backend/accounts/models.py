@@ -44,6 +44,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     phone = models.CharField(max_length=20, blank=True)
     first_name = models.CharField(max_length=150)
+    middle_name = models.CharField(max_length=150, blank=True, default='')
     last_name = models.CharField(max_length=150)
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.PATIENT)
     tenant = models.ForeignKey(
@@ -91,7 +92,8 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     @property
     def full_name(self):
-        return f'{self.first_name} {self.last_name}'
+        parts = [self.first_name, self.middle_name, self.last_name]
+        return ' '.join(p for p in parts if p)
 
     def save(self, *args, **kwargs):
         if not self.pin:

@@ -16,6 +16,7 @@ from datetime import date, datetime, timedelta
 
 from django.core.management.base import BaseCommand
 from django.db import connection
+from django.utils import timezone
 from django_tenants.utils import tenant_context
 from tenants.models import Tenant
 from accounts.models import User
@@ -23,6 +24,11 @@ from patients.models import Patient
 from appointments.models import Appointment
 from departments.models import Department
 from consultations.models import Consultation
+from triage.models import Triage
+from lab.models import LabOrder, LabTestCatalog
+from prescriptions.models import Prescription, PrescriptionItem
+from billing.models import Invoice, Payment
+from wards.models import Ward, Bed, Admission
 
 FIRST_NAMES = ['James', 'Mary', 'John', 'Patricia', 'Robert', 'Jennifer', 'Michael',
                'Linda', 'William', 'Elizabeth', 'David', 'Barbara', 'Joseph', 'Susan',
@@ -129,6 +135,15 @@ class Command(BaseCommand):
         self.stdout.write(f"\n=== Seeding {tenant.name} ({tenant.schema_name}) ===")
         with tenant_context(tenant):
             if clear:
+                Payment.objects.all().delete()
+                Invoice.objects.all().delete()
+                Admission.objects.all().delete()
+                Bed.objects.all().delete()
+                Ward.objects.all().delete()
+                PrescriptionItem.objects.all().delete()
+                Prescription.objects.all().delete()
+                LabOrder.objects.all().delete()
+                Triage.objects.all().delete()
                 Consultation.objects.all().delete()
                 Appointment.objects.all().delete()
                 Patient.objects.all().delete()
@@ -170,8 +185,8 @@ class Command(BaseCommand):
                 staff_users.append(user)
 
             doctors_qs = [u for u in staff_users if u.role in ['doctor', 'clinical_officer', 'nurse', 'tenant_admin']]
-            # Include the tenant admin (already created during registration) as a potential doctor
-            admins = list(User.objects.filter(role='tenant_admin'))
+            # Include this tenant's admin (created during registration) as a potential clinician.
+            admins = list(User.objects.filter(role='tenant_admin', tenant=tenant))
             doctors_qs = list(set(doctors_qs + admins))
 
             # ─── Create patients ─────────────────────────────────────────
@@ -291,7 +306,14 @@ class Command(BaseCommand):
                         break
 
                 diagnosis = random.sample(DIAGNOSES, k=random.randint(1, 2))
-                Consultation.objects.create(
+                signed_at = timezone.now() if random.random() > 0.35 else None
+                # Spread consultations over the last 12 days; `created_at` is
+                # auto_now_add so it is backdated after the insert.
+                created_at = timezone.now() - timedelta(
+                    days=0 if i < 5 else random.randint(1, 12),
+                    hours=random.randint(0, 9),
+                )
+                consult = Consultation.objects.create(
                     appointment=appointment,
                     patient=patient,
                     doctor=doctor,
@@ -302,7 +324,10 @@ class Command(BaseCommand):
                     treatment_plan=random.choice(TREATMENT_PLANS),
                     notes=random.choice(NOTES),
                     vital_signs=random.choice(VITAL_SETS),
+                    status='signed' if signed_at else 'draft',
+                    signed_at=signed_at,
                 )
+                Consultation.objects.filter(pk=consult.pk).update(created_at=created_at)
                 created_consultations += 1
             self.stdout.write(
                 self.style.SUCCESS(
@@ -310,5 +335,201 @@ class Command(BaseCommand):
                 )
             )
 
+            # ─── Operational data: triage, lab, pharmacy, billing, wards ──
+            self._seed_operations(tenant, patients_list, staff_users, doctors_qs)
+
         self.stdout.write(self.style.SUCCESS(f"\n✓ Clinic {tenant.name} seeded successfully!"))
         self.stdout.write(f"  Login: admin@{tenant.schema_name.replace('_', '.')}.co / ClinicPass123")
+
+    # ────────────────────────────────────────────────────────────────────
+    def _seed_operations(self, tenant, patients, staff, clinicians):
+        """Triage, lab, prescriptions, invoices and wards.
+
+        The clinic Command Center reads all of these, so a demo tenant needs
+        them to look alive. Everything is dated relative to *today* so the
+        "Today"/"7 days" ranges on the dashboard actually show numbers.
+        """
+        now = timezone.now()
+        today = now.date()
+        nurses = [u for u in staff if u.role == 'nurse'] or clinicians
+        pharmacist = next((u for u in staff if u.role == 'pharmacist'), clinicians[0])
+        cashier = next((u for u in staff if u.role == 'cashier'), clinicians[0])
+        receptions = [u for u in staff if u.role == 'receptionist']
+
+        consultations = list(Consultation.objects.order_by('-created_at')[:40])
+
+        # ── Triage ─────────────────────────────────────────────────────
+        esi_choices = [1, 2, 2, 3, 3, 3, 4, 4, 5]
+        created = 0
+        for i in range(18):
+            patient = random.choice(patients)
+            esi = random.choice(esi_choices)
+            # Spread across the last 12 days, with a few today.
+            day_offset = 0 if i < 6 else random.randint(1, 12)
+            triage_time = now - timedelta(
+                days=day_offset,
+                hours=random.randint(0, 8),
+                minutes=random.randint(0, 59),
+            )
+            status = 'waiting' if day_offset == 0 and random.random() > 0.4 else 'completed'
+            record = Triage.objects.create(
+                patient=patient,
+                nurse=random.choice(nurses),
+                esi_level=esi,
+                suggested_esi=esi,
+                chief_complaint=random.choice(CHIEF_COMPLAINTS),
+                vital_signs=random.choice(VITAL_SETS),
+                arrival_mode=random.choice(['walk_in', 'walk_in', 'ambulance', 'referral']),
+                pain_scale=random.randint(0, 9),
+                avpu='A',
+                news2_score=random.choice([0, 0, 1, 2, 3, 5]),
+                status=status,
+                notes=random.choice(NOTES),
+            )
+            # `triage_time` is auto_now_add, so backdate it explicitly to spread
+            # the demo data across the dashboard's trend window.
+            Triage.objects.filter(pk=record.pk).update(triage_time=triage_time)
+
+            created += 1
+        self.stdout.write(f"  ✓ Created {created} triage records")
+
+        # ── Lab orders ─────────────────────────────────────────────────
+        test_catalog = list(LabTestCatalog.objects.filter(is_active=True)[:24])
+        lab_statuses = ['pending', 'sample_collected', 'processing', 'completed', 'completed']
+        created = 0
+        if test_catalog:
+            for i in range(16):
+                patient = random.choice(patients)
+                consultation = random.choice(consultations) if consultations else None
+                order = LabOrder.objects.create(
+                    patient=patient,
+                    consultation=consultation,
+                    ordered_by=random.choice(clinicians),
+                    status=random.choice(lab_statuses),
+                    priority=random.choice(['routine', 'routine', 'urgent', 'stat']),
+                    clinical_notes=random.choice(NOTES),
+                )
+                order.tests.set(random.sample(test_catalog, k=min(len(test_catalog), random.randint(1, 3))))
+                created += 1
+        self.stdout.write(f"  ✓ Created {created} lab orders")
+
+        # ── Prescriptions ──────────────────────────────────────────────
+        medications = [
+            ('Amoxicillin', '500mg', 'TID', '7 days'),
+            ('Paracetamol', '1g', 'QID', '5 days'),
+            ('Metformin', '500mg', 'BD', '30 days'),
+            ('Amlodipine', '5mg', 'OD', '30 days'),
+            ('Ibuprofen', '400mg', 'TID', '5 days'),
+            ('Cetirizine', '10mg', 'OD', '10 days'),
+            ('Omeprazole', '20mg', 'OD', '14 days'),
+            ('Artemether-Lumefantrine', '4 tabs', 'BD', '3 days'),
+        ]
+        rx_statuses = ['active', 'active', 'sent_to_exchange', 'dispensed', 'dispensed']
+        created = 0
+        for i in range(14):
+            patient = random.choice(patients)
+            consultation = random.choice(consultations) if consultations else None
+            rx = Prescription.objects.create(
+                patient=patient,
+                consultation=consultation,
+                doctor=random.choice(clinicians),
+                status=random.choice(rx_statuses),
+                notes=random.choice(NOTES),
+            )
+            for med_name, dose, freq, duration in random.sample(medications, k=random.randint(1, 3)):
+                PrescriptionItem.objects.create(
+                    prescription=rx,
+                    medication_name=med_name,
+                    dosage=dose,
+                    frequency=freq,
+                    duration=duration,
+                    quantity=random.choice([10, 14, 20, 30, 60]),
+                )
+            created += 1
+        self.stdout.write(f"  ✓ Created {created} prescriptions")
+
+        # ── Invoices + payments ────────────────────────────────────────
+        services = [
+            ('Consultation fee', 2500),
+            ('Laboratory panel', 4500),
+            ('Nursing procedure', 1200),
+            ('Pharmacy dispensing', 1800),
+            ('Radiology review', 6000),
+            ('Wound dressing', 900),
+        ]
+        invoice_statuses = ['paid', 'paid', 'sent', 'partially_paid', 'overdue']
+        created = 0
+        for i in range(20):
+            patient = random.choice(patients)
+            consultation = random.choice(consultations) if consultations else None
+            n_items = random.randint(1, 3)
+            items = []
+            for label, price in random.sample(services, k=n_items):
+                items.append({'description': label, 'quantity': 1, 'unit_price': price, 'amount': price})
+            subtotal = sum(i['amount'] for i in items)
+            tax = round(subtotal * 0.0, 2)
+            total = subtotal + tax
+            status = random.choice(invoice_statuses)
+            amount_paid = total if status == 'paid' else (
+                round(total * 0.5, 2) if status == 'partially_paid' else 0
+            )
+            created_at = now - timedelta(days=random.randint(0, 20), hours=random.randint(0, 12))
+            invoice = Invoice.objects.create(
+                invoice_number=f'INV-{today.strftime("%Y%m")}-{1000 + i}',
+                patient=patient,
+                consultation=consultation,
+                items=items,
+                subtotal=subtotal,
+                tax=tax,
+                total=total,
+                amount_paid=amount_paid,
+                status=status,
+                due_date=today + timedelta(days=random.choice([7, 14, 30])),
+                notes='Demo invoice',
+            )
+            # Backdate so the 14-day revenue trend has shape.
+            Invoice.objects.filter(pk=invoice.pk).update(created_at=created_at)
+            if amount_paid:
+                Payment.objects.create(
+                    invoice=invoice,
+                    amount=amount_paid,
+                    method=random.choice(['cash', 'mpesa', 'card', 'insurance']),
+                    reference=f'PAY-{1000 + i}',
+                    received_by=cashier,
+                    paid_at=created_at,
+                )
+            created += 1
+        self.stdout.write(f"  ✓ Created {created} invoices with payments")
+
+        # ── Wards, beds, admissions ────────────────────────────────────
+        if not Ward.objects.exists():
+            ward_specs = [
+                ('General Ward A', 'general', '1st floor', 12, 3500),
+                ('Maternity Ward', 'maternity', '2nd floor', 8, 5000),
+                ('Paediatric Ward', 'pediatric', '2nd floor', 6, 4200),
+            ]
+            beds = []
+            for name, wtype, floor, capacity, rate in ward_specs:
+                ward = Ward.objects.create(
+                    name=name, type=wtype, floor=floor,
+                    capacity=capacity, daily_rate=rate, is_active=True,
+                )
+                for n in range(1, capacity + 1):
+                    beds.append(Bed.objects.create(
+                        ward=ward, bed_number=f'{ward.name.split()[0][0]}{n:02d}', status='available',
+                    ))
+            self.stdout.write(f"  ✓ Created {len(beds)} beds across {len(ward_specs)} wards")
+
+            # Admit ~40% of beds.
+            for bed in random.sample(beds, k=int(len(beds) * 0.4)):
+                patient = random.choice(patients)
+                Admission.objects.create(
+                    patient=patient,
+                    bed=bed,
+                    admitting_doctor=random.choice(clinicians),
+                    admission_date=now - timedelta(days=random.randint(0, 5)),
+                    reason=random.choice(CHIEF_COMPLAINTS),
+                    status='admitted',
+                )
+                Bed.objects.filter(pk=bed.pk).update(status='occupied')
+            self.stdout.write("  ✓ Created admissions")

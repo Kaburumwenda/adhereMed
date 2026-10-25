@@ -5,13 +5,14 @@ from django_filters.rest_framework import DjangoFilterBackend
 
 from .models import Invoice, Payment
 from .serializers import InvoiceSerializer, InvoiceCreateSerializer, PaymentSerializer
+from clinic_sites.mixins import ClinicSiteScopedMixin
 
 
-class InvoiceViewSet(viewsets.ModelViewSet):
+class InvoiceViewSet(ClinicSiteScopedMixin, viewsets.ModelViewSet):
     queryset = Invoice.objects.select_related('patient__user', 'consultation').prefetch_related('payments').all()
     serializer_class = InvoiceSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['status', 'patient']
+    filterset_fields = ['status', 'patient', 'clinic_site']
     search_fields = ['invoice_number']
     ordering_fields = ['created_at', 'total', 'due_date']
 

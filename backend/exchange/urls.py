@@ -27,4 +27,11 @@ urlpatterns = [
     path('lab/<int:pk>/accept/', views.lab_exchange_accept, name='lab-exchange-accept'),
     path('lab/<int:pk>/results/', views.lab_exchange_submit_results, name='lab-exchange-results'),
     path('lab/dashboard/', views.lab_dashboard_stats, name='lab-dashboard-stats'),
+
+    # Clinic → patient lab sharing (patient portal reads its own rows)
+    path('lab-records/', views.patient_lab_records, name='patient-lab-records'),
+    path('lab-records/summary/', views.patient_lab_summary, name='patient-lab-summary'),
+    path('lab-records/sync/', views.patient_lab_sync, name='patient-lab-sync'),
+    path('lab-records/<int:pk>/', views.patient_lab_record_detail, name='patient-lab-record-detail'),
+    path('lab-records/<int:pk>/report/', views.patient_lab_report_pdf, name='patient-lab-report-pdf'),
 ]

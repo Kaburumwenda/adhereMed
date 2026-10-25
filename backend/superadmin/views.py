@@ -715,6 +715,21 @@ SEED_COMMANDS = {
         "scope": "tenant",
         "command": "seed_lab_tests",
     },
+    "corporate": {
+        "label": "Corporate Clients",
+        "description": "Demo employer accounts, staff rosters (active & eligible) and job-card / contract verification documents.",
+        "scope": "tenant",
+        "command": "seed_corporate",
+        "supports_reset": True,
+    },
+    "equipment": {
+        "label": "Clinic Equipment",
+        "description": "44 biomedical assets across 12 categories, plus maintenance history, scheduled jobs, faults and branch transfers. Demo data — use /clinics/seed-data for production-safe category seeding.",
+        "scope": "tenant",
+        "command": "seed_equipment",
+        "args": {"demo": True},
+        "supports_reset": True,
+    },
     "homecare_catalog": {
         "label": "Homecare Catalog (Diagnoses + Allergies)",
         "description": "Copies the global allergies & chronic conditions into a tenant's editable catalog.",
@@ -784,7 +799,7 @@ def run_seed(request):
         if all_tenants:
             tenants_qs = Tenant.objects.exclude(schema_name="public").filter(is_active=True)
             results = []
-            kwargs = {}
+            kwargs = dict(info.get("args", {}))
             if reset and info.get("supports_reset"):
                 kwargs["reset"] = True
             for t in tenants_qs:
@@ -815,7 +830,7 @@ def run_seed(request):
             )
 
         try:
-            kwargs = {}
+            kwargs = dict(info.get("args", {}))
             if reset and info.get("supports_reset"):
                 kwargs["reset"] = True
             with schema_context(tenant.schema_name):
@@ -834,7 +849,7 @@ def run_seed(request):
 
     # Public-scoped commands
     try:
-        kwargs = {}
+        kwargs = dict(info.get("args", {}))
         if reset and info.get("supports_clear"):
             kwargs["clear"] = True
         call_command(info["command"], **kwargs)

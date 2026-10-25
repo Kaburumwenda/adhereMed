@@ -4,6 +4,8 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from django_filters.rest_framework import DjangoFilterBackend
 
+from django.shortcuts import get_object_or_404
+
 from accounts.serializers import UserSerializer
 from .models import DoctorProfile
 from .serializers import (
@@ -92,7 +94,12 @@ class MyDoctorProfileView(generics.RetrieveUpdateAPIView):
     serializer_class = DoctorProfileSerializer
 
     def get_object(self):
-        return DoctorProfile.objects.select_related('user', 'hospital').get(
+        # A clinic `doctor` user does not necessarily have a DoctorProfile row
+        # (only self-registered doctors do). Raising the model's DoesNotExist
+        # here escapes DRF's handler and becomes a 500 on every page that
+        # probes the profile, so resolve it to a normal 404 instead.
+        return get_object_or_404(
+            DoctorProfile.objects.select_related('user', 'hospital'),
             user=self.request.user,
         )
 

@@ -10,6 +10,9 @@ router.register('interactions', views.DrugInteractionViewSet, basename='druginte
 urlpatterns = [
     path('', views.MedicationListCreateView.as_view(), name='list-create'),
     path('search/', views.MedicationSearchView.as_view(), name='search'),
+    # Catalog ↔ drug-store stock availability (used by /clinics/medications)
+    path('stock-map/', views.stock_map, name='stock-map'),
+    path('sync-from-stock/', views.sync_from_stock, name='sync-from-stock'),
     path('check-interactions/', views.CheckInteractionsView.as_view(), name='check-interactions'),
     path('delete-all/', views.delete_all_medications, name='delete-all'),
     path('update-brand-names/', views.update_brand_names, name='update-brand-names'),

@@ -291,11 +291,7 @@
     <!-- ===== PASSWORD DIALOG ===== -->
     <v-dialog v-model="passwordDialog" max-width="480">
       <v-card rounded="xl">
-        <v-card-title class="d-flex align-center pa-4">
-          <v-icon color="primary" class="mr-2">mdi-lock-reset</v-icon>
-          Change Password
-        </v-card-title>
-        <v-divider />
+        <BrandDialogHeader icon="mdi-lock-reset" title="Change Password" />
         <v-card-text class="pa-4">
           <v-text-field v-model="pwForm.old_password" label="Current Password" type="password" variant="outlined" density="compact" class="mb-3" prepend-inner-icon="mdi-lock" />
           <v-text-field v-model="pwForm.new_password" label="New Password" type="password" variant="outlined" density="compact" class="mb-3" prepend-inner-icon="mdi-lock-open" :hint="pwForm.new_password && pwForm.new_password.length < 8 ? 'Minimum 8 characters' : ''" persistent-hint />
@@ -578,7 +574,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.doctor-profile { max-width: 1200px; margin: 0 auto; }
+.doctor-profile { width: 100%; }
 
 /* Hero */
 .hero-card {

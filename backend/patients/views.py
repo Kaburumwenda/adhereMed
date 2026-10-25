@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.generics import CreateAPIView
@@ -13,8 +14,14 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 
-from .models import Patient
-from .serializers import PatientSerializer, PatientRegistrationSerializer
+from .models import CareNote, Patient, VitalObservation
+from .serializers import (
+    CareNoteSerializer, PatientSerializer, PatientRegistrationSerializer,
+    VitalObservationSerializer,
+)
+from .vitals import bmi_for, news2_risk, score_news2
+from clinic_sites.mixins import ClinicSiteScopedMixin
+from clinic_sites.utils import resolve_site
 
 User = get_user_model()
 
@@ -28,26 +35,72 @@ def _to_list(val):
     return [v.strip() for v in str(val).split(',') if v.strip()]
 
 
-class PatientViewSet(viewsets.ModelViewSet):
-    queryset = Patient.objects.select_related('user').all()
+def _clean_national_id(data):
+    """Return a trimmed national ID, or None when the caller left it blank.
+
+    `Patient.national_id` is `unique=True, null=True`. Storing `''` therefore
+    makes the *second* patient without an ID fail with an IntegrityError, so
+    blanks must be persisted as NULL (multiple NULLs are allowed).
+    Also accepts the `id_number` alias used by other clients.
+    """
+    raw = data.get('national_id')
+    if raw is None:
+        raw = data.get('id_number')
+    return (str(raw).strip() or None) if raw else None
+
+
+def _clean_coord(value, limit):
+    """Coerce a lat/lng value to a bounded Decimal, or None when unusable."""
+    if value is None or value == '':
+        return None
+    try:
+        dec = Decimal(str(value))
+    except (TypeError, ValueError, ArithmeticError):
+        return None
+    if abs(dec) > limit:
+        return None
+    return dec.quantize(Decimal('0.000001'))
+
+
+class PatientViewSet(ClinicSiteScopedMixin, viewsets.ModelViewSet):
+    queryset = Patient.objects.select_related('user', 'clinic_site').all()
     serializer_class = PatientSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['gender', 'blood_type']
-    search_fields = ['patient_number', 'user__first_name', 'user__last_name', 'national_id']
+    filterset_fields = ['gender', 'blood_type', 'clinic_site', 'patient_category']
+    search_fields = ['patient_number', 'user__first_name', 'user__last_name', 'national_id',
+                     'guardian_name', 'guardian_phone']
     ordering_fields = ['created_at', 'patient_number']
 
+    @transaction.atomic
     def create(self, request, *args, **kwargs):
         data = request.data
-        email = data.get('email', '').strip()
-        if not email:
-            return Response({'email': ['Email is required.']}, status=status.HTTP_400_BAD_REQUEST)
-        if User.objects.filter(email=email).exists():
+        email = (data.get('email') or '').strip()
+        password = data.get('password') or ''
+        has_portal = bool(password)
+
+        # Email is only compulsory for patients who get a dashboard login.
+        if has_portal and not email:
+            return Response(
+                {'email': ['Email is required for a patient dashboard login.']},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if email and User.objects.filter(email=email).exists():
             return Response({'email': ['A user with this email already exists.']}, status=status.HTTP_400_BAD_REQUEST)
 
-        password = data.get('password') or secrets.token_urlsafe(12)
+        if not has_portal:
+            password = secrets.token_urlsafe(12)
+
+        patient_number = f'PT-{uuid.uuid4().hex[:8].upper()}'
+        # Clinic-only records still need a unique value in the shared email
+        # column — use a non-deliverable placeholder instead of blocking
+        # reception on a field the patient does not have.
+        if not email:
+            email = f'{patient_number.lower()}@no-email.adheremed.local'
+
         user = User(
             email=email,
             first_name=data.get('first_name', ''),
+            middle_name=data.get('middle_name', '') or '',
             last_name=data.get('last_name', ''),
             phone=data.get('phone', ''),
             role=User.Role.PATIENT,
@@ -62,15 +115,36 @@ class PatientViewSet(viewsets.ModelViewSet):
             tenant_type = getattr(getattr(request, 'tenant', None), 'tenant_type', '') or ''
             source = tenant_type if tenant_type in valid_sources else Patient.RegistrationSource.OTHER
 
+        # Clinical stream — general by default, paediatrics stores the guardian
+        # block the front desk needs at check-in.
+        valid_categories = {c[0] for c in Patient.Category.choices}
+        category = (data.get('patient_category') or '').strip().lower()
+        if category not in valid_categories:
+            category = Patient.Category.GENERAL
+
+        valid_immunisation = {c[0] for c in Patient.ImmunisationStatus.choices}
+        immunisation = (data.get('immunisation_status') or '').strip().lower()
+
         patient = Patient.objects.create(
             user=user,
-            patient_number=f'PT-{uuid.uuid4().hex[:8].upper()}',
+            patient_number=patient_number,
+            clinic_site=self._resolve_create_site(data),
             registration_source=source,
+            patient_category=category,
+            guardian_name=data.get('guardian_name', '') or '',
+            guardian_phone=data.get('guardian_phone', '') or '',
+            guardian_relationship=data.get('guardian_relationship', '') or '',
+            immunisation_status=immunisation if immunisation in valid_immunisation else '',
             date_of_birth=data.get('date_of_birth') or '1900-01-01',
             gender=data.get('gender') or 'other',
             blood_type=data.get('blood_type') or data.get('blood_group', ''),
-            national_id=data.get('national_id') or data.get('id_number', ''),
+            # A blank national ID must be NULL — an empty string collides on the
+            # unique constraint once more than one patient has no ID.
+            national_id=_clean_national_id(data),
             address=data.get('address', ''),
+            latitude=_clean_coord(data.get('latitude'), 90),
+            longitude=_clean_coord(data.get('longitude'), 180),
+            address_place_id=data.get('address_place_id', '') or '',
             allergies=_to_list(data.get('allergies', [])),
             chronic_conditions=_to_list(data.get('chronic_conditions', [])),
             emergency_contact_name=data.get('emergency_contact_name', ''),
@@ -78,8 +152,21 @@ class PatientViewSet(viewsets.ModelViewSet):
             emergency_contact_relation=data.get('emergency_contact_relation', ''),
             insurance_provider=data.get('insurance_provider', ''),
             insurance_number=data.get('insurance_number') or data.get('insurance_policy_number', ''),
+            has_portal_access=has_portal,
+            shared_fields=data.get('shared_fields') or [],
         )
         return Response(PatientSerializer(patient).data, status=status.HTTP_201_CREATED)
+
+    def _resolve_create_site(self, data):
+        """Clinic the patient is registered at: payload → header/query → None."""
+        try:
+            explicit = data.get('clinic_site')
+        except AttributeError:
+            explicit = None
+        if explicit:
+            from clinic_sites.models import ClinicSite
+            return ClinicSite.objects.filter(pk=explicit).first()
+        return self._request_site()
 
     def partial_update(self, request, *args, **kwargs):
         patient = self.get_object()
@@ -105,9 +192,9 @@ class PatientViewSet(viewsets.ModelViewSet):
         elif 'blood_group' in data:
             patient.blood_type = data['blood_group']
         if 'national_id' in data:
-            patient.national_id = data['national_id']
+            patient.national_id = (data['national_id'] or '').strip() or None
         elif 'id_number' in data:
-            patient.national_id = data['id_number']
+            patient.national_id = (data['id_number'] or '').strip() or None
         if 'insurance_number' in data:
             patient.insurance_number = data['insurance_number']
         elif 'insurance_policy_number' in data:
@@ -657,6 +744,327 @@ def clear_demo_data(request):
         return Response(
             {'error': f'Failed to clear demo data: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+class CareNoteViewSet(viewsets.ModelViewSet):
+    """Clinic care notes — see ``patients.CareNote`` for why this is separate
+    from ``homecare.CaregiverNote``."""
+
+    queryset = CareNote.objects.select_related('patient__user').all()
+    serializer_class = CareNoteSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['patient', 'category', 'priority', 'is_pinned']
+    search_fields = [
+        'title', 'content', 'tags',
+        'patient__patient_number', 'patient__patient_id',
+        'patient__user__first_name', 'patient__user__last_name',
+        'author_name',
+    ]
+    ordering_fields = ['recorded_at', 'created_at', 'priority']
+    ordering = ['-is_pinned', '-recorded_at']
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        display = ''
+        role = ''
+        if getattr(user, 'is_authenticated', False):
+            # The project's User is an AbstractBaseUser (not PermissionsMixin's
+            # AbstractUser), so it has NO `get_full_name()` — only a `full_name`
+            # property. Calling get_full_name() raises AttributeError.
+            display = (user.full_name or '').strip() or user.email
+            role = getattr(user, 'role', '') or ''
+        serializer.save(
+            author=user if getattr(user, 'is_authenticated', False) else None,
+            author_name=(serializer.validated_data.get('author_name') or display),
+            author_role=role,
+        )
+
+    def perform_update(self, serializer):
+        # The original author snapshot is never overwritten — editing someone
+        # else's note must not rewrite history. Only backfill it if blank.
+        extra = {}
+        if not serializer.instance.author_name:
+            user = self.request.user
+            if getattr(user, 'is_authenticated', False):
+                extra['author'] = user
+                extra['author_name'] = (user.full_name or '').strip() or user.email
+                extra['author_role'] = getattr(user, 'role', '') or ''
+        serializer.save(**extra)
+
+
+class VitalObservationViewSet(viewsets.ModelViewSet):
+    """Clinic vital signs — the module's own records plus a merged read view.
+
+    ``GET /patients/vitals/`` returns a single de-duplicated clinical timeline
+    built from three stores:
+
+    * ``patients.VitalObservation`` — written by this module (``editable: true``)
+    * ``triage.Triage.vital_signs`` — captured during triage (read-only)
+    * ``consultations.Consultation.vital_signs`` — captured in a consultation
+      (read-only)
+
+    Without the merge the page would only ever show what someone happened to
+    type into this module, even though the clinic has been recording vitals at
+    triage and in consults for months. External rows carry ``editable: false``
+    so the UI hides edit/delete on them instead of offering a button that 404s.
+    """
+
+    queryset = VitalObservation.objects.select_related('patient__user').all()
+    serializer_class = VitalObservationSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['patient']
+    search_fields = [
+        'patient__patient_number', 'patient__patient_id',
+        'patient__user__first_name', 'patient__user__last_name',
+        'recorded_by_name',
+    ]
+    ordering_fields = ['recorded_at', 'news2_score']
+    ordering = ['-recorded_at']
+
+    MAX_ROWS = 1000
+
+    # ── helpers ──────────────────────────────────────────────────
+    @staticmethod
+    def _patient_meta(patient):
+        user = getattr(patient, 'user', None)
+        return {
+            'patient': patient.pk,
+            'patient_name': getattr(user, 'full_name', '') or '',
+            'patient_number': getattr(patient, 'patient_number', '') or '',
+            'patient_display_id': getattr(patient, 'patient_id', '') or '',
+        }
+
+    def _own_rows(self):
+        rows = []
+        for obs in self.get_queryset():
+            vs = obs.as_vital_signs()
+            rows.append({
+                'key': f'vitals-{obs.pk}',
+                'id': obs.pk,
+                'source': 'vitals',
+                'source_label': 'Vitals',
+                'editable': True,
+                'recorded_at': obs.recorded_at,
+                'recorded_by_name': obs.recorded_by_name,
+                'recorded_by_role': obs.recorded_by_role,
+                'notes': obs.notes,
+                'context': '',
+                'vital_signs': vs,
+                'news2_score': obs.news2_score,
+                'news2_breakdown': obs.news2_breakdown or {},
+                'bmi': bmi_for(vs.get('weight'), vs.get('height')),
+                **self._patient_meta(obs.patient),
+            })
+        return rows
+
+    def _external_rows(self):
+        """Triage + consultation vitals, normalised to the same row shape."""
+        from consultations.models import Consultation
+        from triage.models import Triage
+
+        rows = []
+        # NOTE: do not add .only(...) here — `full_name` is a Python property on
+        # accounts.User, not a column, so .only('nurse__full_name') raises
+        # FieldDoesNotExist. select_related alone is enough.
+        triages = (
+            Triage.objects.select_related('patient__user', 'nurse')
+            .exclude(vital_signs={})
+            .order_by('-triage_time')[: self.MAX_ROWS]
+        )
+        for t in triages:
+            vs = t.vital_signs or {}
+            if not any(v not in (None, '', 0) for v in vs.values()):
+                continue
+            total, breakdown = score_news2(vs)
+            rows.append({
+                'key': f'triage-{t.pk}',
+                'id': t.pk,
+                'source': 'triage',
+                'source_label': 'Triage',
+                'editable': False,
+                'recorded_at': t.triage_time,
+                'recorded_by_name': getattr(t.nurse, 'full_name', '') or '',
+                'recorded_by_role': 'nurse',
+                'notes': '',
+                'context': t.chief_complaint or '',
+                'vital_signs': self._normalise(vs),
+                'news2_score': total,
+                'news2_breakdown': breakdown,
+                'bmi': bmi_for(vs.get('weight'), vs.get('height')),
+                **self._patient_meta(t.patient),
+            })
+
+        consults = (
+            Consultation.objects.select_related('patient__user')
+            .exclude(vital_signs={})
+            .order_by('-created_at')[: self.MAX_ROWS]
+        )
+        for c in consults:
+            vs = c.vital_signs or {}
+            if not any(v not in (None, '', 0) for v in vs.values()):
+                continue
+            total, breakdown = score_news2(vs)
+            rows.append({
+                'key': f'consult-{c.pk}',
+                'id': c.pk,
+                'source': 'consultation',
+                'source_label': 'Consultation',
+                'editable': False,
+                'recorded_at': c.created_at,
+                'recorded_by_name': '',
+                'recorded_by_role': 'doctor',
+                'notes': '',
+                'context': c.chief_complaint or '',
+                'vital_signs': self._normalise(vs),
+                'news2_score': total,
+                'news2_breakdown': breakdown,
+                'bmi': bmi_for(vs.get('weight'), vs.get('height')),
+                **self._patient_meta(c.patient),
+            })
+        return rows
+
+    @staticmethod
+    def _normalise(vs):
+        """Fold the legacy aliases used by triage/consultation JSON into the
+        canonical keys so every row renders identically."""
+        def pick(*keys):
+            for k in keys:
+                v = vs.get(k)
+                if v not in (None, ''):
+                    return v
+            return None
+
+        return {
+            'temperature': pick('temperature', 'temp'),
+            'bp_systolic': pick('bp_systolic', 'systolic', 'blood_pressure_systolic'),
+            'bp_diastolic': pick('bp_diastolic', 'diastolic', 'blood_pressure_diastolic'),
+            'heart_rate': pick('heart_rate', 'pulse'),
+            'respiratory_rate': pick('respiratory_rate', 'resp_rate', 'resp'),
+            'oxygen_saturation': pick('oxygen_saturation', 'spo2', 'o2_saturation'),
+            'blood_sugar': pick('blood_sugar', 'glucose'),
+            'weight': pick('weight'),
+            'height': pick('height'),
+            'pain_score': pick('pain_score', 'pain'),
+            'spo2_scale': vs.get('spo2_scale') or 1,
+            'on_oxygen': bool(vs.get('on_oxygen')),
+            'consciousness': vs.get('consciousness') or vs.get('avpu') or 'A',
+        }
+
+    # ── endpoints ────────────────────────────────────────────────
+    def list(self, request, *args, **kwargs):
+        rows = self._own_rows() + self._external_rows()
+
+        # Manual filters — the merged list is not a queryset.
+        patient_id = request.query_params.get('patient')
+        if patient_id:
+            try:
+                pid = int(patient_id)
+                rows = [r for r in rows if r['patient'] == pid]
+            except (TypeError, ValueError):
+                pass
+
+        source = request.query_params.get('source')
+        if source:
+            rows = [r for r in rows if r['source'] == source]
+
+        risk = request.query_params.get('risk')
+        if risk:
+            rows = [r for r in rows if news2_risk(r['news2_score'], r['news2_breakdown']) == risk]
+
+        q = (request.query_params.get('search') or '').strip().lower()
+        if q:
+            rows = [
+                r for r in rows
+                if q in ' '.join(filter(None, [
+                    r['patient_name'], r['patient_number'], r['patient_display_id'],
+                    r['recorded_by_name'], r['context'], str(r.get('notes') or ''),
+                ])).lower()
+            ]
+
+        for r in rows:
+            r['risk'] = news2_risk(r['news2_score'], r['news2_breakdown'])
+            r['critical_params'] = [
+                k for k, v in (r['news2_breakdown'] or {}).items() if int(v or 0) >= 3
+            ]
+
+        rows.sort(key=lambda r: r['recorded_at'], reverse=True)
+        rows = rows[: self.MAX_ROWS]
+
+        # Per-patient roll-up: latest reading + NEWS2 series for the sparkline.
+        by_patient = {}
+        for r in sorted(rows, key=lambda x: x['recorded_at']):
+            p = by_patient.setdefault(r['patient'], {
+                'patient': r['patient'],
+                'patient_name': r['patient_name'],
+                'patient_number': r['patient_number'],
+                'patient_display_id': r['patient_display_id'],
+                'count': 0,
+                'series': [],
+                'latest': None,
+            })
+            p['count'] += 1
+            p['series'].append(r['news2_score'])
+            p['latest'] = {
+                'recorded_at': r['recorded_at'],
+                'news2_score': r['news2_score'],
+                'risk': r['risk'],
+                'vital_signs': r['vital_signs'],
+                'source': r['source'],
+            }
+
+        patient_rows = []
+        for p in by_patient.values():
+            latest = p['latest'] or {}
+            vs = latest.get('vital_signs') or {}
+            patient_rows.append({
+                **{k: p[k] for k in ('patient', 'patient_name', 'patient_number',
+                                     'patient_display_id', 'count')},
+                'latest_at': latest.get('recorded_at'),
+                'latest_news2': latest.get('news2_score', 0),
+                'risk': latest.get('risk', 'low'),
+                'source': latest.get('source', ''),
+                'vital_signs': vs,
+                'bmi': bmi_for(vs.get('weight'), vs.get('height')),
+                'series': p['series'][-12:],
+            })
+        patient_rows.sort(key=lambda p: (-p['latest_news2'], p['patient_name']))
+
+        now = timezone.now()
+        day_ago = now - timedelta(hours=24)
+        summary = {
+            'total': len(rows),
+            'patients': len(patient_rows),
+            'critical': sum(1 for r in rows if r['risk'] == 'high'),
+            'review': sum(1 for r in rows if r['risk'] in ('high', 'medium')),
+            'last_24h': sum(1 for r in rows if r['recorded_at'] >= day_ago),
+            'avg_news2': round(sum(r['news2_score'] for r in rows) / len(rows), 1) if rows else 0,
+        }
+
+        for r in rows:
+            r['recorded_at'] = r['recorded_at'].isoformat()
+        for p in patient_rows:
+            if p['latest_at'] is not None:
+                p['latest_at'] = p['latest_at'].isoformat()
+
+        return Response({
+            'count': len(rows),
+            'summary': summary,
+            'patients': patient_rows,
+            'results': rows,
+        })
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        display = ''
+        role = ''
+        if getattr(user, 'is_authenticated', False):
+            display = (user.full_name or '').strip() or user.email
+            role = getattr(user, 'role', '') or ''
+        serializer.save(
+            recorded_by=user if getattr(user, 'is_authenticated', False) else None,
+            recorded_by_name=display,
+            recorded_by_role=role,
         )
 
 

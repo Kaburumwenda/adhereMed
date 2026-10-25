@@ -82,11 +82,7 @@
     <!-- ── New / Edit dialog ─────────────────────────────────────── -->
     <v-dialog v-model="dialog" max-width="600" persistent scrollable>
       <v-card rounded="lg">
-        <v-card-title class="text-h6">
-          <v-icon color="error" class="mr-2">mdi-bell-alert</v-icon>
-          {{ editing ? 'Edit Escalation' : 'New Escalation' }}
-        </v-card-title>
-        <v-divider />
+        <BrandDialogHeader icon="mdi-bell-alert" :title="editing ? 'Edit Escalation' : 'New Escalation'" />
         <v-card-text>
           <v-form ref="formRef">
             <v-select v-model="escForm.patient" :items="patientOptions"
@@ -119,7 +115,7 @@
     <!-- ── Delete dialog ─────────────────────────────────────────── -->
     <v-dialog v-model="deleteDialog" max-width="420">
       <v-card rounded="lg">
-        <v-card-title class="text-h6">Delete Escalation?</v-card-title>
+        <BrandDialogHeader icon="mdi-delete-alert" title="Delete Escalation?" />
         <v-card-text>
           <div class="d-flex align-center mb-3">
             <v-avatar color="error-lighten-5" size="40" class="mr-3">

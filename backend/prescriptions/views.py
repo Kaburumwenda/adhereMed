@@ -9,13 +9,14 @@ from .serializers import (
     PrescriptionSerializer, PrescriptionCreateSerializer,
     PharmacyPrescriptionSerializer,
 )
+from clinic_sites.mixins import ClinicSiteScopedMixin
 
 
-class PrescriptionViewSet(viewsets.ModelViewSet):
+class PrescriptionViewSet(ClinicSiteScopedMixin, viewsets.ModelViewSet):
     queryset = Prescription.objects.select_related('patient__user', 'doctor', 'consultation').prefetch_related('items').all()
     serializer_class = PrescriptionSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['status', 'patient', 'doctor']
+    filterset_fields = ['status', 'patient', 'doctor', 'clinic_site']
     search_fields = ['patient__user__first_name', 'patient__user__last_name']
     ordering_fields = ['created_at']
 

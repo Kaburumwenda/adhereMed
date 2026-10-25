@@ -43,6 +43,12 @@ export default defineNuxtPlugin((nuxtApp) => {
         if (schema) {
           req.headers['X-Tenant-Schema'] = schema
         }
+        // Active clinic of a multi-clinic tenant. The API stamps new records
+        // with it and can scope lists to it; "all"/absent means tenant-wide.
+        const site = localStorage.getItem('adheremed.clinic.site')
+        if (site && site !== 'all') {
+          req.headers['X-Clinic-Site'] = site
+        }
       }
     }
     return req

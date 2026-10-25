@@ -28,6 +28,7 @@ class WardSerializer(serializers.ModelSerializer):
 class AdmissionSerializer(serializers.ModelSerializer):
     patient_name = serializers.CharField(source='patient.user.full_name', read_only=True)
     bed_label = serializers.CharField(source='bed.__str__', read_only=True)
+    clinic_site_name = serializers.CharField(source='clinic_site.name', read_only=True, default=None)
     admitting_doctor_name = serializers.CharField(
         source='admitting_doctor.full_name', read_only=True,
     )
@@ -37,6 +38,7 @@ class AdmissionSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'patient', 'patient_name',
             'bed', 'bed_label',
+            'clinic_site', 'clinic_site_name',
             'admitting_doctor', 'admitting_doctor_name',
             'admission_date', 'discharge_date',
             'reason', 'discharge_summary', 'status',

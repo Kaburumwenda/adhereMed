@@ -1,4 +1,5 @@
 from rest_framework import generics, status, permissions, viewsets as _viewsets
+from rest_framework import decorators as _decorators
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.pagination import PageNumberPagination as _pagination
@@ -345,6 +346,167 @@ class UserManagementViewSet(_viewsets.GenericViewSet,
         if target_tenant and not instance.tenant_id:
             instance.tenant = target_tenant
             instance.save()
+
+    # ── Staff overview (premium staff page) ─────────────────────────────
+    CLINICAL_ROLES = {
+        'doctor', 'clinical_officer', 'dentist', 'nurse', 'midwife',
+        'lab_tech', 'radiologist', 'pharmacist', 'pharmacy_tech',
+    }
+
+    @_decorators.action(detail=False, methods=['get'], url_path='overview')
+    def overview(self, request):
+        """Roster + workload aggregates for the staff directory page.
+
+        Every cross-app aggregate is guarded: a tenant schema can be missing an
+        optional table, and the directory must still render.
+        """
+        from datetime import timedelta
+        from django.db.models import Count
+        from django.utils import timezone
+
+        qs = self.get_queryset()
+        users = list(qs)
+        user_ids = [u.id for u in users]
+        today = timezone.localdate()
+        month_start = today.replace(day=1)
+        since = timezone.now() - timedelta(days=30)
+
+        consultations = {}
+        appointments_today = {}
+        appointments_upcoming = {}
+        visits_30d = {}
+        try:
+            from consultations.models import Consultation
+            rows = (
+                Consultation.objects
+                .filter(doctor_id__in=user_ids, created_at__gte=since)
+                .values('doctor_id').annotate(n=Count('id'))
+            )
+            consultations = {r['doctor_id']: r['n'] for r in rows}
+        except Exception:
+            pass
+        try:
+            from appointments.models import Appointment
+            rows = (
+                Appointment.objects
+                .filter(staff_id__in=user_ids, appointment_date=today)
+                .exclude(status__in=['cancelled', 'no_show'])
+                .values('staff_id').annotate(n=Count('id'))
+            )
+            appointments_today = {r['staff_id']: r['n'] for r in rows}
+            rows = (
+                Appointment.objects
+                .filter(staff_id__in=user_ids, appointment_date__gt=today)
+                .exclude(status__in=['cancelled', 'no_show'])
+                .values('staff_id').annotate(n=Count('id'))
+            )
+            appointments_upcoming = {r['staff_id']: r['n'] for r in rows}
+        except Exception:
+            pass
+        try:
+            from visits.models import PatientVisit
+            rows = (
+                PatientVisit.objects
+                .filter(doctor_id__in=user_ids, arrived_at__date__gte=month_start)
+                .values('doctor_id').annotate(n=Count('id'))
+            )
+            visits_30d = {r['doctor_id']: r['n'] for r in rows}
+        except Exception:
+            pass
+
+        # Optional professional details — present only where staff profiles exist.
+        profiles = {}
+        try:
+            from staff_profiles.models import StaffProfile
+            rows = (
+                StaffProfile.objects
+                .filter(user_id__in=user_ids)
+                .select_related('department', 'specialization')
+            )
+            for p in rows:
+                profiles[p.user_id] = p
+        except Exception:
+            profiles = {}
+
+        roster = []
+        for u in users:
+            profile = profiles.get(u.id)
+            department = getattr(getattr(profile, 'department', None), 'name', '') or ''
+            specialization = getattr(getattr(profile, 'specialization', None), 'name', '') or ''
+            roster.append({
+                'id': u.id,
+                'full_name': ' '.join(
+                    p for p in [u.first_name, u.middle_name, u.last_name] if p
+                ).strip() or u.email,
+                'first_name': u.first_name,
+                'middle_name': u.middle_name,
+                'last_name': u.last_name,
+                'initials': (
+                    (u.first_name or ' ')[:1] + (u.last_name or ' ')[:1]
+                ).strip().upper() or '?',
+                'email': u.email,
+                'phone': u.phone,
+                'role': u.role,
+                'role_label': u.get_role_display() if hasattr(u, 'get_role_display') else u.role,
+                'is_active': u.is_active,
+                'is_clinical': u.role in self.CLINICAL_ROLES,
+                'date_joined': u.date_joined,
+                'last_login': u.last_login,
+                'department': department,
+                'specialization': specialization,
+                'license_number': getattr(profile, 'license_number', '') or '',
+                'qualification': getattr(profile, 'qualification', '') or '',
+                'years_of_experience': getattr(profile, 'years_of_experience', 0) or 0,
+                'is_available': getattr(profile, 'is_available', True),
+                'has_profile': bool(profile),
+                'consultations_30d': consultations.get(u.id, 0),
+                'appointments_today': appointments_today.get(u.id, 0),
+                'appointments_upcoming': appointments_upcoming.get(u.id, 0),
+                'visits_month': visits_30d.get(u.id, 0),
+            })
+
+        role_counts = {}
+        for row in roster:
+            role_counts[row['role']] = role_counts.get(row['role'], 0) + 1
+
+        clinical = sum(1 for u in users if u.role in self.CLINICAL_ROLES)
+        admins = sum(
+            1 for u in users
+            if u.role in {'tenant_admin', 'clinic_admin', 'admin', 'branch_admin'}
+        )
+        inactive = sum(1 for u in users if not u.is_active)
+        new_this_month = sum(
+            1 for u in users if u.date_joined and u.date_joined.date() >= month_start
+        )
+
+        return Response({
+            'generated_at': timezone.now(),
+            'kpis': {
+                'total': len(users),
+                'active': len(users) - inactive,
+                'inactive': inactive,
+                'clinical': clinical,
+                'admin': admins,
+                'new_this_month': new_this_month,
+                'on_shift_today': sum(
+                    1 for u in users
+                    if appointments_today.get(u.id, 0) > 0 and u.is_active
+                ),
+                'consultations_30d': sum(consultations.values()),
+                'visits_month': sum(visits_30d.values()),
+            },
+            'roles': [
+                {
+                    'role': role,
+                    'label': dict(User.Role.choices).get(
+                        role, role.replace('_', ' ').title(),
+                    ),
+                    'count': count,
+                }
+                for role, count in sorted(role_counts.items(), key=lambda i: -i[1])
+            ],
+            'staff': roster,
+        })
 
 
 # ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@ class ConsultationAddendumSerializer(serializers.ModelSerializer):
 class ConsultationSerializer(serializers.ModelSerializer):
     patient_name = serializers.CharField(source='patient.user.full_name', read_only=True)
     doctor_name = serializers.CharField(source='doctor.full_name', read_only=True)
+    clinic_site_name = serializers.CharField(source='clinic_site.name', read_only=True, default=None)
     addenda = ConsultationAddendumSerializer(many=True, read_only=True)
 
     class Meta:
@@ -22,6 +23,7 @@ class ConsultationSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'appointment', 'patient', 'patient_name',
             'doctor', 'doctor_name', 'triage',
+            'clinic_site', 'clinic_site_name',
             'status', 'disposition',
             'chief_complaint', 'history_present_illness',
             'review_of_systems', 'past_medical_history',
@@ -41,6 +43,7 @@ class ConsultationSerializer(serializers.ModelSerializer):
 class ConsultationDetailSerializer(serializers.ModelSerializer):
     patient_name = serializers.CharField(source='patient.user.full_name', read_only=True)
     doctor_name = serializers.CharField(source='doctor.full_name', read_only=True)
+    clinic_site_name = serializers.CharField(source='clinic_site.name', read_only=True, default=None)
     prescriptions = serializers.SerializerMethodField()
     lab_orders = serializers.SerializerMethodField()
     radiology_orders = serializers.SerializerMethodField()
@@ -51,6 +54,7 @@ class ConsultationDetailSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'appointment', 'patient', 'patient_name',
             'doctor', 'doctor_name', 'triage',
+            'clinic_site', 'clinic_site_name',
             'status', 'disposition',
             'chief_complaint', 'history_present_illness',
             'review_of_systems', 'past_medical_history',

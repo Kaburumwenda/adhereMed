@@ -12,6 +12,7 @@ from .serializers import MedicationSerializer, MedicationSearchSerializer, DrugI
 
 import csv
 import io
+import re
 
 
 class MedicationListCreateView(generics.ListCreateAPIView):
@@ -46,7 +47,354 @@ class MedicationSearchView(generics.ListAPIView):
         )[:30]
 
 
-ALLOWED_DELETE_ALL_ROLES = {"tenant_admin", "branch_admin", "pharmacist", "admin"}
+ALLOWED_DELETE_ALL_ROLES = {"tenant_admin", "branch_admin", "pharmacist", "admin", "clinic_admin"}
+
+
+# ── Catalog ↔ drug-store stock matching helpers ──────────────────────
+_STRENGTH_RE = re.compile(
+    r'(\d+(?:[.,]\d+)?\s*(?:mg|mcg|µg|g|ml|cl|l|iu|%|mmol)'
+    r'(?:\s*/\s*\d+(?:[.,]\d+)?\s*(?:ml|g|mg))?)',
+    re.IGNORECASE,
+)
+
+_FORM_HINTS = [
+    ('syrup', 'syrup'), ('suspension', 'suspension'), ('solution', 'solution'),
+    ('inhaler', 'inhaler'), ('nebule', 'solution'), ('nebuliser', 'solution'),
+    # Injectables — matched before the oral forms so "Insulin Mixtard" and
+    # "Tetanus Toxoid" are not defaulted to tablet.
+    ('injection', 'injection'), ('insulin', 'injection'), ('mixtard', 'injection'),
+    ('epinephrine', 'injection'), ('adrenaline', 'injection'), ('toxoid', 'injection'),
+    ('vaccine', 'injection'), ('artesunate', 'injection'), ('ceftriaxone', 'injection'),
+    ('gentamicin', 'injection'), ('oxytocin', 'injection'), ('depo-', 'injection'),
+    ('ampoule', 'injection'), ('vial', 'injection'),
+    ('cream', 'cream'), ('ointment', 'ointment'), ('gel', 'gel'),
+    ('drops', 'drops'), ('pessary', 'suppository'), ('suppositor', 'suppository'),
+    ('spray', 'spray'), ('patch', 'patch'), ('lozenge', 'lozenge'),
+    ('oral rehydration', 'powder'), ('powder', 'powder'), ('sachet', 'powder'),
+    ('capsule', 'capsule'), ('tablet', 'tablet'), ('tab', 'tablet'),
+]
+
+_CATEGORY_HINTS = [
+    (r'paracetamol|acetaminophen|ibuprofen|diclofenac|aspirin|tramadol|morphine|pethidine', 'analgesic'),
+    (r'amoxicillin|amoxycillin|azithromycin|ciprofloxacin|ceftriaxone|cefixime|doxycycline|'
+     r'penicillin|erythromycin|metronidazole|cloxacillin|gentamicin|clavulan', 'antibiotic'),
+    (r'fluconazole|clotrimazole|ketoconazole|nystatin|griseofulvin|miconazole', 'antifungal'),
+    (r'acyclovir|aciclovir|tenofovir|nevirapine|dolutegravir|zidovudine|efavirenz', 'antiviral'),
+    (r'albendazole|mebendazole|ivermectin|praziquantel|metronidazole', 'antiparasitic'),
+    (r'artemether|artesunate|lumefantrine|quinine|chloroquine|sulfadoxine', 'antimalarial'),
+    (r'amlodipine|nifedipine|enalapril|lisonopril|lisinopril|losartan|atenolol|'
+     r'metoprolol|hydralazine|hydrochlorothiazide|furosemide|carvedilol', 'antihypertensive'),
+    (r'metformin|glibenclamide|glimepiride|insulin|gliclazide|sitagliptin', 'antidiabetic'),
+    (r'cetirizine|loratadine|chlorpheniramine|promethazine|fexofenadine|diphenhydramine', 'antihistamine'),
+    (r'omeprazole|esomeprazole|pantoprazole|ranitidine|antacid|magnesium trisilicate|'
+     r'oral rehydration|zinc sulphate', 'antacid'),
+    (r'salbutamol|albuterol|prednisolone|beclomethasone|budesonide|aminophylline|'
+     r'montelukast|ipratropium', 'respiratory'),
+    (r'diazepam|phenobarbitone|carbamazepine|phenytoin|haloperidol|amitriptyline|'
+     r'fluoxetine|sertraline', 'cns'),
+    (r'levothyroxine|prednisolone|dexamethasone|hydrocortisone|norethisterone|'
+     r'medroxyprogesterone|oxytocin', 'hormone'),
+    (r'folic acid|ferrous|ferric|vitamin|ascorbic|calciferol|retinol|thiamine', 'vitamin'),
+    (r'vaccine|toxoid|bcg|measles|polio|rotavirus|hepatitis b', 'vaccine'),
+    (r'hydrocortisone cream|betamethasone|clobetasol|calamine|permethrin', 'dermatological'),
+    (r'timolol|tropicamide|chloramphenicol eye|gentamicin eye|tetracycline eye', 'ophthalmic'),
+    (r'tamoxifen|methotrexate|cisplatin|doxorubicin|vincristine', 'oncology'),
+    (r'ciclosporin|cyclosporine|azathioprine|tacrolimus', 'immunosuppressant'),
+    (r'diclofenac|ibuprofen|naproxen|piroxicam|indomethacin', 'nsaid'),
+]
+
+
+def _split_strength(name):
+    """Split ``"Amoxicillin 500mg"`` into ``("Amoxicillin", "500mg")``."""
+    raw = ' '.join(str(name or '').split())
+    match = _STRENGTH_RE.search(raw)
+    if not match:
+        return raw, ''
+    strength = match.group(1).replace(' ', '')
+    base = (raw[:match.start()] + ' ' + raw[match.end():]).strip()
+    base = ' '.join(base.split())
+    return base or raw, strength
+
+
+def _guess_form(name):
+    low = str(name or '').lower()
+    for token, form in _FORM_HINTS:
+        if token in low:
+            return form
+    return 'tablet'
+
+
+def _guess_category(name):
+    low = str(name or '').lower()
+    for pattern, cat in _CATEGORY_HINTS:
+        if re.search(pattern, low):
+            return cat
+    return 'other'
+
+
+# Items commonly sold over the counter. Everything else is assumed to need a
+# prescription — the safer default for a clinical formulary.
+_OTC_PATTERN = re.compile(
+    r'paracetamol|acetaminophen|ibuprofen|aspirin|cetirizine|loratadine|'
+    r'chlorpheniramine|vitamin|ascorbic|ferrous|folic acid|zinc|'
+    r'oral rehydration|\bors\b|antacid|magnesium trisilicate|calamine|'
+    r'diclofenac gel|hydrocortisone cream|clotrimazole|permethrin|'
+    r'lozenge|throat|multivitamin|calcium|iron',
+    re.IGNORECASE,
+)
+
+
+def _guess_rx(name, category):
+    """Prescription required unless the drug is a recognisable OTC item."""
+    if category == 'vaccine':
+        return True
+    return not _OTC_PATTERN.search(str(name or ''))
+
+
+def _stock_key(*names):
+    """Normalise a drug name for catalog ↔ stock matching.
+
+    ``inventory.MedicationStock`` caches the catalog name into both
+    ``medication_name`` and ``generic_name`` at save time, but the two can drift
+    (manual stock entry, imports). Matching on a squashed lowercase string keeps
+    "Paracetamol 500mg" and "paracetamol" together without a migration.
+    """
+    for name in names:
+        cleaned = ' '.join(str(name or '').lower().split())
+        if cleaned:
+            return cleaned
+    return ''
+
+
+def _base_key(name):
+    """Name key with the strength stripped — ``"paracetamol 500mg"`` → ``"paracetamol"``."""
+    base, _ = _split_strength(name)
+    return ' '.join(base.lower().split())
+
+
+def _catalog_keys(med):
+    """All the keys a catalog medication can be matched under."""
+    keys = set()
+    name = _stock_key(med.generic_name)
+    if name:
+        keys.add(name)
+        keys.add(_base_key(name))
+    if med.strength:
+        keys.add(f'{name} {_stock_key(med.strength)}')
+        keys.add(f'{_base_key(name)} {_stock_key(med.strength)}')
+    if med.abbreviation:
+        keys.add(_stock_key(med.abbreviation))
+    if med.product_code:
+        keys.add(_stock_key(med.product_code))
+    return {k for k in keys if k}
+
+
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def sync_from_stock(request):
+    """Create catalog entries for drug-store stock that is not in the formulary.
+
+    Drug stores (``inventory.MedicationStock``) are often populated before the
+    medication catalog exists. This bridges the gap: every active stock item with
+    no matching ``Medication`` row gets one, with the strength/dosage form/category
+    inferred from its name so the catalog page shows real stock immediately.
+
+    Idempotent — running it twice creates nothing new.
+    """
+    if request.user.role not in ALLOWED_DELETE_ALL_ROLES:
+        return Response(
+            {"detail": "You do not have permission to import into the catalog."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    try:
+        from inventory.models import MedicationStock
+        rows = list(
+            MedicationStock.objects
+            .filter(is_active=True)
+            .values('id', 'medication_name', 'generic_name', 'abbreviation',
+                    'brand_name', 'strength', 'dosage_form', 'category_id')
+        )
+    except Exception:
+        rows = []
+
+    existing = set()
+    for med in Medication.objects.all():
+        existing |= _catalog_keys(med)
+
+    created = []
+    skipped = 0
+    seen = set()
+    for row in rows:
+        name = ' '.join(str(row.get('medication_name') or row.get('generic_name') or '').split())
+        if not name:
+            continue
+        base, strength = _split_strength(name)
+        if not strength:
+            strength = ' '.join(str(row.get('strength') or '').split())
+        key = _stock_key(base)
+        if not key or key in existing or key in seen:
+            skipped += 1
+            continue
+        seen.add(key)
+
+        dosage_form = row.get('dosage_form') or _guess_form(name)
+        form_values = {c[0] for c in Medication.DosageForm.choices}
+        if dosage_form not in form_values:
+            dosage_form = _guess_form(name)
+
+        brands = [b.strip() for b in str(row.get('brand_name') or '').split(',') if b.strip()]
+        category = _guess_category(name)
+
+        created.append(Medication(
+            generic_name=base[:255],
+            strength=strength[:100],
+            dosage_form=dosage_form,
+            category=category,
+            abbreviation=' '.join(str(row.get('abbreviation') or '').split())[:20],
+            brand_names=brands,
+            requires_prescription=_guess_rx(name, category),
+            is_active=True,
+            description='Imported from drug-store stock.',
+        ))
+
+    if created:
+        Medication.objects.bulk_create(created, batch_size=200)
+
+    return Response({
+        "detail": f"Imported {len(created)} medication(s) from drug stores.",
+        "created": len(created),
+        "skipped": skipped,
+    })
+
+
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def stock_map(request):
+    """Per-drug-store stock availability for the medication catalog.
+
+    Returns the drug stores (``pharmacy_profile.Branch``) plus a name-keyed
+    availability map, so the catalog page can annotate every row from a single
+    request instead of one call per medication.
+
+    Query params:
+      ?branch=<id>  limit the per-store breakdown to one drug store
+    """
+    from datetime import datetime
+
+    from inventory.models import MedicationStock
+    from pharmacy_profile.models import Branch
+
+    try:
+        stores = list(
+            Branch.objects
+            .filter(is_active=True)
+            .order_by('-is_main', 'name')
+            .values('id', 'name', 'is_main', 'is_active', 'address')
+        )
+    except Exception:
+        stores = []
+
+    branch_param = request.query_params.get('branch')
+
+    # Batch quantities are the source of truth for on-hand stock. Anything that
+    # goes wrong here (inventory app not installed on an odd schema) must not
+    # break the catalog page — the map just comes back empty.
+    items = {}
+    aliases = {}
+    store_totals = {}
+    try:
+        from django.db.models import Sum
+
+        qty = {
+            r['id']: r['qty'] or 0
+            for r in MedicationStock.objects
+            .filter(is_active=True)
+            .values('id')
+            .annotate(qty=Sum('batches__quantity_remaining'))
+        }
+        rows = (
+            MedicationStock.objects
+            .filter(is_active=True)
+            .values('id', 'branch_id', 'medication_name', 'generic_name',
+                    'abbreviation', 'barcode', 'reorder_level')
+        )
+    except Exception:
+        rows = []
+
+    for row in rows:
+        key = _stock_key(row.get('generic_name'), row.get('medication_name'))
+        if not key:
+            continue
+        on_hand = int(qty.get(row['id']) or 0)
+        branch_id = row.get('branch_id')
+        reorder = int(row.get('reorder_level') or 0)
+
+        entry = items.setdefault(key, {
+            'total': 0,
+            'stores': {},
+            'unassigned': 0,
+            'low': False,
+            'reorder_level': 0,
+            'stock_ids': [],
+        })
+        entry['total'] += on_hand
+        entry['reorder_level'] = max(entry['reorder_level'], reorder)
+        entry['stock_ids'].append(row['id'])
+
+        if branch_id:
+            entry['stores'][str(branch_id)] = (
+                entry['stores'].get(str(branch_id), 0) + on_hand
+            )
+            bucket = store_totals.setdefault(
+                branch_id, {'items': 0, 'units': 0, 'low': 0},
+            )
+            bucket['items'] += 1
+            bucket['units'] += on_hand
+            if on_hand <= reorder:
+                bucket['low'] += 1
+        else:
+            entry['unassigned'] += on_hand
+
+        # Alternate keys so the catalog row can be matched even when the stock
+        # row was typed by hand instead of picked from the catalog. The base key
+        # is the name with the strength stripped ("paracetamol 500mg" →
+        # "paracetamol"), which is how the catalog stores it.
+        for alt in (
+            _stock_key(row.get('medication_name')),
+            _base_key(row.get('medication_name')),
+            _stock_key(row.get('abbreviation')),
+            _stock_key(row.get('barcode')),
+        ):
+            if alt and alt != key and alt not in items and alt not in aliases:
+                aliases[alt] = key
+
+    for entry in items.values():
+        entry['low'] = bool(entry['reorder_level']) and entry['total'] <= entry['reorder_level']
+
+    for store in stores:
+        bucket = store_totals.get(store['id'], {})
+        store['items_in_stock'] = bucket.get('items', 0)
+        store['units'] = bucket.get('units', 0)
+        store['low_stock'] = bucket.get('low', 0)
+
+    if branch_param:
+        try:
+            keep = str(int(branch_param))
+        except (TypeError, ValueError):
+            keep = None
+        if keep:
+            items = {
+                k: {**v, 'stores': {s: q for s, q in v['stores'].items() if s == keep}}
+                for k, v in items.items()
+            }
+
+    return Response({
+        'generated_at': datetime.now().isoformat(),
+        'stores': stores,
+        'items': items,
+        'aliases': aliases,
+    })
 
 
 @api_view(["DELETE"])

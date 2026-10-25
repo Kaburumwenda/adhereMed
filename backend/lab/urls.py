@@ -6,6 +6,7 @@ from . import views
 router = DefaultRouter()
 router.register('catalog', views.LabTestCatalogViewSet, basename='labtestcatalog')
 router.register('orders', views.LabOrderViewSet, basename='laborder')
+router.register('staff', views.LabStaffViewSet, basename='labstaff')
 router.register('results', views.LabResultViewSet, basename='labresult')
 router.register('home-visits', views.HomeSampleVisitViewSet, basename='homesamplevisit')
 router.register('panels', views.LabPanelViewSet, basename='labpanel')

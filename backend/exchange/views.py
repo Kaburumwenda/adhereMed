@@ -9,12 +9,16 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
 from tenants.models import Tenant
-from .models import PrescriptionExchange, PharmacyQuote, PatientOrder, LabOrderExchange
+from .models import (
+    PrescriptionExchange, PharmacyQuote, PatientOrder, LabOrderExchange,
+    PatientLabRecord,
+)
 from .serializers import (
     PrescriptionExchangeSerializer,
     PharmacyQuoteSerializer,
     PatientOrderSerializer,
     LabOrderExchangeSerializer,
+    PatientLabRecordSerializer,
 )
 
 
@@ -844,3 +848,217 @@ def lab_dashboard_stats(request):
         ).count(),
     }
     return Response(stats)
+
+
+# ─── Clinic → Patient lab sharing ─────────────────────────────────────────
+#
+# The patient dashboard has no access to a clinic schema, so clinic lab orders
+# are mirrored into ``exchange.PatientLabRecord`` (public schema) as they move
+# through the benchmark. The patient portal reads only its own rows.
+
+#: Internal clinic status → the simpler stage the patient is shown.
+_PATIENT_STAGE = PatientLabRecord.CLINIC_STAGE_MAP
+
+#: Roles allowed to publish a lab record into a patient's portal. Patients are
+#: deliberately absent — sharing is a clinical action, not a self-service one.
+CAN_SHARE_LAB_ROLES = {
+    'super_admin', 'tenant_admin', 'admin', 'doctor', 'clinical_officer',
+    'dentist', 'nurse', 'midwife', 'lab_tech', 'radiologist', 'receptionist',
+    'homecare_admin',
+}
+
+
+def _patient_record_payload(record, tenant=None):
+    """Normalise one record from a clinic push.
+
+    Only these fields are accepted from the caller — anything else (another
+    patient's id, a foreign tenant, the verified flag of someone else) is
+    derived server-side so a clinic cannot write into another patient's chart.
+    """
+    data = {k: v for k, v in record.items() if k in {
+        'source_order_id', 'order_ref', 'patient_user_id', 'patient_name',
+        'patient_number', 'tests', 'priority', 'clinical_notes',
+        'ordered_by_name', 'clinic_site_name', 'is_home_collection',
+        'requested_on', 'raw_status', 'stage', 'stage_updated_at',
+        'results', 'result_summary', 'abnormal_count', 'performed_by_name',
+        'performed_at', 'verified_by_name', 'verified_at', 'is_verified',
+        'turnaround_seconds',
+    }}
+
+    # The stage is always derived — never taken from the client.
+    data['stage'] = PatientLabRecord.stage_for(
+        data.get('raw_status'), bool(data.get('is_verified')),
+    )
+
+    # Result summary and abnormal count are computed, not trusted.
+    results = data.get('results') or []
+    data['abnormal_count'] = sum(1 for r in results if r.get('is_abnormal'))
+    data['result_summary'] = PatientLabRecord.summarise(results)
+
+    if tenant is not None:
+        data['source_tenant_id'] = tenant.id
+        data['source_tenant_name'] = tenant.name
+    return data
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def patient_lab_records(request):
+    """The signed-in patient's own shared lab orders.
+
+    ``?status=released|processing|awaiting`` narrows the list; the default is
+    everything, newest first.
+    """
+    qs = PatientLabRecord.objects.filter(patient_user_id=request.user.id)
+
+    bucket = (request.query_params.get('status') or '').strip().lower()
+    if bucket in {'released', 'ready', 'verified'}:
+        qs = qs.filter(is_verified=True)
+    elif bucket in {'awaiting', 'pending', 'in_progress'}:
+        qs = qs.exclude(stage=PatientLabRecord.Stage.CANCELLED).filter(is_verified=False)
+
+    tennant_filter = request.query_params.get('clinic')
+    if tennant_filter:
+        qs = qs.filter(source_tenant_id=tennant_filter)
+
+    return Response(PatientLabRecordSerializer(qs, many=True).data)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def patient_lab_record_detail(request, pk):
+    """One shared lab order — only if it belongs to the caller."""
+    record = PatientLabRecord.objects.filter(
+        pk=pk, patient_user_id=request.user.id,
+    ).first()
+    if record is None:
+        return Response({'detail': 'Lab record not found.'},
+                        status=status.HTTP_404_NOT_FOUND)
+    return Response(PatientLabRecordSerializer(record).data)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def patient_lab_report_pdf(request, pk):
+    """Download the patient-friendly PDF report for one released result.
+
+    A draft report is never rendered — the patient must not receive a document
+    that has not been signed off.
+    """
+    from django.http import HttpResponse
+
+    record = PatientLabRecord.objects.filter(
+        pk=pk, patient_user_id=request.user.id,
+    ).first()
+    if record is None:
+        return Response({'detail': 'Lab record not found.'},
+                        status=status.HTTP_404_NOT_FOUND)
+    if not record.is_verified or not record.results:
+        return Response(
+            {
+                'detail': 'This report has not been released yet.',
+                'code': 'report_not_released',
+            },
+            status=status.HTTP_409_CONFLICT,
+        )
+
+    try:
+        from .patient_report_pdf import build_patient_lab_report
+    except ImportError:
+        return Response({'detail': 'reportlab is not installed.'},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    tenant = Tenant.objects.filter(pk=record.source_tenant_id).first()
+    pdf = build_patient_lab_report(record, tenant=tenant)
+    filename = f'lab_report_{record.order_ref or record.pk}.pdf'
+    return HttpResponse(
+        pdf,
+        content_type='application/pdf',
+        headers={'Content-Disposition': f'inline; filename="{filename}"'},
+    )
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def patient_lab_summary(request):
+    """Counts for the patient dashboard cards."""
+    qs = PatientLabRecord.objects.filter(patient_user_id=request.user.id)
+    released = qs.filter(is_verified=True, stage=PatientLabRecord.Stage.RELEASED)
+    in_progress = qs.exclude(
+        stage__in=[PatientLabRecord.Stage.CANCELLED, PatientLabRecord.Stage.RELEASED],
+    )
+    abnormal = sum(r.abnormal_count for r in released)
+    return Response({
+        'total': qs.count(),
+        'in_progress': in_progress.count(),
+        'released': released.count(),
+        'abnormal_results': abnormal,
+        'latest': PatientLabRecordSerializer(
+            qs.order_by('-requested_on', '-id')[:3], many=True,
+        ).data,
+    })
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def patient_lab_sync(request):
+    """Clinic staff push a snapshot of a lab order to the patient's portal.
+
+    Body::
+
+        {"records": [ { "source_order_id": 26, "patient_user_id": 310, ... } ]}
+
+    A single record object is also accepted. Rows are upserted on
+    ``(source_tenant_id, source_order_id)`` so repeated pushes update rather
+    than duplicate. Never raises into the caller's flow: the lab app calls this
+    best-effort, so a sharing hiccup must not roll back the clinical write.
+    """
+    tenant = getattr(request.user, 'tenant', None)
+    if tenant is None:
+        return Response(
+            {'detail': 'Sharing requires a clinic context.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Only clinical staff may publish records. A patient must never be able to
+    # write into a chart — not even their own.
+    role = getattr(request.user, 'role', '')
+    if role not in CAN_SHARE_LAB_ROLES:
+        return Response(
+            {'detail': 'Your role cannot publish lab records to patients.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    records = request.data.get('records')
+    if records is None:
+        records = [request.data] if request.data.get('source_order_id') else []
+    if not isinstance(records, list) or not records:
+        return Response(
+            {'detail': 'Provide at least one record to share.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    synced, skipped = 0, 0
+    for raw in records:
+        if not isinstance(raw, dict):
+            skipped += 1
+            continue
+        source_order_id = raw.get('source_order_id')
+        patient_user_id = raw.get('patient_user_id')
+        if not source_order_id or not patient_user_id:
+            skipped += 1
+            continue
+
+        payload = _patient_record_payload(raw, tenant=tenant)
+        # The lookup keys travel through update_or_create's arguments, not
+        # through defaults — leaving them in causes a duplicate-kwarg TypeError.
+        payload.pop('source_order_id', None)
+        payload.pop('source_tenant_id', None)
+        PatientLabRecord.objects.update_or_create(
+            source_tenant_id=tenant.id,
+            source_order_id=source_order_id,
+            defaults=payload,
+        )
+        synced += 1
+
+    return Response({'synced': synced, 'skipped': skipped})

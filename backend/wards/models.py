@@ -56,6 +56,11 @@ class Admission(models.Model):
         TRANSFERRED = 'transferred', 'Transferred'
 
     patient = models.ForeignKey('patients.Patient', on_delete=models.CASCADE, related_name='admissions')
+    clinic_site = models.ForeignKey(
+        'clinic_sites.ClinicSite', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='admissions',
+        help_text='Clinic location for this admission (null = HQ).',
+    )
     bed = models.ForeignKey(Bed, on_delete=models.SET_NULL, null=True, related_name='admissions')
     admitting_doctor = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='admissions_made',

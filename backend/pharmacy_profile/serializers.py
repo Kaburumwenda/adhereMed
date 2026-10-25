@@ -6,16 +6,31 @@ from .models import PharmacyDetail, Delivery, Branch
 class BranchSerializer(serializers.ModelSerializer):
     transfer_count = serializers.SerializerMethodField()
     stock_count = serializers.SerializerMethodField()
+    # Clinic branch this drug store belongs to (merged drug-store + medication view).
+    site_name = serializers.SerializerMethodField()
+    site_code = serializers.SerializerMethodField()
+    site_is_hq = serializers.SerializerMethodField()
+    # Medication availability, computed from stock + batches.
+    medication_count = serializers.SerializerMethodField()
+    low_stock_count = serializers.SerializerMethodField()
+    out_of_stock_count = serializers.SerializerMethodField()
+    total_units = serializers.SerializerMethodField()
 
     class Meta:
         model = Branch
         fields = [
-            'id', 'name', 'address', 'place_name', 'latitude', 'longitude',
+            'id', 'site', 'site_name', 'site_code', 'site_is_hq',
+            'name', 'address', 'place_name', 'latitude', 'longitude',
             'phone', 'email',
             'is_main', 'is_active', 'transfer_count', 'stock_count',
+            'medication_count', 'low_stock_count', 'out_of_stock_count', 'total_units',
             'created_at', 'updated_at',
         ]
-        read_only_fields = ['id', 'transfer_count', 'stock_count', 'created_at', 'updated_at']
+        read_only_fields = [
+            'id', 'transfer_count', 'stock_count', 'site_name', 'site_code',
+            'site_is_hq', 'medication_count', 'low_stock_count',
+            'out_of_stock_count', 'total_units', 'created_at', 'updated_at',
+        ]
 
     def get_transfer_count(self, obj):
         """Stock transfers that reference this branch (source or destination).
@@ -37,6 +52,65 @@ class BranchSerializer(serializers.ModelSerializer):
         if count is not None:
             return count
         return obj.stocks.count()
+
+    # ── Clinic branch ────────────────────────────────────────────────
+    def get_site_name(self, obj):
+        name = getattr(obj, 'site_name_annotated', None)
+        if name is not None:
+            return name
+        return obj.site.name if obj.site_id and obj.site else None
+
+    def get_site_code(self, obj):
+        return obj.site.code if obj.site_id and obj.site else None
+
+    def get_site_is_hq(self, obj):
+        return bool(obj.site.is_hq) if obj.site_id and obj.site else False
+
+    # ── Medication availability ──────────────────────────────────────
+    def _stats(self, obj):
+        """Per-store medication counters.
+
+        The viewset attaches ``obj._med_stats`` for every row from a single
+        grouped query; when that is missing (detail views, nested use) fall back
+        to one grouped query for this store.
+        """
+        cached = getattr(obj, '_med_stats', None)
+        if cached is not None:
+            return cached
+
+        from django.db.models import Sum
+        from inventory.models import MedicationStock
+
+        rows = (
+            MedicationStock.objects
+            .filter(branch=obj, is_active=True)
+            .values('id', 'reorder_level')
+            .annotate(on_hand=Sum('batches__quantity_remaining'))
+        )
+        stats = {'count': 0, 'units': 0, 'low': 0, 'out': 0}
+        for row in rows:
+            stats['count'] += 1
+            qty = int(row['on_hand'] or 0)
+            stats['units'] += qty
+            if qty <= 0:
+                stats['out'] += 1
+            elif qty <= int(row['reorder_level'] or 0):
+                stats['low'] += 1
+
+        obj._med_stats = stats
+        return stats
+
+    def get_medication_count(self, obj):
+        return self._stats(obj)['count']
+
+    def get_low_stock_count(self, obj):
+        return self._stats(obj)['low']
+
+    def get_out_of_stock_count(self, obj):
+        return self._stats(obj)['out']
+
+    def get_total_units(self, obj):
+        return self._stats(obj)['units']
 
 
 class PharmacyDetailSerializer(serializers.ModelSerializer):

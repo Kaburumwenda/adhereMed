@@ -56,7 +56,11 @@ TENANT_APPS = [
     'radiology',
     'wards',
     'triage',
+    # front-desk patient journey (registration → billing → triage → doctor → lab → discharge)
+    'visits',
     'billing',
+    # corporate / employer billing (company rosters, job cards, verification)
+    'corporate',
     'notifications',
     # pharmacy apps
     'pharmacy_profile',
@@ -80,6 +84,14 @@ TENANT_APPS = [
     'audit',
     # homecare tenant app
     'homecare',
+    # clinic tenant catalog (allergies & chronic conditions, seeded per tenant)
+    'clinic_catalog',
+    # multi-clinic support: HQ + branches inside one clinic tenant
+    'clinic_sites',
+    # clinic equipment / biomedical asset management (register, maintenance, faults)
+    'clinic_equipment',
+    # clinic Roles & Access — role definitions per clinic schema
+    'clinic_rbac',
     # Occupational Health & Safety Management System
     'ohs',
 ]
@@ -207,6 +219,8 @@ CORS_ALLOW_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
     'x-tenant-schema',
+    # Active clinic of a multi-clinic tenant (stamps + scopes clinical records).
+    'x-clinic-site',
 ]
 
 # ──────────────────────────────────────────────
@@ -346,6 +360,30 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_ROOT  = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ──────────────────────────────────────────────
+# Cache (Redis, tenant-scoped)
+# ──────────────────────────────────────────────
+# Backs the expensive aggregate endpoints of the IMS inventory, clinic and
+# OHSMS tenants (see the ``tenant_cache`` decorator in config/cache.py).
+# ``config.cache_backends.TenantRedisCache`` prefixes every key with the
+# tenant schema, so schemas never share entries, and degrades to uncached
+# responses while Redis is unreachable.
+REDIS_CACHE_URL = config('REDIS_CACHE_URL', default='redis://localhost:6379/2')
+TENANT_CACHE_ENABLED = config('TENANT_CACHE_ENABLED', default=True, cast=bool)
+
+CACHES = {
+    'default': {
+        'BACKEND': 'config.cache_backends.TenantRedisCache',
+        'LOCATION': REDIS_CACHE_URL,
+        'KEY_PREFIX': 'adheremed',
+        'TIMEOUT': 300,
+        'OPTIONS': {
+            'socket_connect_timeout': 1,
+            'socket_timeout': 1,
+        },
+    },
+}
 
 # ──────────────────────────────────────────────
 # Celery / Beat

@@ -474,6 +474,25 @@ export default defineNuxtConfig({
         // Setup / Seed
         ['ims-setup',                         '/ims/setup',                                'setup/index.vue'],
 
+        // ── Clinic tenant aliases ───────────────────────────────────────────
+        // Most clinic pages are file-based under pages/clinics/, but the
+        // organization/branding page is shared by every tenant type, so it is
+        // mirrored into the clinic namespace the same way /ims and /ohs do.
+        ['clinics-organization-branding',     '/clinics/organization/branding',           'organization/branding.vue'],
+        // Clinic catalog — mirrors the IMS tenant's /ims catalog routes
+        // (medications, brand names, units, categories) under the clinic
+        // namespace. Data isolation comes from the per-tenant schema.
+        ['clinics-catalog-categories',          '/clinics/catalog/categories',                    'categories/index.vue'],
+        ['clinics-catalog-units',               '/clinics/catalog/units',                         'units/index.vue'],
+        ['clinics-catalog-medications',         '/clinics/catalog/medications',                  'medications/index.vue'],
+        ['clinics-catalog-medications-bulk',    '/clinics/catalog/medications/bulk',             'medications/bulk.vue'],
+        ['clinics-catalog-medications-excel',   '/clinics/catalog/medications/excel',            'medications/excel.vue'],
+        ['clinics-catalog-medications-brands',  '/clinics/catalog/medications/brand-names',      'medications/brand-names.vue'],
+        ['clinics-catalog-units-new',           '/clinics/catalog/inventory/units/new',           'inventory/units/new.vue'],
+        ['clinics-catalog-units-id-edit',       '/clinics/catalog/inventory/units/:id()/edit',   'inventory/units/[id]/edit.vue'],
+        ['clinics-catalog-cats-new',            '/clinics/catalog/inventory/categories/new',     'inventory/categories/new.vue'],
+        ['clinics-catalog-cats-id-edit',        '/clinics/catalog/inventory/categories/:id()/edit', 'inventory/categories/[id]/edit.vue'],
+
         // ── Hospital tenant aliases ──────────────────────────────────────────
         // Hospital tenants get their own /hos URL namespace, reusing the same
         // shared page components. Radiology and lab orders keep their own

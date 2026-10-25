@@ -100,10 +100,7 @@
     <!-- ═══ New consent dialog ═════════════════════════════════════ -->
     <v-dialog v-model="dialog" max-width="600" persistent scrollable>
       <v-card rounded="lg">
-        <v-card-title class="text-h6 d-flex align-center">
-          <v-icon color="teal" class="mr-2">mdi-clipboard-check</v-icon>
-          New Consent
-        </v-card-title>
+        <BrandDialogHeader icon="mdi-clipboard-check" title="New Consent" />
         <v-card-text>
           <v-form ref="formRef" @submit.prevent="save">
             <v-row dense>
@@ -153,7 +150,7 @@
     <!-- ═══ Revoke confirmation dialog ══════════════════════════════ -->
     <v-dialog v-model="revokeDialog" max-width="420">
       <v-card rounded="lg">
-        <v-card-title class="text-h6">Revoke Consent</v-card-title>
+        <BrandDialogHeader icon="mdi-shield-lock" title="Revoke Consent" />
         <v-card-text>
           Are you sure you want to revoke the consent for
           <strong>{{ revokeTarget?.patient_name || 'this patient' }}</strong>?

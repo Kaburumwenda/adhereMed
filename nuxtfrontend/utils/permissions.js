@@ -70,13 +70,19 @@ const ADMIN_ONLY_PREFIXES = [
   '/hos/radiology/expenses',
   // Clinic namespaced admin-only routes
   '/clinics/staff',
+  '/clinics/rbac',
   '/clinics/accounts',
+  '/clinics/sites',
   '/clinics/departments',
+  '/clinics/drug-stores',
   '/clinics/wards',
   '/clinics/doctor-profile',
   '/clinics/billing/usage',
   '/clinics/settings',
+  '/clinics/organization',
   '/clinics/billing/commission',
+  // Clinic catalog (mirrors the IMS /ims catalog admin-only routes)
+  '/clinics/catalog',
   // Inventory-tenant namespaced admin-only routes
   '/ims/accounts',
   '/ims/branches',
@@ -166,6 +172,14 @@ const ROLE_ALLOWLIST = {
   ],
   cashier: [
     '/dashboard',
+    // Clinic tenant — reception / billing desk access
+    '/clinics/front-desk',
+    '/clinics/patients',
+    '/clinics/invoices',
+    '/clinics/corporate',
+    '/clinics/triage',
+    '/clinics/lab-orders',
+    '/clinics/prescriptions',
     '/hos',
     '/hos/patients',
     '/hos/appointments',
@@ -344,15 +358,69 @@ const ROLE_DENYLIST = {
   ],
 }
 
+// Roles & Access is capability-gated on the server (`rbac.manage` or
+// `staff.view`). The bare `/clinics` entry in ALWAYS_ALLOWED would otherwise
+// let every clinic user open the page and hit an empty 403, so those roles are
+// denied here — the deny-list is checked before ALWAYS_ALLOWED.
+//
+// Clinical roles (doctor / clinical_officer / dentist) already never receive
+// the SECURITY & SETTINGS section, so they are not listed.
+for (const clinicRole of [
+  'receptionist', 'cashier', 'nurse', 'midwife',
+  'lab_tech', 'radiologist', 'pharmacist', 'pharmacy_tech',
+]) {
+  ROLE_DENYLIST[clinicRole] = [
+    ...(ROLE_DENYLIST[clinicRole] || []),
+    '/clinics/rbac',
+  ]
+}
+// ── Clinic clinicians: practice-only route scope ──────────────────────────
+// `ALWAYS_ALLOWED` contains the `/clinics` prefix, so every `/clinics/*`
+// route is reachable by everyone and `ADMIN_ONLY_PREFIXES` never applies.
+// These deny entries give a doctor a practice-scoped sidebar and a direct-URL
+// guard: registering walk-ins, maintaining catalogues, managing sites and the
+// security console are all back-office work.
+const CLINIC_CLINICIAN_DENIED = [
+  '/clinics/front-desk',
+  '/clinics/catalog',
+  '/clinics/sites',
+  '/clinics/departments',
+  '/clinics/drug-stores',
+  '/clinics/equipment',
+  '/clinics/corporate',
+  '/clinics/analytics',
+  '/clinics/staff',
+  '/clinics/rbac',
+  '/clinics/accounts',
+  '/clinics/security',
+  '/clinics/audit',
+  '/clinics/settings',
+  '/clinics/organization',
+  '/clinics/seed-data',
+  '/clinics/consents',
+  '/clinics/data-sharing',
+  '/clinics/wards',
+  '/clinics/escalations',
+  '/clinics/vitals',
+]
+for (const clinicianRole of ['doctor', 'clinical_officer', 'dentist']) {
+  ROLE_DENYLIST[clinicianRole] = [
+    ...(ROLE_DENYLIST[clinicianRole] || []),
+    ...CLINIC_CLINICIAN_DENIED,
+  ]
+}
 const ALWAYS_ALLOWED = [
   '/welcome', '/login', '/register', '/register-facility', '/register-doctor',
   '/forgot-password', '/reset-password',
   '/dashboard', '/profile', '/my-profile', '/notifications', '/messages',
+  '/my-lab-results',
   // Hospital-namespace equivalents of personal routes
   '/hos', '/hos/my-profile', '/hos/messages', '/hos/my-prescriptions',
+  '/hos/my-lab-results',
   '/hos/doctor-profile', '/hos/my-homecare',
   // Clinic-namespace equivalents of personal routes
   '/clinics', '/clinics/my-profile', '/clinics/messages', '/clinics/my-prescriptions',
+  '/clinics/my-lab-results',
   '/clinics/doctor-profile',
   '/clinics/doctor-workspace',
   '/hos/doctor-workspace',

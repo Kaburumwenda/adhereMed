@@ -1,5 +1,5 @@
 <template>
-  <v-container fluid class="pa-4 pa-md-6" style="max-width: 1200px;">
+  <v-container fluid class="pa-4 pa-md-6">
     <!-- ═══ Toolbar ════════════════════════════════════════════════ -->
     <div class="d-flex align-center flex-wrap ga-3 mb-5 no-print">
       <v-avatar color="purple-lighten-5" size="48">

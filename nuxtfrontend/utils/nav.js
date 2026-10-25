@@ -35,12 +35,19 @@ export function getNavSections(role, tenantType, t = (x) => x) {
     return sections
   }
 
+  // Clinic clinicians never see the command centre, so their home item points
+  // at the practice workspace instead of a `/clinics` link that only bounces.
+  const isClinicClinicianRole = tenantType === 'clinic'
+    && ['doctor', 'clinical_officer', 'dentist'].includes(role)
+
   sections.push({
     label: '',
     items: [{
-      icon: 'mdi-view-dashboard',
-      label: 'Dashboard',
-      path: tenantType === 'lab' ? '/lab' : tenantType === 'pharmacy' ? '/pharmacy' : tenantType === 'radiology_center' ? '/radiology' : tenantType === 'hospital' ? '/hos' : tenantType === 'clinic' ? '/clinics' : tenantType === 'inventory' ? '/ims' : tenantType === 'ohsms' ? '/ohs' : '/dashboard'
+      icon: isClinicClinicianRole ? 'mdi-monitor-dashboard' : 'mdi-view-dashboard',
+      label: isClinicClinicianRole ? 'My Workspace' : 'Dashboard',
+      path: isClinicClinicianRole
+        ? '/clinics/doctor-workspace'
+        : tenantType === 'lab' ? '/lab' : tenantType === 'pharmacy' ? '/pharmacy' : tenantType === 'radiology_center' ? '/radiology' : tenantType === 'hospital' ? '/hos' : tenantType === 'clinic' ? '/clinics' : tenantType === 'inventory' ? '/ims' : tenantType === 'ohsms' ? '/ohs' : '/dashboard'
     }]
   })
 
@@ -95,14 +102,28 @@ export function getNavSections(role, tenantType, t = (x) => x) {
   const clinicRoles = ['tenant_admin', 'clinic_admin', 'doctor', 'clinical_officer', 'dentist', 'nurse', 'midwife', 'receptionist', 'lab_tech', 'radiologist', 'pharmacist', 'cashier', 'admin']
   if (tenantType === 'clinic' && clinicRoles.includes(role)) {
     const clinicItems = [
+        // Front desk — register, charge, triage, dispatch the whole visit
+        { icon: 'mdi-human-queue', label: 'Front Desk', path: '/clinics/front-desk' },
         // Patient Management
         { icon: 'mdi-account-multiple', label: 'Patients', path: '/clinics/patients' },
         { icon: 'mdi-calendar', label: 'Appointments', path: '/clinics/appointments' },
         { icon: 'mdi-medical-bag', label: 'Consultations', path: '/clinics/consultations' },
         // Prescriptions (doctor & staff dashboard) — digital prescription
         { icon: 'mdi-pill', label: 'Prescriptions', path: '/clinics/prescriptions' },
-        // Pharmacy Integration
-        { icon: 'mdi-pill-multiple', label: 'Medications', path: '/clinics/medications' },
+        // Medication lives inside each branch's drug store — see ADMINISTRATION.
+        // Catalog — mirrors the IMS tenant's catalog (isolated per clinic schema)
+        {
+          icon: 'mdi-library-shelves', label: 'Catalog', path: '/clinics/catalog/categories',
+          children: [
+            { icon: 'mdi-shape', label: 'Categories', path: '/clinics/catalog/categories' },
+            { icon: 'mdi-ruler', label: 'Units of Measure', path: '/clinics/catalog/units' },
+            { icon: 'mdi-pill-multiple', label: 'Medication Catalog', path: '/clinics/catalog/medications' },
+            { icon: 'mdi-tag-multiple', label: 'Brand Names', path: '/clinics/catalog/medications/brand-names' },
+            { icon: 'mdi-alert-octagon', label: 'Allergies', path: '/clinics/catalog/allergies' },
+            { icon: 'mdi-heart-pulse', label: 'Chronic Conditions', path: '/clinics/catalog/chronic-conditions' },
+            { icon: 'mdi-database-import', label: 'Seed Data', path: '/clinics/catalog/seed' },
+          ]
+        },
         // Lab & Diagnostics
         { icon: 'mdi-microscope', label: 'Lab Orders', path: '/clinics/lab-orders' },
         { icon: 'mdi-image', label: 'Radiology', path: '/radiology' },
@@ -114,50 +135,92 @@ export function getNavSections(role, tenantType, t = (x) => x) {
     const clinicCareItems = [
         // Emergency / triage + ward observation
         { icon: 'mdi-heart-pulse', label: 'Triage', path: '/clinics/triage' },
-        { icon: 'mdi-bed', label: 'Wards', path: '/clinics/wards' },
-        // Caregiver & Homecare (patient care, notes, vitals, escalations)
-        { icon: 'mdi-home-heart', label: 'Patient Care', path: '/clinics/patient-care' },
+        // Care notes, vitals and escalations
         { icon: 'mdi-notebook-edit', label: 'Care Notes', path: '/clinics/care-notes' },
         { icon: 'mdi-heart-pulse', label: 'Vitals', path: '/clinics/vitals' },
-        { icon: 'mdi-account-multiple-check', label: 'Caregivers', path: '/clinics/caregivers' },
         { icon: 'mdi-bell-alert', label: 'Escalations', path: '/clinics/escalations' },
     ]
 
     const clinicAdminItems = [
         // Administration & Reporting
+        // Multi-clinic network: HQ + branches inside this tenant
+        { icon: 'mdi-office-building-marker', label: 'Clinics & Sites', path: '/clinics/sites' },
         { icon: 'mdi-domain', label: 'Departments', path: '/clinics/departments' },
+        // Employer accounts, staff rosters and job-card verification
+        { icon: 'mdi-briefcase-account', label: 'Corporate', path: '/clinics/corporate' },
+        // Drug stores — one per clinic branch, each holding that branch's medication
+        { icon: 'mdi-store', label: 'Drug Stores', path: '/clinics/drug-stores' },
+        // Biomedical assets — register, servicing, calibration and faults
+        { icon: 'mdi-cog-transfer', label: 'Equipment', path: '/clinics/equipment' },
         { icon: 'mdi-chart-arc', label: 'Analytics', path: '/clinics/analytics' },
-        { icon: 'mdi-account-group-outline', label: 'Staff', path: '/clinics/staff' },
-        // Data Protection & Compliance + Audit logs
-        {
-          icon: 'mdi-shield-check', label: 'Compliance',
-          children: [
-            { icon: 'mdi-account-key', label: 'Patient Consents', path: '/clinics/consents' },
-            { icon: 'mdi-share-variant', label: 'Data Sharing', path: '/clinics/data-sharing' },
-            { icon: 'mdi-history', label: 'Audit Log', path: '/clinics/audit' },
-            { icon: 'mdi-database-plus', label: 'Demo Data', path: '/clinics/seed-data' }
-          ]
-        },
         // Emergency & Notifications
         { icon: 'mdi-bell-ring', label: 'Alerts', path: '/clinics/alerts' },
         { icon: 'mdi-chat', label: 'Messages', path: '/clinics/messages' },
         // Doctors directory
         { icon: 'mdi-stethoscope', label: 'Doctors', path: '/clinics/doctors' },
-        // Settings
-        { icon: 'mdi-cog', label: 'Settings', path: '/clinics/settings' },
+    ]
+
+    // Mirrors the OHS "SECURITY & SETTINGS" group — identity, access, trail and data.
+    const clinicSecurityItems = [
+        { icon: 'mdi-shield-lock-outline', label: 'Security Centre', path: '/clinics/security' },
+        { icon: 'mdi-account-hard-hat', label: 'Staff & Access', path: '/clinics/staff' },
+        { icon: 'mdi-shield-account-outline', label: 'Roles & Access', path: '/clinics/rbac' },
+        { icon: 'mdi-shield-search', label: 'Audit Logs', path: '/clinics/audit' },
+        {
+          icon: 'mdi-file-document-check', label: 'Compliance',
+          children: [
+            { icon: 'mdi-account-key', label: 'Patient Consents', path: '/clinics/consents' },
+            { icon: 'mdi-share-variant', label: 'Data Sharing', path: '/clinics/data-sharing' }
+          ]
+        },
+        {
+          icon: 'mdi-office-building-cog', label: 'Clinic', path: '/clinics/settings',
+          children: [
+            { icon: 'mdi-cog', label: 'Profile & Settings', path: '/clinics/settings' },
+            { icon: 'mdi-palette', label: 'Branding', path: '/clinics/organization/branding' },
+            { icon: 'mdi-account-group-outline', label: 'Accounts', path: '/clinics/accounts' }
+          ]
+        },
+        { icon: 'mdi-database-plus-outline', label: 'Demo Data', path: '/clinics/seed-data' },
+    ]
+
+    // ── Clinicians: a practice workspace, not the clinic admin console ──
+    // A doctor runs their own list; they do not register walk-ins, maintain
+    // catalogues or manage sites. Everything they need lives in MY PRACTICE.
+    const clinicPracticeItems = [
+        { icon: 'mdi-calendar-clock', label: 'My Appointments', path: '/clinics/appointments' },
+        { icon: 'mdi-account-multiple', label: 'Patients', path: '/clinics/patients' },
+        { icon: 'mdi-medical-bag', label: 'Consultations', path: '/clinics/consultations' },
+        { icon: 'mdi-pill', label: 'Prescriptions', path: '/clinics/prescriptions' },
+        { icon: 'mdi-microscope', label: 'Lab Orders', path: '/clinics/lab-orders' },
+        { icon: 'mdi-image', label: 'Radiology', path: '/radiology' },
+        { icon: 'mdi-heart-pulse', label: 'Triage', path: '/clinics/triage' },
+        { icon: 'mdi-notebook-edit', label: 'Care Notes', path: '/clinics/care-notes' },
+        { icon: 'mdi-chat', label: 'Messages', path: '/clinics/messages' },
+        { icon: 'mdi-percent', label: 'My Commission', path: '/clinics/billing/commission' },
+        { icon: 'mdi-account-circle', label: 'My Profile', path: '/clinics/doctor-profile' },
     ]
 
     // Doctors see a focused clinical sidebar — strip admin items
-    if (['doctor', 'clinical_officer', 'dentist'].includes(role)) {
-      const hiddenLabels = ['Patient Care', 'Caregivers', 'Billing', 'Accounts', 'Expenses', 'Departments', 'Analytics', 'Staff', 'Compliance', 'Doctors', 'Settings']
+    const clinicIsClinician = ['doctor', 'clinical_officer', 'dentist'].includes(role)
+    if (clinicIsClinician) {
+      const hiddenLabels = ['Patient Care', 'Caregivers', 'Billing', 'Accounts', 'Expenses', 'Clinics & Sites', 'Departments', 'Drug Stores', 'Analytics', 'Staff', 'Compliance', 'Doctors', 'Settings', 'Corporate']
       for (let i = clinicAdminItems.length - 1; i >= 0; i--) {
         if (hiddenLabels.includes(clinicAdminItems[i].label)) clinicAdminItems.splice(i, 1)
       }
     }
 
-    sections.push({ label: 'CLINIC', items: clinicItems })
-    sections.push({ label: 'PATIENT CARE', items: clinicCareItems })
-    sections.push({ label: 'ADMINISTRATION', items: clinicAdminItems })
+    if (clinicIsClinician) {
+      // One section only. Pushing CLINIC / PATIENT CARE / ADMINISTRATION as
+      // well was exposing the front desk, catalogues and site management to
+      // every doctor, and duplicating Messages across two sections.
+      sections.push({ label: 'MY PRACTICE', items: clinicPracticeItems })
+    } else {
+      sections.push({ label: 'CLINIC', items: clinicItems })
+      sections.push({ label: 'PATIENT CARE', items: clinicCareItems })
+      sections.push({ label: 'ADMINISTRATION', items: clinicAdminItems })
+      sections.push({ label: 'SECURITY & SETTINGS', items: clinicSecurityItems })
+    }
   }
 
   const pharmacyRoles = ['tenant_admin', 'pharmacy_admin', 'branch_admin', 'pharmacist', 'pharmacy_tech', 'cashier', 'admin']
@@ -731,6 +794,7 @@ export function getNavSections(role, tenantType, t = (x) => x) {
       items: [
         { icon: 'mdi-account-circle', label: 'My Profile', path: ns ? `${ns}/my-profile` : '/my-profile' },
         { icon: 'mdi-receipt', label: 'My Prescriptions', path: ns ? `${ns}/my-prescriptions` : '/my-prescriptions' },
+        { icon: 'mdi-flask-outline', label: 'My Lab Tests', path: ns ? `${ns}/my-lab-results` : '/my-lab-results' },
         {
           icon: 'mdi-medical-bag', label: 'Pharmacies', path: '/pharmacy-store',
           children: [
@@ -744,8 +808,11 @@ export function getNavSections(role, tenantType, t = (x) => x) {
     })
   }
 
-  if (['doctor', 'clinical_officer', 'dentist'].includes(role)) {
-    const ns = tenantType === 'hospital' ? '/hos' : tenantType === 'clinic' ? '/clinics' : ''
+  // MY PRACTICE for hospital (and namespace-less) clinicians. Clinic tenants
+  // build their own practice section above, so adding one here would duplicate
+  // it — and duplicate the Messages route id with it.
+  if (tenantType !== 'clinic' && ['doctor', 'clinical_officer', 'dentist'].includes(role)) {
+    const ns = tenantType === 'hospital' ? '/hos' : ''
     const practiceItems = [
       { icon: 'mdi-monitor-dashboard', label: 'Doctor Workspace', path: ns ? `${ns}/doctor-workspace` : '/doctor-workspace' },
       { icon: 'mdi-account-circle', label: 'My Profile', path: ns ? `${ns}/doctor-profile` : '/doctor-profile' },
@@ -790,6 +857,7 @@ export function getNavSections(role, tenantType, t = (x) => x) {
 
     const healthItems = [
       { icon: 'mdi-heart-pulse', label: 'Health & Exposure', path: '/ohs/health' },
+      { icon: 'mdi-clipboard-pulse-outline', label: 'Medical Assessment', path: '/ohs/assessments' },
       { icon: 'mdi-school-outline', label: 'Training & Competence', path: '/ohs/training' },
       { icon: 'mdi-hard-hat', label: 'PPE Management', path: '/ohs/ppe' },
       {

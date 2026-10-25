@@ -29,7 +29,9 @@ urlpatterns = [
     path('api/radiology/', include('radiology.urls')),
     path('api/wards/', include('wards.urls')),
     path('api/triage/', include('triage.urls')),
+    path('api/visits/', include('visits.urls')),
     path('api/billing/', include('billing.urls')),
+    path('api/corporate/', include('corporate.urls')),
     path('api/notifications/', include('notifications.urls')),
     # API — Pharmacy tenant apps
     path('api/pharmacy-profile/', include('pharmacy_profile.urls')),
@@ -52,6 +54,14 @@ urlpatterns = [
     path('api/crm/', include('crm.urls')),
     # API — Homecare tenant app
     path('api/homecare/', include('homecare.urls')),
+    # API — Clinic tenant catalog (allergies & chronic conditions)
+    path('api/clinic-catalog/', include('clinic_catalog.urls')),
+    # API — Multi-clinic support (HQ + branches inside one clinic tenant)
+    path('api/clinic-sites/', include('clinic_sites.urls')),
+    # API — Clinic equipment / biomedical asset management
+    path('api/clinic-equipment/', include('clinic_equipment.urls')),
+    # API — Clinic Roles & Access (RBAC)
+    path('api/clinic-rbac/', include('clinic_rbac.urls')),
     # API — Occupational Health & Safety Management System
     path('api/ohs/', include('ohs.urls')),
     # API — Per-tenant audit trail (IAM & Security)

@@ -4,6 +4,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 
 from .models import Ward, Bed, Admission
 from .serializers import WardSerializer, BedSerializer, AdmissionSerializer
+from clinic_sites.mixins import ClinicSiteScopedMixin
 
 
 class WardViewSet(viewsets.ModelViewSet):
@@ -93,10 +94,10 @@ class BedViewSet(viewsets.ModelViewSet):
     ordering_fields = ['bed_number']
 
 
-class AdmissionViewSet(viewsets.ModelViewSet):
-    queryset = Admission.objects.select_related('patient__user', 'bed__ward', 'admitting_doctor').all()
+class AdmissionViewSet(ClinicSiteScopedMixin, viewsets.ModelViewSet):
+    queryset = Admission.objects.select_related('patient__user', 'bed__ward', 'admitting_doctor', 'clinic_site').all()
     serializer_class = AdmissionSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['status', 'patient']
+    filterset_fields = ['status', 'patient', 'clinic_site']
     search_fields = ['patient__user__first_name', 'patient__user__last_name', 'reason']
     ordering_fields = ['admission_date', 'created_at']

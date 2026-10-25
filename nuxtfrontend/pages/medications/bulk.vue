@@ -400,6 +400,7 @@ const { $api } = useNuxtApp()
 const ns = computed(() => {
   const p = route.path
   if (p.includes('/ims/')) return '/ims'
+  if (p.includes('/clinics/')) return '/clinics/catalog'
   return '/pharmacy'
 })
 const backRoute = computed(() => `${ns.value}/medications`)

@@ -27,12 +27,13 @@ import { useAuthStore } from '~/stores/auth'
 const auth = useAuthStore()
 const { $api } = useNuxtApp()
 
-const counts = reactive({ rx: 0, orders: 0, pharmacies: 0 })
+const counts = reactive({ rx: 0, orders: 0, pharmacies: 0, labs: 0, labReports: 0 })
 
 const stats = computed(() => [
   { title: 'My Prescriptions', value: counts.rx, icon: 'mdi-receipt', color: 'primary' },
-  { title: 'My Orders', value: counts.orders, icon: 'mdi-receipt-text', color: 'info' },
-  { title: 'Pharmacies Nearby', value: counts.pharmacies, icon: 'mdi-medical-bag', color: 'success' }
+  { title: 'My Lab Tests', value: counts.labs, icon: 'mdi-flask-outline', color: 'warning' },
+  { title: 'Lab Reports Ready', value: counts.labReports, icon: 'mdi-file-check', color: 'success' },
+  { title: 'My Orders', value: counts.orders, icon: 'mdi-receipt-text', color: 'info' }
 ])
 
 const actions = computed(() => {
@@ -40,6 +41,7 @@ const actions = computed(() => {
   return [
     { icon: 'mdi-account-circle', label: 'My Profile', to: `${p}/my-profile` },
     { icon: 'mdi-receipt', label: 'My Prescriptions', to: `${p}/my-prescriptions` },
+    { icon: 'mdi-flask-outline', label: 'My Lab Tests', to: `${p}/my-lab-results` },
     { icon: 'mdi-storefront', label: 'Browse Pharmacies', to: '/pharmacy-store' },
     { icon: 'mdi-receipt-text', label: 'My Orders', to: '/pharmacy-store/orders' },
     { icon: 'mdi-magnify', label: 'Find Doctors', to: `${p}/doctors` },
@@ -49,9 +51,20 @@ const actions = computed(() => {
 
 async function load() {
   const safe = (p) => $api.get(p).then(r => r.data?.count ?? r.data?.results?.length ?? (Array.isArray(r.data) ? r.data.length : 0)).catch(() => 0)
-  counts.rx = await safe('/prescriptions/')
+  counts.rx = await safe('/prescriptions/?mine=true')
   counts.orders = await safe('/exchange/orders/')
   counts.pharmacies = await safe('/exchange/pharmacies/')
+
+  // Lab tests are shared by the clinic through the exchange app — the patient
+  // reads its own mirrored rows (results only appear once verified).
+  try {
+    const { data } = await $api.get('/exchange/lab-records/summary/')
+    counts.labs = data?.total ?? 0
+    counts.labReports = data?.released ?? 0
+  } catch {
+    counts.labs = 0
+    counts.labReports = 0
+  }
 }
 onMounted(load)
 </script>

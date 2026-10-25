@@ -1,5 +1,5 @@
 <template>
-  <v-container fluid class="pa-4 pa-md-6" style="max-width: 960px;">
+  <v-container fluid class="pa-4 pa-md-6">
     <PageHeader title="New Patient" subtitle="Register a new clinic patient"
       icon="mdi-account-plus" color="primary">
       <template #actions>

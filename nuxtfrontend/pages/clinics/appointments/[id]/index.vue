@@ -1,5 +1,5 @@
 <template>
-  <v-container fluid class="pa-4 pa-md-6" style="max-width: 1200px;">
+  <v-container fluid class="pa-4 pa-md-6">
     <PageHeader :title="displayName || 'Appointment'"
       :subtitle="appointment ? formatDateTime(apptDateTime) : ''"
       icon="mdi-calendar-clock" color="primary">
