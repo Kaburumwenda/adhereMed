@@ -6,8 +6,6 @@ from rest_framework.response import Response
 
 from accounts.views import IsTenantAdminOrSuperAdmin
 
-from config.cache import tenant_cache
-
 from .models import ClinicSite
 from .serializers import ClinicSiteSerializer
 from .utils import ensure_hq_site, get_hq_site
@@ -145,7 +143,6 @@ class ClinicSiteViewSet(viewsets.ModelViewSet):
         self._attach_counts([target])
         return Response(self.get_serializer(target).data)
 
-    @tenant_cache('clinic.network', timeout=120)
     @action(detail=False, methods=['get'], url_path='summary')
     def summary(self, request):
         """Network at a glance: totals per clinic plus the HQ pointer."""

@@ -11,8 +11,6 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from config.cache import tenant_cache
-
 from .models import (
     AssessmentFinding,
     AssessmentLabResult,
@@ -579,7 +577,6 @@ def _pct(part, whole):
 class OhsDashboardView(APIView):
     """Single-call OHSMS cockpit payload."""
 
-    @tenant_cache('ohsms.dashboard', timeout=60)
     def get(self, request):
         try:
             days = int(request.query_params.get('days', 90))
@@ -914,7 +911,6 @@ class OhsDashboardView(APIView):
 class OhsLookupsView(APIView):
     """Compact option lists used to populate forms across the OHS UI."""
 
-    @tenant_cache('ohsms.dashboard', timeout=300)
     def get(self, request):
         sites = SiteSerializer(Site.objects.filter(is_active=True), many=True).data
         categories = HazardCategorySerializer(HazardCategory.objects.all(), many=True).data
@@ -1299,7 +1295,6 @@ class HealthAssessmentViewSet(OhsBaseViewSet):
 class OhsAssessmentSummaryView(APIView):
     """KPI card + roll-ups for the assessment workspace (single call)."""
 
-    @tenant_cache('ohsms.dashboard', timeout=60)
     def get(self, request):
         today = date.today()
         horizon = today + timedelta(days=60)
@@ -1721,7 +1716,6 @@ class EquipmentDefectViewSet(OhsBaseViewSet):
 class OhsEquipmentSummaryView(APIView):
     """Fleet-level KPIs and breakdowns for the equipment register page."""
 
-    @tenant_cache('ohsms.dashboard', timeout=60)
     def get(self, request):
         today = date.today()
         qs = SafetyEquipment.objects.prefetch_related('defects')
@@ -1887,7 +1881,6 @@ class OhsIntelligenceView(APIView):
     """Advanced analytics: leading vs lagging indicators, cost of risk,
     benchmarking, forecasting and compliance heat maps."""
 
-    @tenant_cache('ohsms.dashboard', timeout=120)
     def get(self, request):
         today = date.today()
         since_12 = timezone.now() - timedelta(days=365)
@@ -2202,7 +2195,6 @@ class OhsIntelligenceView(APIView):
 #  Alert centre — a single derived feed of everything needing attention
 # ─────────────────────────────────────────────────────────────────────────
 class OhsAlertsView(APIView):
-    @tenant_cache('ohsms.dashboard', timeout=60)
     def get(self, request):
         today = date.today()
         now = timezone.now()

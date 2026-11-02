@@ -14,6 +14,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from tenants.models import Tenant
+from . import insights
 from .models import Organization, OrganizationMembership
 from .serializers import (
     OrganizationSerializer,
@@ -29,6 +30,10 @@ ORG_ADMIN_ROLES = {'super_admin'}
 
 # Length of the trend window returned for the Command Center sparklines.
 ACTIVITY_DAYS = 14
+
+# Longest window the Command Center can ask for. Beyond a month the audit
+# tables get expensive to scan per tenant and no tile on the page reads well.
+MAX_TREND_DAYS = 30
 
 # Hard cap for a custom traffic range. A quarter is plenty for a network
 # monitor and keeps the `DailyUsage` scan bounded no matter what a client asks.
@@ -116,13 +121,17 @@ def _day_buckets(rows, days=ACTIVITY_DAYS, as_float=False):
     return buckets
 
 
-def _daily_activity():
-    """14-day audit-event counts for the schema currently selected."""
+def _daily_activity(days=ACTIVITY_DAYS):
+    """Audit-event counts for the schema currently selected."""
     from django.db.models import Count
     from django.db.models.functions import TruncDate
     from audit.models import AuditEvent
 
-    since = timezone.now() - timedelta(days=ACTIVITY_DAYS - 1)
+    days = max(1, int(days or ACTIVITY_DAYS))
+    # TruncDate is evaluated in the server timezone while ``_day_buckets``
+    # anchors on ``localdate()``; look one day further back so a boundary
+    # event is never silently dropped from an already-short window.
+    since = timezone.now() - timedelta(days=days)
     rows = (
         AuditEvent.objects.filter(created_at__gte=since)
         .annotate(day=TruncDate('created_at'))
@@ -130,7 +139,7 @@ def _daily_activity():
         .annotate(count=Count('id'))
         .order_by('day')
     )
-    return _day_buckets([(r['day'], r['count']) for r in rows])
+    return _day_buckets([(r['day'], r['count']) for r in rows], days=days)
 
 
 def _recent_events(limit=4):
@@ -177,8 +186,14 @@ def _linked_tenants(org):
     ).exclude(schema_name='public').order_by('name')
 
 
-def _collect_tenant_stats(tenant):
-    """Switch into tenant schema and collect type-specific metrics."""
+def _collect_tenant_stats(tenant, days=ACTIVITY_DAYS):
+    """Switch into tenant schema and collect type-specific metrics.
+
+    ``days`` is the Command Center window (7 / 14 / 30). The series returned to
+    the client are always trimmed to that window; the legacy ``*_14d`` keys keep
+    their 14-day meaning so nothing that already reads them changes shape.
+    """
+    span = max(ACTIVITY_DAYS, int(days or ACTIVITY_DAYS))
     stats = {
         'user_count': 0,
         'patient_count': None,
@@ -190,8 +205,14 @@ def _collect_tenant_stats(tenant):
         # Trend + activity extras (Command Center).
         'activity_14d': [0] * ACTIVITY_DAYS,
         'revenue_14d': None,
+        'activity': [0] * span,
+        'revenue': None,
+        'activity_window_total': 0,
+        'revenue_window_total': 0.0,
+        'activity_trend_pct': None,
         'recent_events': [],
         'last_event_at': None,
+        'last_event_age_days': None,
     }
 
     try:
@@ -268,12 +289,12 @@ def _collect_tenant_stats(tenant):
                 )
             except Exception:
                 pass
-            # 14-day revenue trend for the Command Center sparkline.
+            # Revenue trend for the Command Center sparkline / window total.
             try:
                 from django.db.models import Sum
                 from django.db.models.functions import TruncDate
                 from pos.models import POSTransaction
-                since = timezone.now() - timedelta(days=ACTIVITY_DAYS - 1)
+                since = timezone.now() - timedelta(days=span)
                 rows = (
                     POSTransaction.objects
                     .filter(
@@ -285,10 +306,13 @@ def _collect_tenant_stats(tenant):
                     .annotate(total=Sum('total'))
                     .order_by('day')
                 )
-                stats['revenue_14d'] = _day_buckets(
+                revenue = _day_buckets(
                     [(r['day'], float(r['total'] or 0)) for r in rows],
-                    as_float=True,
+                    days=span, as_float=True,
                 )
+                stats['revenue_14d'] = revenue[-ACTIVITY_DAYS:]
+                stats['revenue'] = revenue[-span:]
+                stats['revenue_window_total'] = round(sum(stats['revenue']), 2)
             except Exception:
                 pass
 
@@ -301,15 +325,24 @@ def _collect_tenant_stats(tenant):
             except Exception:
                 pass
 
-        # ── Activity trail: 14-day trend + newest events ──
+        # ── Activity trail: trend + newest events ──
         try:
-            stats['activity_14d'] = _daily_activity()
+            activity = _daily_activity(days=span)
+            stats['activity_14d'] = activity[-ACTIVITY_DAYS:]
+            stats['activity'] = activity[-span:]
+            stats['activity_window_total'] = int(sum(stats['activity']))
+            stats['activity_trend_pct'] = insights.trend_pct(activity, span)
         except Exception:
             pass
         try:
             events = _recent_events()
             stats['recent_events'] = events
             stats['last_event_at'] = events[0]['created_at'] if events else None
+            if events:
+                from datetime import datetime as _datetime
+                last = _datetime.fromisoformat(events[0]['created_at'])
+                stats['last_event_age_days'] = round(
+                    (timezone.now() - last).total_seconds() / 86400, 1)
         except Exception:
             pass
 
@@ -356,13 +389,24 @@ def organization_me(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def organization_stats(request):
-    """Aggregated KPIs across all linked tenants."""
+    """Aggregated KPIs across all linked tenants.
+
+    ``?days=7|14|30`` sets the trend window (default 14). Everything derived —
+    per-facility health, the attention queue, the revenue mix — is computed
+    against that window so the whole console answers for the same period.
+    """
     org = _get_org(request.user)
     if not org:
         return Response(
             {'detail': 'You are not part of an organization.'},
             status=status.HTTP_403_FORBIDDEN,
         )
+
+    try:
+        days = int(request.query_params.get('days') or ACTIVITY_DAYS)
+    except (TypeError, ValueError):
+        days = ACTIVITY_DAYS
+    days = max(2, min(MAX_TREND_DAYS, days))
 
     tenants = list(_linked_tenants(org))
     tenant_stats = []
@@ -379,11 +423,13 @@ def organization_stats(request):
     # Org-wide trend series, accumulated element-wise below.
     activity_trend = [0] * ACTIVITY_DAYS
     revenue_trend = [0.0] * ACTIVITY_DAYS
+    activity_window = [0] * days
+    revenue_window = [0.0] * days
     activity_feed = []
     offline = []
 
     for t in tenants:
-        ts = _collect_tenant_stats(t)
+        ts = _collect_tenant_stats(t, days=days)
         row = {
             'id': t.id,
             'name': t.name,
@@ -393,7 +439,10 @@ def organization_stats(request):
             'is_active': t.is_active,
             **ts,
         }
+        row['health'] = insights.tenant_health(row)
+        row['headline'] = insights.headline_for(row)
         tenant_stats.append(row)
+
         for k in totals:
             v = ts.get(k)
             if v is not None and not isinstance(v, (list, dict)):
@@ -405,6 +454,12 @@ def organization_stats(request):
         for i, n in enumerate(ts.get('revenue_14d') or []):
             if i < ACTIVITY_DAYS:
                 revenue_trend[i] += n
+        for i, n in enumerate(ts.get('activity') or []):
+            if i < days:
+                activity_window[i] += n
+        for i, n in enumerate(ts.get('revenue') or []):
+            if i < days:
+                revenue_window[i] += n
 
         if not t.is_active:
             offline.append({'id': t.id, 'name': t.name, 'type': t.type})
@@ -422,7 +477,12 @@ def organization_stats(request):
 
     totals['activity_14d'] = activity_trend
     totals['revenue_14d'] = revenue_trend
+    totals['activity'] = activity_window
+    totals['revenue'] = revenue_window
     totals['event_count_14d'] = sum(activity_trend)
+    totals['event_count'] = sum(activity_window)
+    totals['activity_trend_pct'] = insights.trend_pct(activity_window, days)
+    totals['revenue_window'] = round(sum(revenue_window), 2)
 
     # Type counts
     type_counts = {}
@@ -439,12 +499,21 @@ def organization_stats(request):
         'type_counts': type_counts,
     }
 
+    attention = insights.attention_queue(tenant_stats)
+
     return Response({
         'org': org_data,
         'tenants': tenant_stats,
         'totals': totals,
         'activity': activity_feed[:12],
         'trend_days': ACTIVITY_DAYS,
+        'window_days': days,
+        'health': insights.org_health(tenant_stats),
+        'attention': attention[:24],
+        'attention_counts': insights.severity_counts(attention),
+        'revenue_mix': insights.mix(tenant_stats, 'revenue_30d'),
+        'stock_mix': insights.mix(tenant_stats, 'stock_value'),
+        'heatmap': insights.heatmap(tenant_stats, days),
         'generated_at': timezone.now().isoformat(),
     })
 

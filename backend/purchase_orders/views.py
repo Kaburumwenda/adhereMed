@@ -250,6 +250,9 @@ class PurchaseOrderViewSet(BranchScopedMixin, viewsets.ModelViewSet):
                     continue
 
                 unit_cost = _to_decimal(it.get('unit_cost'))
+                # Landed cost (freight/duty/insurance) allocated on the PO line
+                # is the true cost of the goods — value the batch with it.
+                landed_unit = _to_decimal(it.get('landed_unit_cost')) or unit_cost
                 expiry = it.get('expiry_date') or default_expiry.isoformat()
                 batch_number = it.get('batch_number') or f"PO-{po.po_number}-{stock.pk}"
 
@@ -264,15 +267,15 @@ class PurchaseOrderViewSet(BranchScopedMixin, viewsets.ModelViewSet):
                     batch_number=f"{batch_number}-P{po.grns.count() + 1}",
                     quantity_received=recv_qty,
                     quantity_remaining=recv_qty,
-                    cost_price_per_unit=unit_cost,
+                    cost_price_per_unit=landed_unit,
                     expiry_date=expiry,
                     supplier=po.supplier,
                 )
 
                 # Update stock prices
                 changed = []
-                if unit_cost > 0 and stock.cost_price != unit_cost:
-                    stock.cost_price = unit_cost
+                if landed_unit > 0 and stock.cost_price != landed_unit:
+                    stock.cost_price = landed_unit
                     changed.append('cost_price')
                 unit_selling = _to_decimal(it.get('unit_selling_price'))
                 if unit_selling > 0 and stock.selling_price != unit_selling:

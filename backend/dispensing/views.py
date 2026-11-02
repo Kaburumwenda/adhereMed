@@ -71,23 +71,26 @@ class DispensingRecordViewSet(viewsets.ModelViewSet):
         record.status = 'cancelled'
         record.notes = (record.notes or '') + f"\n[Voided by {request.user} on {timezone.now():%Y-%m-%d %H:%M}]"
         record.save(update_fields=['status', 'notes'])
-        # Best-effort restock
+        # Restock into a fresh lot — the original batch may have expired since.
         try:
-            from inventory.models import StockBatch
+            from inventory.models import MedicationStock, StockAdjustment
+            from inventory.services.stock import receipt_stock
             for it in (record.items_dispensed or []):
                 stock_id = it.get('stock_id')
                 qty = int(float(it.get('qty') or 0))
                 if not stock_id or qty <= 0:
                     continue
-                batch = (
-                    StockBatch.objects
-                    .filter(stock_id=stock_id)
-                    .order_by('expiry_date')
-                    .first()
+                stock = MedicationStock.objects.filter(id=stock_id).first()
+                if stock is None:
+                    continue
+                receipt_stock(
+                    stock, qty,
+                    reason=StockAdjustment.Reason.DISPENSE_RETURN,
+                    notes=f'Void of dispense {record.receipt_number or record.pk}',
+                    user=request.user,
+                    batch_number=f'RET-VOID-{record.pk}',
+                    create_new_lot=True,
                 )
-                if batch:
-                    batch.quantity_remaining += qty
-                    batch.save(update_fields=['quantity_remaining'])
         except Exception:
             pass
         return Response(self.get_serializer(record).data)

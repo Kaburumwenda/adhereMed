@@ -9,8 +9,6 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from config.cache import tenant_cache
-
 from .models import (
     Equipment,
     EquipmentCategory,
@@ -47,13 +45,6 @@ def _user_site_id(user):
     except Exception:
         return None
     return getattr(branch, 'site_id', None)
-
-
-def _dashboard_scope(request):
-    """Cache scope: admins share one entry, branch staff share per clinic site."""
-    if _is_admin(getattr(request, 'user', None)):
-        return 'all'
-    return f'site:{_user_site_id(request.user) or "none"}'
 
 
 class SiteScopedEquipmentMixin:
@@ -371,7 +362,6 @@ class EquipmentDashboardView(APIView):
 
     permission_classes = [permissions.IsAuthenticated]
 
-    @tenant_cache('clinic.equipment', timeout=60, scope=_dashboard_scope)
     def get(self, request):
         today = timezone.localdate()
         soon = today + timedelta(days=30)

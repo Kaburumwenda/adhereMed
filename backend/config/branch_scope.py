@@ -40,6 +40,16 @@ def is_branch_scoped_user(user):
     return get_user_branch(user) is not None
 
 
+def get_scoped_branch_id(user):
+    """Return the branch id a user is locked to, or ``None`` when unrestricted.
+
+    Single source of truth for *write* paths (imports, adjustments,
+    transfers, stock takes) so they enforce exactly the same rule the
+    read-side :class:`BranchScopedMixin` applies.
+    """
+    return get_user_branch(user) if is_branch_scoped_user(user) else None
+
+
 class BranchScopedMixin:
     """
     Mixin that filters the queryset by the user's branch.

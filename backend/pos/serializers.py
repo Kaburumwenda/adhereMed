@@ -4,7 +4,8 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from .models import POSTransaction, TransactionItem, Customer, ParkedSale, CashierShift, LoyaltyTransaction, CreditSale, CreditPayment
-from inventory.models import MedicationStock, StockBatch
+from inventory.models import MedicationStock, StockAdjustment, StockBatch
+from inventory.services.stock import InsufficientStock, consume_stock
 
 
 class CustomerSerializer(serializers.ModelSerializer):
@@ -160,9 +161,21 @@ class POSCheckoutSerializer(serializers.Serializer):
         total_tax = Decimal('0')
         transaction_items = []
 
+        # Resolve the warehouse *before* touching stock: a sale may only draw
+        # from the shelf it is booked against (plus unassigned batches).
+        branch_id = validated_data.get('branch_id')
+        if not branch_id:
+            try:
+                branch_id = cashier.staff_profile.branch_id
+            except Exception:
+                branch_id = None
+
         for item_data in items_data:
             stock = MedicationStock.objects.get(id=item_data['stock_id'])
-            qty_needed = item_data['quantity']
+            qty_needed = int(item_data['quantity'] or 0)
+            if qty_needed <= 0:
+                raise serializers.ValidationError(
+                    {'items': f'{stock.medication_name}: quantity must be at least 1.'})
             unit_price = stock.selling_price
             line_total = unit_price * qty_needed
             subtotal += line_total
@@ -175,23 +188,21 @@ class POSCheckoutSerializer(serializers.Serializer):
                 line_tax = Decimal('0')
             total_tax += line_tax
 
-            # FEFO: deduct from earliest expiring batches first
-            batches = StockBatch.objects.filter(
-                stock=stock, quantity_remaining__gt=0,
-            ).order_by('expiry_date')
+            # FEFO across **sellable** batches only (not expired, not
+            # quarantined). consume_stock refuses to go short instead of
+            # completing a sale the shelf cannot back.
+            try:
+                ledger_rows = consume_stock(
+                    stock, qty_needed,
+                    reason=StockAdjustment.Reason.POS_SALE,
+                    notes=f'POS {transaction_number}',
+                    user=cashier,
+                    branch_id=branch_id,
+                )
+            except InsufficientStock as exc:
+                raise serializers.ValidationError({'items': str(exc)}) from exc
 
-            remaining = qty_needed
-            fefo_batch = None
-            for batch in batches:
-                if remaining <= 0:
-                    break
-                deduct = min(batch.quantity_remaining, remaining)
-                batch.quantity_remaining -= deduct
-                batch.save(update_fields=['quantity_remaining'])
-                remaining -= deduct
-                if fefo_batch is None:
-                    fefo_batch = batch
-
+            fefo_batch = ledger_rows[0].batch if ledger_rows else None
             transaction_items.append({
                 'stock': stock,
                 'batch': fefo_batch,
@@ -206,14 +217,6 @@ class POSCheckoutSerializer(serializers.Serializer):
 
         # Round tax to 2 decimal places
         total_tax = total_tax.quantize(Decimal('0.01'))
-
-        branch_id = validated_data.get('branch_id')
-        # Auto-assign branch from user's staff profile if not provided
-        if not branch_id:
-            try:
-                branch_id = cashier.staff_profile.branch_id
-            except Exception:
-                pass
 
         pos_txn = POSTransaction.objects.create(
             transaction_number=transaction_number,

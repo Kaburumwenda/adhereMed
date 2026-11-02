@@ -53,14 +53,35 @@ def _normalize_items(items):
 COMMITTED_PAYMENT_STATUSES = (SalesOrder.PaymentStatus.PAID, SalesOrder.PaymentStatus.PARTIAL)
 
 
-def _sync_stock_commitment(so):
+def _sync_stock_commitment(so, previous_items=None):
     """Mirror the SO payment state onto inventory `committed_qty`.
 
     Paid / partially paid orders reserve their item quantities as committed
     stock. Unpaid, cancelled or already-delivered lines release the
     reservation. The per-item `_committed` flag keeps this idempotent.
+
+    ``previous_items`` is the *saved* item list before an update: lines the
+    user deleted no longer appear in ``so.items``, so their reservation has to
+    be released from the stored copy or it would be held forever.
     """
     from inventory.models import MedicationStock
+
+    # 0) Release commitments held by lines that were removed by an edit
+    if previous_items:
+        current_ids = {i.get('stock_id') for i in (so.items or [])}
+        for it in previous_items:
+            sid = it.get('stock_id')
+            if not sid or sid in current_ids or not it.get('_committed'):
+                continue
+            release = int(it.get('_committed_qty') or it.get('qty') or 0)
+            if release <= 0:
+                continue
+            try:
+                stock = MedicationStock.objects.get(pk=sid)
+                stock.committed_qty = max(0, (stock.committed_qty or 0) - release)
+                stock.save(update_fields=['committed_qty', 'updated_at'])
+            except MedicationStock.DoesNotExist:
+                pass
 
     # 1) Release everything this SO currently holds
     for it in (so.items or []):
@@ -98,11 +119,13 @@ def _fulfill_delivered_items(so, user=None):
 
     Runs once per line: the `_delivered` flag makes it idempotent. Any
     commitment held for a delivered line is released at the same time.
-    The deduction is recorded as a StockAdjustment (reason 'sales_order')
-    so it appears in the movement ledger, stock-movements report and
-    adjustments page.
+    The deduction goes through ``consume_stock`` (reason 'sales_order'), which
+    writes the ledger row, refuses expired / quarantined lots and raises
+    :class:`InsufficientStock` rather than delivering units the shelf cannot
+    back.
     """
-    from inventory.models import MedicationStock, StockBatch, StockAdjustment
+    from inventory.models import MedicationStock, StockAdjustment
+    from inventory.services.stock import InsufficientStock, consume_stock
 
     changed = False
     for it in (so.items or []):
@@ -121,39 +144,27 @@ def _fulfill_delivered_items(so, user=None):
             continue
 
         was_committed = bool(it.get('_committed'))
+        try:
+            consume_stock(
+                stock, qty,
+                reason=StockAdjustment.Reason.SALES_ORDER,
+                notes=f'Sales order {so.so_number} fulfilled (delivered)',
+                user=user,
+                branch_id=so.branch_id,
+            )
+        except InsufficientStock:
+            # Leave the line undelivered; the caller reports the shortage.
+            it['_delivered_short'] = qty
+            changed = True
+            break
+
         if was_committed:
             release = int(it.get('_committed_qty') or qty)
             stock.committed_qty = max(0, (stock.committed_qty or 0) - release)
-
-        remaining = qty
-        batches = StockBatch.objects.filter(
-            stock=stock, quantity_remaining__gt=0,
-        ).order_by('expiry_date')
-        for batch in batches:
-            if remaining <= 0:
-                break
-            deduct = min(batch.quantity_remaining, remaining)
-            batch.quantity_remaining -= deduct
-            batch.save(update_fields=['quantity_remaining'])
-            remaining -= deduct
-
-        if was_committed:
             stock.save(update_fields=['committed_qty', 'updated_at'])
         it['_committed'] = False
         it['_delivered'] = True
-
-        # Ledger record for the movement report / item insights
-        deducted = qty - max(0, remaining)
-        if deducted > 0:
-            StockAdjustment.objects.create(
-                stock=stock,
-                quantity_change=-deducted,
-                reason=StockAdjustment.Reason.SALES_ORDER,
-                notes=f'Sales order {so.so_number} fulfilled (delivered)',
-                adjusted_by=user if (user and getattr(user, 'is_authenticated', False)) else None,
-            )
-        if remaining > 0:
-            it['_delivered_short'] = remaining
+        it.pop('_delivered_short', None)
         changed = True
 
     if changed:
@@ -265,6 +276,7 @@ class SalesOrderSerializer(serializers.ModelSerializer):
         if customer_id:
             validated_data['customer_id'] = customer_id
         items = validated_data.pop('items', None)
+        previous_items = list(instance.items or [])
         if items is not None:
             cleaned, subtotal = _normalize_items(items)
             # Preserve delivery / commitment bookkeeping flags from the saved order
@@ -294,6 +306,6 @@ class SalesOrderSerializer(serializers.ModelSerializer):
         if so.status == SalesOrder.Status.FULFILLED:
             request = self.context.get('request')
             _fulfill_delivered_items(so, user=request.user if request else None)
-        _sync_stock_commitment(so)
+        _sync_stock_commitment(so, previous_items=previous_items)
         _sync_delivery(so)
         return so

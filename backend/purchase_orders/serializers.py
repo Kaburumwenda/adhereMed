@@ -96,6 +96,11 @@ def _sync_received_items(purchase_order):
             updated_items.append(it)
             continue
         unit_cost = _to_decimal(it.get('unit_cost'))
+        # Freight / duty / insurance allocated by /inventory/landed-cost/ sit on
+        # the PO line as ``landed_unit_cost``. Ignoring them here (which the
+        # previous version did) left the real landed cost of the goods out of
+        # stock valuation and every margin calculation.
+        landed_unit = _to_decimal(it.get('landed_unit_cost')) or unit_cost
         expiry = it.get('expiry_date') or default_expiry.isoformat()
         batch_number = it.get('batch_number') or f"PO-{purchase_order.po_number}-{stock.pk}"
         # Snapshot previous prices BEFORE mutating so we can revert later
@@ -108,13 +113,13 @@ def _sync_received_items(purchase_order):
             batch_number=batch_number,
             quantity_received=qty,
             quantity_remaining=qty,
-            cost_price_per_unit=unit_cost,
+            cost_price_per_unit=landed_unit,
             expiry_date=expiry,
             supplier=purchase_order.supplier,
         )
         changed = []
-        if unit_cost > 0 and stock.cost_price != unit_cost:
-            stock.cost_price = unit_cost
+        if landed_unit > 0 and stock.cost_price != landed_unit:
+            stock.cost_price = landed_unit
             changed.append('cost_price')
         unit_selling = _to_decimal(it.get('unit_selling_price'))
         if unit_selling > 0 and stock.selling_price != unit_selling:

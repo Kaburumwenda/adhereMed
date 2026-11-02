@@ -4,6 +4,8 @@ from django.db import transaction
 from rest_framework import serializers
 
 from .models import DispensingRecord, DispenseReturn
+from inventory.models import MedicationStock, StockAdjustment
+from inventory.services.stock import InsufficientStock, consume_stock, receipt_stock
 
 
 class DispenseLineSerializer(serializers.Serializer):
@@ -59,11 +61,13 @@ class DispensingRecordSerializer(serializers.ModelSerializer):
 
         record = DispensingRecord.objects.create(**validated_data)
 
-        # Stock deduction (FEFO) — best-effort, does not block save on errors
+        # Stock deduction (FEFO, sellable batches only). This runs inside the
+        # same transaction as the record, so a shortage rolls the whole
+        # dispense back instead of silently leaving the shelf short.
         try:
-            self._deduct_stock(items)
-        except Exception:
-            pass
+            self._deduct_stock(items, user=validated_data.get('dispensed_by'))
+        except InsufficientStock as exc:
+            raise serializers.ValidationError({'items': str(exc)}) from exc
 
         # Controlled-substance auto-log
         try:
@@ -97,8 +101,13 @@ class DispensingRecordSerializer(serializers.ModelSerializer):
         return out
 
     @staticmethod
-    def _deduct_stock(items):
-        from inventory.models import StockBatch
+    def _deduct_stock(items, user=None):
+        """Drain sellable batches for each dispensed line (FEFO).
+
+        Delegates to :func:`inventory.services.stock.consume_stock` so the
+        ledger row, the batch mutation and the "cannot sell expired or
+        quarantined stock" rule are shared with POS and sales orders.
+        """
         for it in items:
             stock_id = it.get('stock_id')
             if not stock_id:
@@ -106,19 +115,15 @@ class DispensingRecordSerializer(serializers.ModelSerializer):
             qty_needed = int(Decimal(str(it.get('qty') or 0)))
             if qty_needed <= 0:
                 continue
-            batches = (
-                StockBatch.objects
-                .select_for_update()
-                .filter(stock_id=stock_id, quantity_remaining__gt=0)
-                .order_by('expiry_date', 'received_date')
+            stock = MedicationStock.objects.filter(id=stock_id).first()
+            if stock is None:
+                continue
+            consume_stock(
+                stock, qty_needed,
+                reason=StockAdjustment.Reason.DISPENSING,
+                notes=f'Dispensed to {it.get("medication_name") or stock.medication_name}',
+                user=user,
             )
-            for batch in batches:
-                if qty_needed <= 0:
-                    break
-                take = min(batch.quantity_remaining, qty_needed)
-                batch.quantity_remaining -= take
-                batch.save(update_fields=['quantity_remaining'])
-                qty_needed -= take
 
     @staticmethod
     def _log_controlled(items, record, user):
@@ -187,27 +192,27 @@ class DispenseReturnSerializer(serializers.ModelSerializer):
             validated_data['processed_by'] = request.user
         ret = super().create(validated_data)
 
-        # Restock if requested (best-effort)
+        # Restock if requested. A returned item is a *new* lot: adding it back
+        # into the batch it left (often expired by now) would make the units
+        # permanently unsellable.
         if ret.restock:
             try:
-                from inventory.models import StockBatch
-                from datetime import date as _d, timedelta as _td
                 for it in (ret.items_returned or []):
                     stock_id = it.get('stock_id')
                     qty = int(float(it.get('qty') or 0))
                     if not stock_id or qty <= 0:
                         continue
-                    batch = StockBatch.objects.filter(stock_id=stock_id).order_by('-expiry_date').first()
-                    if batch:
-                        batch.quantity_remaining += qty
-                        batch.save(update_fields=['quantity_remaining'])
-                    else:
-                        StockBatch.objects.create(
-                            stock_id=stock_id,
-                            batch_number=f'RET-{ret.pk}',
-                            quantity_received=qty, quantity_remaining=qty,
-                            expiry_date=_d.today() + _td(days=365),
-                        )
+                    stock = MedicationStock.objects.filter(id=stock_id).first()
+                    if stock is None:
+                        continue
+                    receipt_stock(
+                        stock, qty,
+                        reason=StockAdjustment.Reason.DISPENSE_RETURN,
+                        notes=f'Return {ret.reference or ret.pk}',
+                        user=ret.processed_by,
+                        batch_number=f'RET-{ret.pk}',
+                        create_new_lot=True,
+                    )
             except Exception:
                 pass
         return ret

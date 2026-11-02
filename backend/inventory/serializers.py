@@ -7,6 +7,7 @@ from .models import (
     ControlledSubstanceLog, CatalogSeedRun,
 )
 from .rbac import can_view_cost
+from .services.stock import apply_quantity_change
 
 
 def _scrub_cost(request):
@@ -72,6 +73,7 @@ class StockBatchSerializer(serializers.ModelSerializer):
             'cost_price_per_unit', 'expiry_date', 'received_date',
             'supplier', 'supplier_name',
             'branch', 'branch_name', 'is_expired',
+            'is_blocked', 'blocked_reason',
         ]
         read_only_fields = ['id', 'received_date']
 
@@ -86,6 +88,9 @@ class StockBatchSerializer(serializers.ModelSerializer):
 class MedicationStockSerializer(serializers.ModelSerializer):
     total_quantity = serializers.IntegerField(read_only=True)
     available_quantity = serializers.IntegerField(read_only=True)
+    sellable_quantity = serializers.IntegerField(read_only=True)
+    expired_quantity = serializers.IntegerField(read_only=True)
+    blocked_quantity = serializers.IntegerField(read_only=True)
     is_low_stock = serializers.BooleanField(read_only=True)
     batches = StockBatchSerializer(many=True, read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True, default=None)
@@ -111,7 +116,8 @@ class MedicationStockSerializer(serializers.ModelSerializer):
             'reorder_level', 'reorder_quantity',
             'location_in_store', 'barcode', 'prescription_required', 'is_active',
             'items_per_unit',
-            'total_quantity', 'available_quantity', 'is_low_stock',
+            'total_quantity', 'available_quantity', 'sellable_quantity',
+            'expired_quantity', 'blocked_quantity', 'is_low_stock',
             'batches', 'created_at', 'updated_at',
             'initial_quantity', 'batch_number', 'expiry_date',
         ]
@@ -120,16 +126,24 @@ class MedicationStockSerializer(serializers.ModelSerializer):
     def validate(self, data):
         name = data.get('medication_name') or (self.instance and self.instance.medication_name)
         branch = data.get('branch') or (self.instance and self.instance.branch)
+        strength = data.get('strength')
+        if strength is None and self.instance:
+            strength = self.instance.strength
         if name and branch:
+            # Mirror the DB constraint exactly — lower(name) + lower(strength)
+            # + branch. Comparing name alone rejected legitimate same-name,
+            # different-strength items ("Amoxicillin 250mg" vs "500mg").
             qs = MedicationStock.objects.filter(
-                medication_name__iexact=name, branch=branch,
+                medication_name__iexact=name,
+                strength__iexact=strength or '',
+                branch=branch,
             )
             if self.instance:
                 qs = qs.exclude(pk=self.instance.pk)
             if qs.exists():
                 raise serializers.ValidationError(
-                    f'"{name}" already exists in {branch.name}. '
-                    f'Use a different warehouse or edit the existing item.'
+                    f'"{name}"{(f" {strength}") if strength else ""} already exists in '
+                    f'{branch.name}. Use a different warehouse or edit the existing item.'
                 )
         return data
 
@@ -164,6 +178,34 @@ class MedicationStockSerializer(serializers.ModelSerializer):
         return stock
 
 
+class StockBatchLiteSerializer(serializers.ModelSerializer):
+    """Minimal batch payload for list screens.
+
+    The stock list only reads quantity, expiry and cost per batch (for the
+    health, expiry-runway and value columns). Sending supplier names, stock
+    echoes and received dates for every batch of every row made the
+    1000-row dashboard response several megabytes.
+    """
+
+    class Meta:
+        model = StockBatch
+        fields = ['id', 'stock', 'batch_number', 'quantity_remaining',
+                  'expiry_date', 'cost_price_per_unit', 'branch']
+        read_only_fields = fields
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if _scrub_cost(self.context.get('request')):
+            data['cost_price_per_unit'] = None
+        return data
+
+
+class MedicationStockListSerializer(MedicationStockSerializer):
+    """List payload: identical shape, but batches use the lite serializer."""
+
+    batches = StockBatchLiteSerializer(many=True, read_only=True)
+
+
 class StockAdjustmentSerializer(serializers.ModelSerializer):
     stock_name = serializers.CharField(source='stock.medication_name', read_only=True)
     adjusted_by_name = serializers.CharField(source='adjusted_by.full_name', read_only=True, default=None)
@@ -177,15 +219,46 @@ class StockAdjustmentSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'adjusted_by', 'created_at']
 
+    def validate(self, data):
+        stock = data.get('stock') or getattr(self.instance, 'stock', None)
+        batch = data.get('batch') or getattr(self.instance, 'batch', None)
+        if batch and stock and batch.stock_id != stock.id:
+            raise serializers.ValidationError(
+                {'batch': 'This batch does not belong to the selected item.'})
+        qty = data.get('quantity_change')
+        if qty is not None and qty < 0 and stock:
+            available = (batch.quantity_remaining if batch else stock.total_quantity) or 0
+            if available < -qty:
+                raise serializers.ValidationError({
+                    'quantity_change':
+                        f'Cannot remove {-qty} unit(s) — only {available} on hand.'
+                        + ('' if batch else ' Pin a specific batch or reduce the quantity.')
+                })
+        return data
+
     def create(self, validated_data):
-        validated_data['adjusted_by'] = self.context['request'].user
-        adjustment = super().create(validated_data)
-        # Apply the quantity change to the batch if specified
-        batch = adjustment.batch
-        if batch:
-            batch.quantity_remaining = max(0, batch.quantity_remaining + adjustment.quantity_change)
-            batch.save(update_fields=['quantity_remaining'])
-        return adjustment
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        adjustments = apply_quantity_change(
+            validated_data['stock'],
+            validated_data['quantity_change'],
+            reason=validated_data['reason'],
+            notes=validated_data.get('notes', '') or '',
+            user=user,
+            batch=validated_data.get('batch'),
+        )
+        # A zero-quantity adjustment creates no ledger rows; return a
+        # transient instance so the response still round-trips.
+        if not adjustments:
+            return StockAdjustment(
+                stock=validated_data['stock'],
+                batch=validated_data.get('batch'),
+                quantity_change=0,
+                reason=validated_data['reason'],
+                notes=validated_data.get('notes', '') or '',
+                adjusted_by=user if getattr(user, 'is_authenticated', False) else None,
+            )
+        return adjustments[0]
 
 
 # ─────────────────────────────────────────────────────────────────────────

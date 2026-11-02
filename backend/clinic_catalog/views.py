@@ -4,8 +4,6 @@ from rest_framework import filters, permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from config.cache import tenant_cache
-
 from .models import ClinicAllergy, ClinicChronicCondition
 from .serializers import ClinicAllergySerializer, ClinicChronicConditionSerializer
 
@@ -64,7 +62,6 @@ class ClinicAllergyViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(source=ClinicAllergy.Source.CUSTOM)
 
-    @tenant_cache('clinic.catalog', timeout=300)
     @action(detail=False, methods=['get'])
     def stats(self, request):
         """KPI + category breakdown for the Allergies page tiles."""
@@ -105,7 +102,6 @@ class ClinicChronicConditionViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(source=ClinicChronicCondition.Source.CUSTOM)
 
-    @tenant_cache('clinic.catalog', timeout=300)
     @action(detail=False, methods=['get'])
     def stats(self, request):
         """KPI + category breakdown for the Chronic Conditions page tiles."""
